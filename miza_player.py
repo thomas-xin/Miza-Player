@@ -2608,16 +2608,16 @@ from bs4 import BeautifulSoup
 SAMPLE_RATE = 48000
 
 
+genius_key = None
+google_api_key = None
 if AUTH:
     try:
         genius_key = AUTH["genius_key"]
     except:
-        genius_key = None
         print("WARNING: genius_key not found. Unable to use API to search song lyrics.")
     try:
         google_api_key = AUTH["google_api_key"]
     except:
-        google_api_key = None
         print("WARNING: google_api_key not found. Unable to use API to search youtube playlists.")
 
 

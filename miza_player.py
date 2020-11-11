@@ -3168,7 +3168,7 @@ class AudioQueue(alist):
         if q:
             entry = q[0]
             if (auds.source is None or auds.source.closed or auds.source.advanced) and not entry.get("played", False):
-                if entry.get("file", None) or entry.get("stream", None) not in (None, "none"):
+                if not auds.paused and (entry.get("file", None) or entry.get("stream", None) not in (None, "none")):
                     entry.played = True
                     if not auds.stats.quiet:
                         print(f"Now playing {sqr_md(q[0].name)}!")
@@ -3336,8 +3336,7 @@ if os.path.exists("loaded.json"):
 
 def subread(proc, parse=False):
     global print_prefix
-    if auds.stats.quiet:
-        parse = False
+    output = parse and not auds.stats.quiet
     with tracebacksuppressor:
         b = io.BytesIO()
         data = bytearray()
@@ -3358,11 +3357,13 @@ def subread(proc, parse=False):
                         num = data[:data.index(b"M") - 1]
                         pos = float(num)
                         dur = e_dur(auds.queue[0].duration)
-                        out = f"\r{C.white}|{create_progress_bar(pos / dur, 64, ((-pos) % (1 / 3)) * 3)}{C.white}| ({time_disp(pos)}/{time_disp(dur)})"
-                        if out != last:
-                            print_prefix = "\n"
-                            sys.__stdout__.write(out)
-                            last = out
+                        auds.stats.position = pos
+                        if output:
+                            out = f"\r{C.white}|{create_progress_bar(pos / dur, 64, ((-pos) % (1 / 3)) * 3)}{C.white}| ({time_disp(pos)}/{time_disp(dur)})"
+                            if out != last:
+                                print_prefix = "\n"
+                                sys.__stdout__.write(out)
+                                last = out
                     except (ValueError, TypeError, IndexError, ZeroDivisionError):
                         pass
                     data.clear()
@@ -3581,7 +3582,7 @@ class AudioFile:
                 if options:
                     args.extend(options)
             else:
-                options.extend(("-f", "s16le", "-ar", str(sr), "-ac", "2", "-bufsize", "8192"))
+                options.extend(("-f", "s16le", "-ar", str(SAMPLE_RATE), "-ac", "2", "-bufsize", "8192"))
             args.append("pipe:1")
             key = 0
             self.readers[key] = True
@@ -4759,7 +4760,7 @@ ytdl = AudioDownloader()
 
 
 class Queue(Command):
-    name = ["Q", "Play", "P"]
+    name = ["▶️", "P", "Q", "Play", "Enqueue"]
     alias = name + ["LS"]
     description = "Shows the music queue, or plays a song in voice."
     usage = "<search_link[]> <verbose(?v)> <hide(?h)> <force(?f)> <budge(?b)>"
@@ -5054,8 +5055,8 @@ class Pause(Command):
             if auds.paused:
                 create_future_ex(auds.stop, timeout=18)
         if not auds.paused:
-            create_future_ex(auds.queue.update_play, timeout=18)
-            create_future_ex(auds.ensure_play, timeout=18)
+            if auds.queue and not getattr(auds, "proc", None) or not auds.proc.is_running():
+                auds.new(ytdl.get_stream(auds.queue[0]), auds.stats.position)
         else:
             auds.pause()
         if auds.player is not None:

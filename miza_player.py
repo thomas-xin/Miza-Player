@@ -3718,7 +3718,7 @@ class BufferedAudioReader:
                 self.proc.stdin.flush()
             except (ValueError, EOFError):
                 # Only stop when file is confirmed to be finished
-                if self.file.loaded or self.file.closed:
+                if self.file.loaded or self.closed:
                     break
                 time.sleep(0.1)
         self.full = True

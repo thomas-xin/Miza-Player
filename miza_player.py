@@ -10,7 +10,7 @@ if sys.version_info[0] < 3:
 print("Loading and checking modules...")
 
 with open("requirements.txt", "rb") as f:
-	modlist = f.read().decode("utf-8", "replace").replace("\r", "\n").split("\n")
+    modlist = f.read().decode("utf-8", "replace").replace("\r", "\n").split("\n")
 
 import pkg_resources
 
@@ -18,30 +18,30 @@ installing = []
 install = lambda m: installing.append(subprocess.Popen(["python", "-m", "pip", "install", "--upgrade", m, "--user"]))
 
 for mod in modlist:
-	if mod:
-		try:
-			name = mod
-			version = None
-			for op in (">=", "==", "<="):
-				if op in mod:
-					name, version = mod.split(op)
-					break
-			v = pkg_resources.get_distribution(name).version
-			if version is not None:
-				assert eval(repr(v) + op + repr(version), {}, {})
-		except:
-			traceback.print_exc()
-			inst = name
-			if op in ("==", "<="):
-				inst += "==" + version
-			install(inst)
+    if mod:
+        try:
+            name = mod
+            version = None
+            for op in (">=", "==", "<="):
+                if op in mod:
+                    name, version = mod.split(op)
+                    break
+            v = pkg_resources.get_distribution(name).version
+            if version is not None:
+                assert eval(repr(v) + op + repr(version), {}, {})
+        except:
+            traceback.print_exc()
+            inst = name
+            if op in ("==", "<="):
+                inst += "==" + version
+            install(inst)
 
 if installing:
-	print("Installing missing or outdated modules, please wait...")
-	subprocess.Popen([python, "-m", "pip", "install", "--upgrade", "pip", "--user"]).wait()
-	for i in installing:
-		i.wait()
-	print("Installer terminated.")
+    print("Installing missing or outdated modules, please wait...")
+    subprocess.Popen([python, "-m", "pip", "install", "--upgrade", "pip", "--user"]).wait()
+    for i in installing:
+        i.wait()
+    print("Installer terminated.")
 
 if os.name == "nt":
     os.system("color")
@@ -2425,18 +2425,20 @@ def evalEX(exc):
 
 enc_key = None
 if AUTH:
-	with tracebacksuppressor:
-		enc_key = AUTH["encryption_key"]
+    with tracebacksuppressor:
+        enc_key = AUTH["encryption_key"]
 
 if not enc_key:
-    enc_key = AUTH["encryption_key"] = base64.b64encode(randbytes(32)).decode("utf-8", "replace")
-    try:
-        s = json.dumps(AUTH).encode("utf-8")
-    except:
-        print_exc()
-        s = repr(AUTH).encode("utf-8")
-    with open("auth.json", "wb") as f:
-        f.write(s)
+    AUTH["encryption_key"] = base64.b64encode(randbytes(32)).decode("utf-8", "replace")
+    # try:
+        # s = json.dumps(AUTH).encode("utf-8")
+    # except:
+        # print_exc()
+        # s = repr(AUTH).encode("utf-8")
+    # with open("auth.json", "wb") as f:
+        # f.write(s)
+
+enc_key = AUTH.pop("encryption_key")
 
 enc_box = nacl.secret.SecretBox(base64.b64decode(enc_key)[:32])
 
@@ -2607,16 +2609,16 @@ SAMPLE_RATE = 48000
 
 
 if AUTH:
-	try:
-		genius_key = AUTH["genius_key"]
-	except:
-		genius_key = None
-		print("WARNING: genius_key not found. Unable to use API to search song lyrics.")
-	try:
-		google_api_key = AUTH["google_api_key"]
-	except:
-		google_api_key = None
-		print("WARNING: google_api_key not found. Unable to use API to search youtube playlists.")
+    try:
+        genius_key = AUTH["genius_key"]
+    except:
+        genius_key = None
+        print("WARNING: genius_key not found. Unable to use API to search song lyrics.")
+    try:
+        google_api_key = AUTH["google_api_key"]
+    except:
+        google_api_key = None
+        print("WARNING: google_api_key not found. Unable to use API to search youtube playlists.")
 
 
 e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else 300)

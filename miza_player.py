@@ -4096,8 +4096,7 @@ class AudioDownloader:
         return out
 
     def ydl_errors(self, s):
-        return not ("video unavailable" in s or "this video is not available" in s or "this video contains content from" in s)
-        # return "403" in s or "429" in s or "no video formats found" in s or "unable to extract video data" in s or "unable to extract js player" in s or "geo restriction" in s or "information found in video info" in s
+        return not ("video unavailable" in s or "this video is not available" in s or "this video contains content from" in s or "this video has been removed" in s)
 
     # Repeatedly makes calls to youtube-dl until there is no more data to be collected.
     def extract_true(self, url):
@@ -4106,7 +4105,7 @@ class AudioDownloader:
                 return self.search_yt(regexp("ytsearch[0-9]*:").sub("", url, 1))[0]
             resp = self.extract_from(url)
             if "entries" in resp:
-                resp = resp["entries"][0]
+                resp = next(iter(resp["entries"]))
             if "duration" in resp and "formats" in resp:
                 return resp
             try:

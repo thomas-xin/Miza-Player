@@ -166,11 +166,11 @@ pygame.font.init()
 is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 mixer.stdin.write(("%" + str(hwnd) + "\n").encode("utf-8"))
 mixer.stdin.flush()
-if "screenpos" in options:
-    x, y = screenpos
-    ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, -1, -1, 0x4561)
 if options.get("maximised"):
     ctypes.windll.user32.ShowWindow(hwnd, 3)
+elif "screenpos" in options:
+    x, y = screenpos
+    ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, -1, -1, 0x4561)
 
 class WR(ctypes.Structure):
     _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]

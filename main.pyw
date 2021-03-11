@@ -611,7 +611,7 @@ def draw_menu():
                     secondary = True
                 else:
                     sat = 1
-                    val = 0.875
+                    val = 0.75
                     secondary = False
                 if entry.get("flash"):
                     if entry.flash < 0:
@@ -780,6 +780,50 @@ def draw_menu():
                     surface=DISP,
                     align=0,
                 )
+                srange = asettings[opt]
+                w = (sidebar_width - 16)
+                x = round((options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0]) * w)
+                rect = (screensize[0] + offs + 8, 69 + i * 32, sidebar_width - 16, 9)
+                hovered = in_rect(mpos, rect)
+                z = max(0, x - 4)
+                rect = (screensize[0] + offs + 8 + z, 69 + i * 32, sidebar_width - 16 - z, 9)
+                col = (48 if hovered else 32,) * 3
+                bevel_rectangle(
+                    DISP,
+                    col,
+                    rect,
+                    3,
+                )
+                rainbow = rainbow_gradient((w, 9), pc() / 2 + i / 4)
+                DISP.blit(
+                    rainbow,
+                    (screensize[0] + offs + 8 + x, 69 + i * 32),
+                    (x, 0, w - x, 9),
+                    special_flags=BLEND_RGBA_MULT,
+                )
+                rect = (screensize[0] + offs + 8, 69 + i * 32, x, 9)
+                col = (223 if hovered else 191,) * 3
+                bevel_rectangle(
+                    DISP,
+                    col,
+                    rect,
+                    3,
+                )
+                rainbow = rainbow_gradient((w, 9), pc() + i / 4)
+                DISP.blit(
+                    rainbow,
+                    (screensize[0] + offs + 8, 69 + i * 32),
+                    (0, 0, x, 9),
+                    special_flags=BLEND_RGBA_MULT,
+                )
+                if hovered:
+                    bevel_rectangle(
+                        DISP,
+                        (191, 127, 255),
+                        (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13),
+                        2,
+                        filled=False,
+                    )
         maxb = (sidebar_width - 12) // 44
         for button in sidebar.buttons[:maxb]:
             if button.get("rect"):
@@ -794,6 +838,7 @@ def draw_menu():
                 DISP.blit(
                     button.sprite,
                     (button.rect[0] + 5, button.rect[1] + 5),
+                    special_flags=BLEND_ALPHA_SDL2,
                 )
         if offs > -sidebar_width + 4:
             pops = set()
@@ -834,7 +879,7 @@ def draw_menu():
         if highlighted:
             bevel_rectangle(
                 DISP,
-                (255, 0, 127),
+                (191, 127, 255),
                 progress.rect,
                 3,
                 filled=False,
@@ -843,26 +888,40 @@ def draw_menu():
         xv = max(0, min(xv, length))
         xv2 = max(0, xv - 4)
         if highlighted:
-            c = (48, 0, 72)
+            c = (48,) * 3
         else:
-            c = (32, 0, 48)
+            c = (32,) * 3
         bevel_rectangle(
             DISP,
             c,
             (xv2 + pos[0] - width // 2, pos[1] - width // 2, length - xv2, width),
             min(4, width >> 1),
         )
+        rainbow = rainbow_gradient((length, width), pc() / 2)
+        DISP.blit(
+            rainbow,
+            (pos[0] - width // 2 + xv, pos[1] - width // 2),
+            (xv, 0, length - xv, width),
+            special_flags=BLEND_RGBA_MULT,
+        )
         if progress.vis or not player.end < inf:
             if highlighted:
-                c = (223, 159, 255)
+                c = (223,) * 3
             else:
-                c = (191, 127, 255)
+                c = (191,) * 3
             bevel_rectangle(
                 DISP,
                 c,
                 (pos[0] - width // 2, pos[1] - width // 2, xv, width),
                 min(4, width >> 1),
             )
+        rainbow = rainbow_gradient((length, width))
+        DISP.blit(
+            rainbow,
+            (pos[0] - width // 2, pos[1] - width // 2),
+            (0, 0, xv, width),
+            special_flags=BLEND_RGBA_MULT,
+        )
         pos = toolbar.pause.pos
         radius = toolbar.pause.radius
         spl = max(4, radius >> 2)
@@ -1191,7 +1250,7 @@ try:
                 mpos = (-inf,) * 2
             elif event.type == VIDEOEXPOSE:
                 rect = get_window_rect()
-                if screenpos2 != rect[:2]:
+                if screenpos2 != rect[:2] and not is_minimised():
                     options.screenpos = rect[:2]
                     screenpos2 = None
         pygame.event.clear()

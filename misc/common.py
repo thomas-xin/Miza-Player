@@ -89,16 +89,16 @@ import pygame
 sys.stdout.write = write
 
 
-asettings = (
-    "volume",
-    "speed",
-    "pitch",
-    "pan",
-    "bassboost",
-    "reverb",
-    "compressor",
-    "chorus",
-    "nightcore",
+asettings = cdict(
+    volume=(0, 10),
+    speed=(-2, 5),
+    pitch=(-12, 12, 0.5),
+    pan=(0, 4),
+    bassboost=(-2, 7),
+    reverb=(0, 8),
+    compressor=(0, 6),
+    chorus=(0, 5),
+    nightcore=(-6, 18, 0.5),
 )
 config = "config.json"
 options = None
@@ -126,7 +126,7 @@ else:
             chorus=0,
             nightcore=0,
         ),
-        queue=cdict(
+        control=cdict(
             shuffle=1,
             loop=1
         ),
@@ -292,7 +292,8 @@ screenpos2 = get_window_rect()[:2]
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import easygui, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio
+import PIL, easygui, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio
+from PIL import Image
 from math import *
 np = numpy
 deque = collections.deque
@@ -405,6 +406,31 @@ def adj_colour(colour, brightness=0, intensity=1, hue=0):
         c[i] = round(c[i] * intensity + brightness)
     return verify_colour(c)
 
+gsize = (1920, 1)
+gradient = ((np.arange(1, 0, -1 / gsize[0], dtype=np.float64)) ** 2 * 256).astype(np.uint8).reshape(tuple(reversed(gsize)))
+ohue = Image.fromarray(gradient, "L")
+sat = val = Image.new("L", gsize, 255)
+rainbows = [None] * 256
+
+def rainbow_gradient(size=gsize, t=None):
+    size = tuple(size)
+    if t is None:
+        t = pc()
+    x = int(t * 128) & 255
+    if not rainbows[x]:
+        hue = ohue.point(lambda i: i + x & 255)
+        img = Image.merge("HSV", (hue, sat, val)).convert("RGB")
+        b = img.tobytes()
+        rainbows[x] = pygame.image.frombuffer(b, gsize, "RGB")
+        # print(sum(map(bool, rainbows)))
+    surf = rainbows[x]
+    if surf.get_size() != size:
+        surf = pygame.transform.scale(surf, size)
+    return surf
+
+# print(pygame.transform.get_smoothscale_backend())
+# pygame.transform.set_smoothscale_backend()
+
 draw_line = pygame.draw.line
 draw_aaline = pygame.draw.aaline
 draw_hline = gfxdraw.hline
@@ -461,7 +487,7 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
     if area is not None:
         area = list(map(lambda i: round(i * scale), area))
     if dest:
-        return dest.blit(s, pos, area)
+        return dest.blit(s, pos, area, special_flags=BLEND_ALPHA_SDL2)
     return s
 
 def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
@@ -499,7 +525,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
     if min(alpha, rect[2], rect[3]) > 0:
         br_surf = globals().setdefault("br_surf", {})
         colour = list(map(lambda i: min(i, 255), colour))
-        if alpha == 255 and angle == 0:
+        if alpha == 255 and angle == 0 and not (colour[0] == colour[1] == colour[2]):
             if dest is None:
                 dest = pygame.Surface(rect[2:], SRCALPHA)
                 rect[:2] = (0, 0)
@@ -529,7 +555,8 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
                 else:
                     gradient_rectangle(dest, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
             return dest if surf else rect
-        contrast = min(round(max(colour)) + 2 >> 2 << 2, 255)
+        ctr = max(colour)
+        contrast = min(round(ctr) + 2 >> 2 << 2, 255)
         data = tuple(rect[2:]) + (grad_col, grad_angle, contrast)
         s = br_surf.get(data)
         if s is None:
@@ -557,6 +584,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
                 gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
             if cache:
                 br_surf[data] = s
+        colour = tuple(round(i * 255 / ctr) for i in colour)
         return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
 
 def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4, alpha=255, thickness=0, repetition=1, filled=False, rotation=0, soft=False, attempts=128):
@@ -1370,7 +1398,10 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
     @blocking
     def clear(self):
         self.size = 0
-        self.offs = len(self.data) >> 1
+        if self.data is not None:
+            self.offs = len(self.data) >> 1
+        else:
+            self.offs = 0
         return self
 
     @waiting
@@ -1406,7 +1437,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
                 self.appendright(self.popleft(force=True), force=True)
                 steps += 1
             return self
-        self.offs = len(self.data) // 3
+        self.offs = min(len(self.data) // 3, len(self.data) - s)
         self.view[:] = np.roll(self.view, steps)
         return self
 
@@ -1426,7 +1457,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
         if len(self.data) > 4096:
             self.data = None
             self.offs = 0
-        else:
+        elif self.data is not None:
             self.offs = len(self.data) // 3
         return True
 

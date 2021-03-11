@@ -423,7 +423,7 @@ submit(render)
 submit(remover)
 submit(duration_est)
 submit(ensure_parent)
-while True:
+while not sys.stdin.closed:
     try:
         command = sys.stdin.readline().rstrip()
         if command:
@@ -543,3 +543,4 @@ while True:
             fut = submit(play, pos)
     except:
         print_exc()
+    time.sleep(0.001)

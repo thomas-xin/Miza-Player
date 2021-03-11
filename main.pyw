@@ -776,7 +776,7 @@ def draw_menu():
                 message_display(
                     opt.capitalize(),
                     11,
-                    (screensize[0] + offs, 52 + i * 32),
+                    (screensize[0] + offs + 8, 52 + i * 32),
                     surface=DISP,
                     align=0,
                 )

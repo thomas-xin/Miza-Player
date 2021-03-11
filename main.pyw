@@ -5,7 +5,8 @@ globals().update(common.__dict__)
 
 
 atypes = "wav mp3 ogg opus flac aac m4a webm wma f4a mka mp2 riff".split()
-ftypes = [f"*.{f}" for f in atypes + "mp4 mov qt mkv avi f4v flv wmv raw".split()]
+ftypes = [[f"*.{f}" for f in atypes + "mp4 mov qt mkv avi f4v flv wmv raw".split()]]
+ftypes[0].append("All supported audio files")
 
 
 # if 1 or not options.get("init"):
@@ -134,11 +135,14 @@ def _enqueue_local(*files):
         print_exc()
 
 def enqueue_local():
+    default = None
+    if options.get("path"):
+        default = options.path.rstrip("/") + "/"
     files = easygui.fileopenbox(
         "Open an audio or video file here!",
         "Miza Player",
-        default=options.get("path", "/").rstrip("/") + "/*",
-        filetypes=(ftypes,),
+        default=default,
+        filetypes=ftypes,
         multiple=True,
     )
     if files:
@@ -248,6 +252,9 @@ def reset_menu(full=True, reset=False):
     progress.seeking = False
     toolbar.resizing = False
     toolbar.resizer = False
+    osize = (progress.box, toolbar_height * 2 // 3 - 3)
+    mixer.stdin.write(f"~osize {' '.join(map(str, osize))}\n".encode("utf-8"))
+    mixer.stdin.flush()
 
 
 submit(setup_buttons)
@@ -318,18 +325,14 @@ def seek_rel(pos):
 
 def play():
     try:
-        osize = (152, 61)
-        req = np.prod(osize) * 3
         while True:
+            osize = list(map(int, mixer.stderr.readline().split()))
+            req = np.prod(osize) * 3
             b = mixer.stderr.read(req)
-            if len(b) < req:
+            while len(b) < req:
                 if not mixer.is_running():
                     raise StopIteration
-                if not b:
-                    time.sleep(0.002)
-                    continue
-                if len(b) < req:
-                    b += b"\x00" * (req - len(b))
+                b += mixer.stderr.read(req - len(b))
             osci = pygame.image.frombuffer(b, osize, "RGB")
             osci.set_colorkey((0,) * 3)
             player.osci = osci
@@ -540,7 +543,7 @@ def draw_menu():
                     (button.rect[0] + 5 - sidebar.rect[0], button.rect[1] + 5),
                 )
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
-        if sidebar.relpos > -8:
+        if offs > -sidebar_width + 4:
             if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
                 enqueue_auto(*pyperclip.paste().splitlines())
             if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
@@ -572,7 +575,7 @@ def draw_menu():
                 if entry.get("selected"):
                     if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
                         pops.add(i)
-                        if sidebar.last_selected == entry:
+                        if sidebar.get("last_selected") == entry:
                             sidebar.pop("last_selected", None)
                     if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
                         entry.flash = 16
@@ -784,26 +787,29 @@ def draw_menu():
             4,
             filled=False
         )
-        pops = set()
-        for i, entry in enumerate(sidebar.particles):
-            if entry.get("life") is None:
-                entry.life = 1
-            else:
-                entry.life -= dur
-                if entry.life <= 0:
-                    pops.add(i)
-            col = [round(i * entry.life) for i in entry.get("colour", (223, 0, 0))]
-            y = round(52 + entry.get("pos", 0) * 32)
-            ext = round(32 - 32 * entry.life)
-            rect = (screensize[0] - sidebar_width + 8 - ext, y - ext * 3, sidebar_width - 16 + ext * 2, 32 + ext * 2)
-            bevel_rectangle(
-                DISP,
-                col,
-                rect,
-                4,
-                alpha=round(255 * entry.life),
-            )
-        sidebar.particles.pops(pops)
+        if offs > -sidebar_width + 4:
+            pops = set()
+            for i, entry in enumerate(sidebar.particles):
+                if entry.get("life") is None:
+                    entry.life = 1
+                else:
+                    entry.life -= dur
+                    if entry.life <= 0:
+                        pops.add(i)
+                col = [round(i * entry.life) for i in entry.get("colour", (223, 0, 0))]
+                y = round(52 + entry.get("pos", 0) * 32)
+                ext = round(32 - 32 * entry.life)
+                rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 + ext * 2, 32 + ext * 2)
+                bevel_rectangle(
+                    DISP,
+                    col,
+                    rect,
+                    4,
+                    alpha=round(255 * entry.life),
+                )
+            sidebar.particles.pops(pops)
+        else:
+            sidebar.particles.clear()
     highlighted = progress.seeking or in_rect(mpos, progress.rect)
     if (toolbar.updated or not tick & 7) and toolbar.colour:
         bevel_rectangle(
@@ -1177,14 +1183,18 @@ try:
                 mpos = (-inf,) * 2
             elif event.type == VIDEOEXPOSE:
                 rect = get_window_rect()
-                options.screenpos = rect[:2]
+                if screenpos2 != rect[:2]:
+                    options.screenpos = rect[:2]
+                    screenpos2 = None
         pygame.event.clear()
 except Exception as ex:
+    pygame.quit()
     if type(ex) is not StopIteration:
         print_exc()
     options.screensize = screensize2
-    with open(config, "w", encoding="utf-8") as f:
-        json.dump(dict(options), f, indent=4)
+    if options != orig_options:
+        with open(config, "w", encoding="utf-8") as f:
+            json.dump(dict(options), f, indent=4)
     if mixer.is_running():
         mixer.clear()
         time.sleep(0.1)
@@ -1192,7 +1202,6 @@ except Exception as ex:
             mixer.kill()
         except:
             pass
-    pygame.quit()
     PROC = psutil.Process()
     for c in PROC.children(recursive=True):
         try:

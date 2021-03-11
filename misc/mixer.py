@@ -32,7 +32,7 @@ def pya_init():
             channels=2,
             format=pyaudio.paInt16,
             output=True,
-            frames_per_buffer=1600,
+            frames_per_buffer=800,
         )
     except:
         print_exc()
@@ -234,41 +234,41 @@ def reader(f, proc):
     proc.stdin.close()
     f.close()
 
-osize = (152, 61)
-OSCI = pygame.Surface(osize)
 def oscilloscope(buffer):
     try:
-        arr = buffer[::2] + buffer[1::2]
-        osci = np.empty(osize[0])
-        r = len(arr) / len(osci)
-        for i in range(len(osci)):
-            x = round(i * r)
-            y = round(i * r + r)
-            osci[i] = np.mean(arr[x:y])
-        osci = np.clip(osci * (1 / 65536), -1, 1, out=osci)
-        time.sleep(0.001)
         if packet:
-            OSCI.fill((0,) * 4)
+            arr = buffer[::2] + buffer[1::2]
+            osci = np.empty(osize[0])
+            r = len(arr) / len(osci)
+            for i in range(len(osci)):
+                x = round(i * r)
+                y = round(i * r + r)
+                osci[i] = np.mean(arr[x:y])
+            osci = np.clip(osci * (1 / 65536), -1, 1, out=osci)
             time.sleep(0.001)
             if packet:
-                point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
-                for i in range(1, len(osci)):
-                    if not packet:
-                        return
-                    prev = point
-                    point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
-                    hue = (osci[i] + osci[i - 1]) / 4 % 1
-                    col = tuple(map(lambda x: round(x * 255), colorsys.hsv_to_rgb(1 - hue, 1, 1)))
-                    pygame.draw.line(
-                        OSCI,
-                        col,
-                        point,
-                        prev,
-                    )
+                size = osize
+                OSCI = pygame.Surface(size)
                 time.sleep(0.001)
                 if packet:
-                    b = pygame.image.tostring(OSCI, "RGB")
-                    bsend(b)
+                    point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
+                    for i in range(1, len(osci)):
+                        if not packet:
+                            return
+                        prev = point
+                        point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
+                        hue = (osci[i] + osci[i - 1]) / 4 % 1
+                        col = tuple(map(lambda x: round(x * 255), colorsys.hsv_to_rgb(1 - hue, 1, 1)))
+                        pygame.draw.line(
+                            OSCI,
+                            col,
+                            point,
+                            prev,
+                        )
+                    time.sleep(0.001)
+                    if packet:
+                        b = pygame.image.tostring(OSCI, "RGB")
+                        bsend(" ".join(map(str, size)).encode("utf-8") + b"\n" + b)
     except:
         print_exc()
 
@@ -403,6 +403,7 @@ def ensure_parent():
             proc.kill()
 
 
+osize = (152, 61)
 lastpacket = None
 packet = None
 out = [-1, b""]
@@ -445,6 +446,9 @@ while True:
                 elif paused:
                     paused.set_result(None)
                     paused = None
+                continue
+            if command.startswith("~osize"):
+                osize = tuple(map(int, command[6:].strip().split()))
                 continue
             if command.startswith("~drop"):
                 drop += float(command[5:]) * 30
@@ -503,7 +507,7 @@ while True:
                     2,
                     pyaudio.paInt16,
                     input=True,
-                    frames_per_buffer=req >> 2,
+                    frames_per_buffer=800,
                     input_device_index=i,
                 )
                 proc = cdict(
@@ -532,7 +536,7 @@ while True:
                     proc.kill = lambda: None
                 elif f:
                     if pos:
-                        f.seek(round(pos / duration * os.path.getsize(stream)))
+                        f.seek(round(pos / duration * os.path.getsize(stream) / 4) << 2)
                     kill = proc.kill
                     proc.kill = lambda: (kill(), f.close())
                     submit(reader, f, proc)

@@ -18,29 +18,6 @@ def import_audio_downloader():
     except Exception as ex:
         print_exc()
         downloader.set_exception(ex)
-submit(import_audio_downloader)
-
-mixer = psutil.Popen(("py", "misc/mixer.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-def state(i):
-    mixer.stdin.write(f"~state {int(i)}\n".encode("utf-8"))
-    mixer.stdin.flush()
-
-def clear():
-    mixer.stdin.write(f"~clear\n".encode("utf-8"))
-    mixer.stdin.flush()
-
-def drop(i):
-    mixer.stdin.write(f"~drop {i}\n".encode("utf-8"))
-    mixer.stdin.flush()
-
-mixer.state = lambda i=0: state(i)
-mixer.clear = lambda: clear()
-mixer.drop = lambda i=0: drop(i)
-
-write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
-import pygame
-sys.stdout.write = write
 
 
 class cdict(dict):
@@ -84,6 +61,34 @@ class cdict(dict):
     to_list = lambda self: list(super().values())
 
 
+hasmisc = os.path.exists("misc")
+if hasmisc:
+    submit(import_audio_downloader)
+    mixer = psutil.Popen(("py", "misc/mixer.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+else:
+    mixer = cdict()
+
+def state(i):
+    mixer.stdin.write(f"~state {int(i)}\n".encode("utf-8"))
+    mixer.stdin.flush()
+
+def clear():
+    mixer.stdin.write(f"~clear\n".encode("utf-8"))
+    mixer.stdin.flush()
+
+def drop(i):
+    mixer.stdin.write(f"~drop {i}\n".encode("utf-8"))
+    mixer.stdin.flush()
+
+mixer.state = lambda i=0: state(i)
+mixer.clear = lambda: clear()
+mixer.drop = lambda i=0: drop(i)
+
+write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
+import pygame
+sys.stdout.write = write
+
+
 config = "config.json"
 options = None
 if os.path.exists(config):
@@ -100,10 +105,11 @@ else:
         sidebar_width=256,
         toolbar_height=64,
         audio=cdict(
-            shuffle=True,
-            repeat=True
+            shuffle=1,
+            loop=1
         )
     )
+orig_options = cdict(options)
 globals().update(options)
 
 
@@ -154,8 +160,9 @@ def get_pressed():
         mheld[i] = bool(ctypes.windll.user32.GetAsyncKeyState(n) & 32768)
     return mheld
 
-icon = pygame.image.load("misc/icon.png")
-pygame.display.set_icon(icon)
+if hasmisc:
+    icon = pygame.image.load("misc/icon.png")
+    pygame.display.set_icon(icon)
 pygame.display.set_caption("Miza Player")
 DISP = pygame.display.set_mode(screensize, pygame.RESIZABLE, vsync=True)
 screensize2 = list(screensize)
@@ -163,17 +170,20 @@ screensize2 = list(screensize)
 hwnd = pygame.display.get_wm_info()["window"]
 pygame.display.set_allow_screensaver(True)
 pygame.font.init()
-is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
-mixer.stdin.write(("%" + str(hwnd) + "\n").encode("utf-8"))
-mixer.stdin.flush()
-if options.get("maximised"):
-    ctypes.windll.user32.ShowWindow(hwnd, 3)
-elif "screenpos" in options:
-    x, y = screenpos
-    ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, -1, -1, 0x4561)
+if hasmisc:
+    mixer.stdin.write(("%" + str(hwnd) + "\n").encode("utf-8"))
+    mixer.stdin.flush()
+
+in_rect = lambda point, rect: point[0] >= rect[0] and point[0] < rect[0] + rect[2] and point[1] >= rect[1] and point[1] < rect[1] + rect[3]
+in_circ = lambda point, dest, radius=1: hypot(dest[0] - point[0], dest[1] - point[1]) <= radius
 
 class WR(ctypes.Structure):
-    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
 
 wr = WR()
 
@@ -193,10 +203,71 @@ class WP(ctypes.Structure):
     ]
 
 wp = WP()
+ptMinPosition = WR()
+ptMaxPosition = WR()
+rcNormalPosition = WR()
+rcDevice = WR()
+
+wp.length = 44
+wp.ptMinPosition = ctypes.cast(ctypes.byref(ptMinPosition), ctypes.c_void_p)
+wp.ptMaxPosition = ctypes.cast(ctypes.byref(ptMaxPosition), ctypes.c_void_p)
+wp.rcNormalPosition = ctypes.cast(ctypes.byref(rcNormalPosition), ctypes.c_void_p)
+wp.rcDevice = ctypes.cast(ctypes.byref(rcDevice), ctypes.c_void_p)
 
 def get_window_flags():
     ctypes.windll.user32.GetWindowPlacement(hwnd, ctypes.byref(wp))
     return wp.showCmd
+
+is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
+
+if options.get("maximised"):
+    ctypes.windll.user32.ShowWindow(hwnd, 3)
+elif "screenpos" in options:
+    x, y = screenpos
+    ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, -1, -1, 0x4561)
+screenpos2 = get_window_rect()[:2]
+
+# above = True
+# @ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
+# def callback(h, lp):
+#     global above, pts
+#     if not above or not pts:
+#         return
+#     if h == hwnd:
+#         above = False
+#         return
+#     ctypes.windll.user32.GetWindowPlacement(h, ctypes.byref(wp))
+#     if wp.showCmd != 1 and wp.showCmd != 3:
+#         return
+#     if not ctypes.windll.user32.IsWindowVisible(h):
+#         return
+#     ctypes.windll.user32.GetWindowRect(h, ctypes.byref(wr))
+#     rect = (wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top)
+#     if not rect[2] or not rect[3]:
+#         return
+#     pops = []
+#     for i, p in enumerate(pts):
+#         if in_rect(p, rect):
+#             pops.append(i)
+#     if pops:
+#         pts = [p for i, p in enumerate(pts) if i not in pops]
+#         print(pts)
+#     # print(*rect)
+
+# def is_covered():
+#     global pts
+#     ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(wr))
+#     rect = (wr.left, wr.top, wr.right, wr.bottom)
+#     pts = [(rect[:2]), (rect[2], rect[1]), (rect[0], rect[3]), rect[2:]]
+#     print(pts)
+#     ctypes.windll.user32.EnumWindows(callback, -1)
+#     print(pts)
+
+# def get_window_clip():
+#     hdc = ctypes.windll.user32.GetWindowDC(hwnd)
+#     clip = ctypes.windll.gdi32.GetClipBox(hdc, ctypes.byref(wr))
+#     ctypes.windll.user32.ReleaseDC(hdc)
+#     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
 import easygui, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio
@@ -290,9 +361,6 @@ def bit_crush(dest, b=0, f=round):
     except TypeError:
         dest = f(dest / a) * a
     return dest
-
-in_rect = lambda point, rect: point[0] >= rect[0] and point[0] < rect[0] + rect[2] and point[1] >= rect[1] and point[1] < rect[1] + rect[3]
-in_circ = lambda point, dest, radius=1: hypot(dest[0] - point[0], dest[1] - point[1]) <= radius
 
 def shuffle(it):
     if not isinstance(it, list):
@@ -1280,7 +1348,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
     @blocking
     def clear(self):
         self.size = 0
-        self.offs = self.size >> 1
+        self.offs = len(self.data) >> 1
         return self
 
     @waiting

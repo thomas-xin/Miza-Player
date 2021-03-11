@@ -780,6 +780,14 @@ def draw_menu():
                     surface=DISP,
                     align=0,
                 )
+                s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
+                message_display(
+                    s,
+                    11,
+                    (screensize[0] + offs + sidebar_width - 8, 69 + i * 32),
+                    surface=DISP,
+                    align=2,
+                )
                 srange = asettings[opt]
                 w = (sidebar_width - 16)
                 x = round((options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0]) * w)

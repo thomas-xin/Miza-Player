@@ -522,28 +522,11 @@ def draw_menu():
     if not tick & 7:
         toolbar.progress.timestamp = pc()
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
-        DISP2 = pygame.Surface(sidebar.rect2[2:])
-        DISP2.fill(sidebar.colour)
         modified.add(sidebar.rect)
-        maxb = (sidebar_width - 12) // 44
-        for button in sidebar.buttons[:maxb]:
-            if button.get("rect"):
-                lum = 223 if in_rect(mpos, button.rect) else 191
-                lum += button.get("flash", 0)
-                rect = list(button.rect)
-                rect[0] -= sidebar.rect[0]
-                bevel_rectangle(
-                    DISP2,
-                    (lum,) * 3,
-                    rect,
-                    4,
-                )
-                DISP2.blit(
-                    button.sprite,
-                    (button.rect[0] + 5 - sidebar.rect[0], button.rect[1] + 5),
-                )
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
-        if offs > -sidebar_width + 4:
+        if queue and offs > -sidebar_width + 4:
+            DISP2 = pygame.Surface(sidebar.rect2[2:])
+            DISP2.fill(sidebar.colour)
             if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
                 enqueue_auto(*pyperclip.paste().splitlines())
             if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
@@ -776,17 +759,42 @@ def draw_menu():
                 if 0 in targets:
                     mixer.clear()
                     submit(start_player, queue[0])
-        DISP.blit(
-            DISP2,
-            (screensize[0] - sidebar_width, 0),
-        )
+            DISP.blit(
+                DISP2,
+                (screensize[0] - sidebar_width, 0),
+            )
         bevel_rectangle(
             DISP,
             sidebar.colour,
             sidebar.rect2,
             4,
-            filled=False
+            filled=not queue or offs <= -sidebar_width + 4
         )
+        if offs <= -4:
+            offs2 = offs + sidebar_width
+            for i, opt in enumerate(asettings):
+                message_display(
+                    opt.capitalize(),
+                    11,
+                    (screensize[0] + offs, 52 + i * 32),
+                    surface=DISP,
+                    align=0,
+                )
+        maxb = (sidebar_width - 12) // 44
+        for button in sidebar.buttons[:maxb]:
+            if button.get("rect"):
+                lum = 223 if in_rect(mpos, button.rect) else 191
+                lum += button.get("flash", 0)
+                bevel_rectangle(
+                    DISP,
+                    (lum,) * 3,
+                    button.rect,
+                    4,
+                )
+                DISP.blit(
+                    button.sprite,
+                    (button.rect[0] + 5, button.rect[1] + 5),
+                )
         if offs > -sidebar_width + 4:
             pops = set()
             for i, entry in enumerate(sidebar.particles):

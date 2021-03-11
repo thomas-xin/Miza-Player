@@ -89,6 +89,17 @@ import pygame
 sys.stdout.write = write
 
 
+asettings = (
+    "volume",
+    "speed",
+    "pitch",
+    "pan",
+    "bassboost",
+    "reverb",
+    "compressor",
+    "chorus",
+    "nightcore",
+)
 config = "config.json"
 options = None
 if os.path.exists(config):
@@ -105,9 +116,20 @@ else:
         sidebar_width=256,
         toolbar_height=64,
         audio=cdict(
+            volume=1,
+            speed=1,
+            pitch=0,
+            pan=1,
+            bassboost=0,
+            reverb=0,
+            compressor=0,
+            chorus=0,
+            nightcore=0,
+        ),
+        queue=cdict(
             shuffle=1,
             loop=1
-        )
+        ),
     )
 orig_options = cdict(options)
 globals().update(options)

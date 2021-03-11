@@ -807,7 +807,7 @@ def draw_menu():
                     rainbow,
                     (screensize[0] + offs + 8 + x, 69 + i * 32),
                     (x, 0, w - x, 9),
-                    special_flags=BLEND_RGBA_MULT,
+                    special_flags=BLEND_RGB_MULT,
                 )
                 rect = (screensize[0] + offs + 8, 69 + i * 32, x, 9)
                 col = (223 if hovered else 191,) * 3
@@ -822,7 +822,7 @@ def draw_menu():
                     rainbow,
                     (screensize[0] + offs + 8, 69 + i * 32),
                     (0, 0, x, 9),
-                    special_flags=BLEND_RGBA_MULT,
+                    special_flags=BLEND_RGB_MULT,
                 )
                 if hovered:
                     bevel_rectangle(
@@ -910,7 +910,7 @@ def draw_menu():
             rainbow,
             (pos[0] - width // 2 + xv, pos[1] - width // 2),
             (xv, 0, length - xv, width),
-            special_flags=BLEND_RGBA_MULT,
+            special_flags=BLEND_RGB_MULT,
         )
         if progress.vis or not player.end < inf:
             if highlighted:
@@ -928,7 +928,7 @@ def draw_menu():
             rainbow,
             (pos[0] - width // 2, pos[1] - width // 2),
             (0, 0, xv, width),
-            special_flags=BLEND_RGBA_MULT,
+            special_flags=BLEND_RGB_MULT,
         )
         pos = toolbar.pause.pos
         radius = toolbar.pause.radius

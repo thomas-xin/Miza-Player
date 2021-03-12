@@ -269,16 +269,25 @@ def prepare(entry, force=False):
         entry.update(data)
     return entry.stream.strip()
 
-def start_player(entry, pos=0, force=False):
+def start_player(entry, pos=None, force=False):
     player.last = 0
     player.amp = 0
     player.pop("osci", None)
     stream = prepare(entry, force=True)
     duration = entry.duration or get_duration(stream)
     entry.duration = duration
-    if pos >= entry.duration:
-        return skip()
-    elif pos < 0:
+    if pos is None:
+        if audio.speed >= 0:
+            pos = 0
+        else:
+            pos = entry.duration
+    elif pos >= entry.duration:
+        if audio.speed > 0:
+            return skip()
+        pos = entry.duration
+    elif pos <= 0:
+        if audio.speed < 0:
+            return skip()
         pos = 0
     mixer.submit(stream + "\n" + str(pos) + " " + str(duration))
     if force:
@@ -311,17 +320,24 @@ def seek_abs(pos):
     start_player(queue[0], pos, force=True) if queue else (None, inf)
 
 def seek_rel(pos):
+    if not pos:
+        return
     player.last = 0
     player.amp = 0
     player.pop("osci", None)
-    if not pos:
-        return
     if pos >= player.end:
-        print("skipped")
-        return skip()
+        if audio.speed > 0:
+            return skip()
+        pos = player.end
+    if pos <= 0:
+        if audio.speed < 0:
+            return skip()
+        pos = 0
     progress.num += pos
     progress.alpha = 255
-    if pos > 0 and pos <= 180:
+    if audio.speed > 0 and pos > 0 and pos <= 180:
+        mixer.drop(pos)
+    elif audio.speed < 0 and pos < 0 and pos >= -180:
         mixer.drop(pos)
     else:
         seek_abs(max(0, player.pos + pos))

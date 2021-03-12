@@ -235,11 +235,29 @@ def communicate():
     except:
         print_exc()
 
-def reader(f, proc):
+def reader(f, proc, reverse=False, pos=None):
+    if pos is None:
+        pos = f.tell()
+    if reverse:
+        pos -= 65536
+        f.seek(pos)
     while True:
         b = f.read(65536)
         if not b:
             break
+        if reverse:
+            b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
+            pos -= 65536
+            if pos <= 0:
+                proc.stdin.write(b)
+                size = -pos
+                if size:
+                    f.seek(0)
+                    b = f.read(size)
+                    b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
+                    proc.stdin.write(b)
+                break
+            f.seek(pos)
         proc.stdin.write(b)
     proc.stdin.close()
     f.close()
@@ -257,8 +275,6 @@ def construct_options(full=True):
     options = deque()
     if not isfinite(stats.compressor):
         options.extend(("anoisesrc=a=.001953125:c=brown", "amerge"))
-    if stats.speed < 0:
-        options.append("areverse")
     if pitchscale != 1 or stats.speed != 1:
         speed = abs(stats.speed) / pitchscale
         speed *= 2 ** (stats.nightcore / 12)
@@ -638,7 +654,7 @@ while not sys.stdin.closed and failed < 16:
             else:
                 fn = None
                 file = None
-            if not is_url(stream) and stream.endswith(".pcm") and ext:
+            if not is_url(stream) and stream.endswith(".pcm") and not ext and settings.speed >= 0:
                 f = open(stream, "rb")
                 proc = cdict(
                     stdout=cdict(
@@ -678,7 +694,7 @@ while not sys.stdin.closed and failed < 16:
                 proc.readable = lambda: f.get_read_available() >= req >> 2
             else:
                 f = None
-                if pos >= 960 and not fn:
+                if pos >= 960 and not fn or settings.speed < 0 and not is_url(stream):
                     f = open(stream, "rb")
                 cmd = ["ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-vn"]
                 if not is_url(stream) and stream.endswith(".pcm"):
@@ -695,11 +711,16 @@ while not sys.stdin.closed and failed < 16:
                 if fn and not pos:
                     proc.kill = lambda: None
                 elif f:
+                    fsize = os.path.getsize(stream)
                     if pos:
-                        f.seek(round(pos / duration * os.path.getsize(stream) / 4) << 2)
+                        fp = round(pos / duration * fsize / 4) << 2
+                        if fp > fsize - 2:
+                            fp = fsize - 2
+                    else:
+                        fp = 0 if settings.speed >= 0 else fsize - 2
                     kill = proc.kill
                     proc.kill = lambda: (kill(), f.close())
-                    submit(reader, f, proc)
+                    submit(reader, f, proc, settings.speed < 0, fp)
             fut = submit(play, pos)
         else:
             failed += 1

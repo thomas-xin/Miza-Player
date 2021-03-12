@@ -159,6 +159,7 @@ else:
             loop=1
         ),
     )
+options.audio = cdict(options.audio)
 orig_options = copy.deepcopy(options)
 globals().update(options)
 

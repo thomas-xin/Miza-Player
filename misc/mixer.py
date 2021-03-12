@@ -276,13 +276,9 @@ def render():
     global lastpacket
     try:
         while True:
-            if lastpacket != packet and not is_minimised():
+            if lastpacket != packet:
                 lastpacket = packet
                 buffer = sample.astype(np.float64)
-                submit(oscilloscope, buffer)
-
-                out = []
-                out.append(round(max(np.max(buffer), -np.min(buffer)) / 32768 * 100, 3))
 
                 msk1 = buffer >= 0
                 msk2 = buffer < 0
@@ -291,29 +287,40 @@ def render():
                 h = np.mean(b1) if len(b1) else 0
                 l = np.mean(b2) if len(b2) else 0
                 amp = (h - l) / 2
-                out.append(round(amp / 32768 * 100, 2))
+                p_amp = sqrt(amp / 32767)
 
-                time.sleep(0.001)
-                if packet:
-                    vel1 = buffer[::2][1:] - buffer[::2][:-1]
-                    vel2 = buffer[1::2][1:] - buffer[1::2][:-1]
-                    amp1 = np.mean(np.abs(vel1))
-                    amp2 = np.mean(np.abs(vel2))
-                    vel = (amp1 + amp2)
-                    out.append(round(vel / 131072 * 100, 3))
+                if is_minimised():
+                    point(f"~y {p_amp}")
+                else:
+                    submit(oscilloscope, buffer)
+                    out = []
+                    out.append(round(max(np.max(buffer), -np.min(buffer)) / 32767 * 100, 3))
+
+                    out.append(round(amp / 32767 * 100, 2))
 
                     time.sleep(0.001)
                     if packet:
-                        amp1 = np.mean(np.abs(vel1[::2][1:] - vel1[::2][:-1]))
-                        amp2 = np.mean(np.abs(vel2[1::2][1:] - vel2[1::2][:-1]))
-                        out.append(round((amp1 + amp2) / 262144 * 100, 3))
+                        vel1 = buffer[::2][1:] - buffer[::2][:-1]
+                        vel2 = buffer[1::2][1:] - buffer[1::2][:-1]
+                        amp1 = np.mean(np.abs(vel1))
+                        amp2 = np.mean(np.abs(vel2))
+                        vel = (amp1 + amp2)
+                        out.append(round(vel / 131068 * 100, 3))
 
-                        nrg = (amp1 + amp2)
-                        adj = nrg / 32768 + vel / 65536 + amp / 49152
-                        out.append(min(1, sqrt(adj)))
-
+                        time.sleep(0.001)
                         if packet:
-                            point("~x " + " ".join(map(str, out)))
+                            amp1 = np.mean(np.abs(vel1[::2][1:] - vel1[::2][:-1]))
+                            amp2 = np.mean(np.abs(vel2[1::2][1:] - vel2[1::2][:-1]))
+                            out.append(round((amp1 + amp2) / 262136 * 100, 3))
+
+                            # nrg = (amp1 + amp2)
+                            # adj = nrg / 32767 + vel / 65534 + amp / 49150.5
+                            # out.append(min(1, sqrt(adj)))
+                            out = [min(i, 100) for i in out]
+                            out.append(p_amp)
+
+                            if packet:
+                                point("~x " + " ".join(map(str, out)))
             time.sleep(0.001)
     except:
         print_exc()
@@ -374,6 +381,12 @@ def play(pos):
                 lastpacket = packet
                 packet = b
                 sample = np.frombuffer(b, dtype=np.int16)
+                if settings.volume != 1:
+                    s = sample * settings.volume
+                    if abs(settings.volume) > 1:
+                        s = np.clip(s, -32767, 32767)
+                    sample = s.astype(np.int16)
+                    b = sample.tobytes()
                 if channel2:
                     channel2.write(b)
                 else:
@@ -403,6 +416,7 @@ def ensure_parent():
             proc.kill()
 
 
+settings = cdict()
 osize = (152, 61)
 lastpacket = None
 packet = None
@@ -448,7 +462,11 @@ while not sys.stdin.closed:
                     paused = None
                 continue
             if command.startswith("~osize"):
-                osize = tuple(map(int, command[6:].strip().split()))
+                osize = tuple(map(int, command[7:].split()))
+                continue
+            if command.startswith("~setting"):
+                setting, value = command[9:].split()
+                settings[setting] = float(value)
                 continue
             if command.startswith("~drop"):
                 drop += float(command[5:]) * 30

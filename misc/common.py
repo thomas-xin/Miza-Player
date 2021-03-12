@@ -90,16 +90,17 @@ sys.stdout.write = write
 
 
 asettings = cdict(
-    volume=(0, 10),
-    speed=(-2, 5),
+    volume=(0, 5),
+    speed=(-1, 3),
     pitch=(-12, 12, 0.5),
     pan=(0, 4),
-    bassboost=(-2, 7),
-    reverb=(0, 8),
+    bassboost=(0, 4),
+    reverb=(0, 3),
     compressor=(0, 6),
     chorus=(0, 5),
     nightcore=(-6, 18, 0.5),
 )
+aediting = dict.fromkeys(asettings)
 config = "config.json"
 options = None
 if os.path.exists(config):
@@ -138,7 +139,7 @@ globals().update(options)
 if os.name != "nt":
     raise NotImplementedError("This program is currently implemented to use Windows API only.")
 
-import ctypes
+import ctypes, ctypes.wintypes, io
 appid = "Miza Player (" + str(os.getpid()) + ")"
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
 
@@ -193,7 +194,12 @@ hwnd = pygame.display.get_wm_info()["window"]
 pygame.display.set_allow_screensaver(True)
 pygame.font.init()
 if hasmisc:
-    mixer.stdin.write(("%" + str(hwnd) + "\n").encode("utf-8"))
+    s = io.StringIO()
+    s.write(("%" + str(hwnd) + "\n"))
+    for k, v in audio.items():
+        s.write(f"~setting {k} {v}\n")
+    s.seek(0)
+    mixer.stdin.write(s.read().encode("utf-8"))
     mixer.stdin.flush()
 
 in_rect = lambda point, rect: point[0] >= rect[0] and point[0] < rect[0] + rect[2] and point[1] >= rect[1] and point[1] < rect[1] + rect[3]
@@ -244,10 +250,32 @@ is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 
 if options.get("maximised"):
     ctypes.windll.user32.ShowWindow(hwnd, 3)
-elif "screenpos" in options:
+elif options.get("screenpos"):# and not options.get("maximised"):
     x, y = screenpos
     ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, -1, -1, 0x4561)
+# else:
+#     ctypes.windll.user32.SetWindowPos(hwnd, -1, -1, -1, -1, -1, 0x4563)
 screenpos2 = get_window_rect()[:2]
+
+flash_window = lambda bInvert=True: ctypes.windll.user32.FlashWindow(hwnd, bInvert)
+# flash_window()
+
+spath = "misc/Shobjidl.dll"
+shobjidl_core = ctypes.cdll.LoadLibrary(spath)
+# shobjidl_core.SetWallpaper(0, os.path.abspath("misc/icon.png"))
+
+proglast = (0, 0)
+def taskbar_progress_bar(ratio=1, colour=0):
+    global proglast
+    if ratio <= 0 and not colour & 1 or not colour:
+        ratio = colour = 0
+    r = round(min(1, ratio) * 256)
+    t = (r, colour)
+    if t != proglast:
+        proglast = t
+        shobjidl_core.SetProgressState(hwnd, colour)
+        if colour:
+            shobjidl_core.SetProgressValue(hwnd, r, 256)
 
 # above = True
 # @ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
@@ -1590,7 +1618,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
                     temp[x] = None
             temp = tuple(temp.keys())
         self.size = len(temp)
-        self.offs = len(self.data) // 3
+        self.offs = min(len(self.data) // 3, len(self.data) - self.size)
         self.view[:] = temp
         return self
 

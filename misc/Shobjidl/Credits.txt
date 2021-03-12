@@ -1,0 +1,2 @@
+https://stackoverflow.com/questions/66375014/is-it-possible-to-use-idesktopwallpaper-in-python
+https://cpp.hotexamples.com/examples/-/ITaskbarList3/-/cpp-itaskbarlist3-class-examples.html

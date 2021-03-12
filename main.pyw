@@ -271,6 +271,9 @@ def prepare(entry, force=False):
     return entry.stream.strip()
 
 def start_player(entry, pos=0, force=False):
+    player.last = 0
+    player.amp = 0
+    player.pop("osci", None)
     stream = prepare(entry, force=True)
     duration = entry.duration or get_duration(stream)
     entry.duration = duration
@@ -288,7 +291,6 @@ def start_player(entry, pos=0, force=False):
     return stream, duration
 
 def start():
-    mixer.clear()
     if queue:
         return enqueue(queue[0])
     player.last = 0
@@ -297,7 +299,6 @@ def start():
     return None, inf
 
 def skip():
-    mixer.clear()
     if queue:
         sidebar.particles.append(queue.popleft())
         if queue:
@@ -311,6 +312,9 @@ def seek_abs(pos):
     start_player(queue[0], pos, force=True) if queue else (None, inf)
 
 def seek_rel(pos):
+    player.last = 0
+    player.amp = 0
+    player.pop("osci", None)
     if not pos:
         return
     if pos >= player.end:
@@ -327,7 +331,7 @@ def play():
     try:
         while True:
             osize = list(map(int, mixer.stderr.readline().split()))
-            req = np.prod(osize) * 3
+            req = int(np.prod(osize) * 3)
             b = mixer.stderr.read(req)
             while len(b) < req:
                 if not mixer.is_running():
@@ -370,6 +374,9 @@ def pos():
                 player.stats.energy = spl[3]
                 player.amp = float(spl[4])
                 continue
+            elif s[0] == "y":
+                player.amp = float(s[2:])
+                continue
             i, dur = map(float, s.split(" ", 1))
             if not progress.seeking:
                 player.index = i
@@ -383,13 +390,6 @@ def pos():
 
 submit(play)
 submit(pos)
-
-def stop(pause=True):
-    try:
-        player.paused = pause
-        mixer.state(player.paused)
-    except:
-        pass
 
 def enqueue(entry, start=True):
     try:
@@ -418,6 +418,7 @@ def update_menu():
         player.amp = 0.5
     elif not is_active():
         player.amp = 0
+        player.pop("osci", None)
     progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
     toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * 2) % tau
     toolbar.pause.speed *= 0.995 ** (duration * 480)
@@ -521,6 +522,8 @@ def draw_menu():
     dur = max(0.001, min(t - ts, 0.125))
     if not tick & 7:
         toolbar.progress.timestamp = pc()
+    crosshair = False
+    hovertext = None
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
         modified.add(sidebar.rect)
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
@@ -757,7 +760,6 @@ def draw_menu():
                     i += j
                 queue[:] = dest
                 if 0 in targets:
-                    mixer.clear()
                     submit(start_player, queue[0])
             DISP.blit(
                 DISP2,
@@ -791,8 +793,24 @@ def draw_menu():
                 srange = asettings[opt]
                 w = (sidebar_width - 16)
                 x = round((options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0]) * w)
-                rect = (screensize[0] + offs + 8, 69 + i * 32, sidebar_width - 16, 9)
-                hovered = in_rect(mpos, rect)
+                brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
+                hovered = in_rect(mpos, brect) or aediting[opt]
+                crosshair |= bool(hovered) << 1
+                v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
+                if len(srange) > 2:
+                    v = round_min(math.round(v / srange[2]) * srange[2])
+                if hovered:
+                    hovertext = str(round(v * 100, 2)) + "%"
+                    if aediting[opt]:
+                        if not mheld[0]:
+                            aediting[opt] = False
+                    elif mclick[0]:
+                        aediting[opt] = True
+                    if aediting[opt]:
+                        orig, options.audio[opt] = options.audio[opt], v
+                        if orig != v:
+                            mixer.stdin.write(f"~setting {opt} {v}\n".encode('utf-8'))
+                            mixer.stdin.flush()
                 z = max(0, x - 4)
                 rect = (screensize[0] + offs + 8 + z, 69 + i * 32, sidebar_width - 16 - z, 9)
                 col = (48 if hovered else 32,) * 3
@@ -828,7 +846,7 @@ def draw_menu():
                     bevel_rectangle(
                         DISP,
                         (191, 127, 255),
-                        (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13),
+                        brect,
                         2,
                         filled=False,
                     )
@@ -872,6 +890,7 @@ def draw_menu():
         else:
             sidebar.particles.clear()
     highlighted = progress.seeking or in_rect(mpos, progress.rect)
+    crosshair |= highlighted
     if (toolbar.updated or not tick & 7) and toolbar.colour:
         bevel_rectangle(
             DISP,
@@ -936,7 +955,7 @@ def draw_menu():
         lum = round(toolbar.pause.speed / toolbar.pause.maxspeed * toolbar.pause.outer)
         if player.paused:
             c = (toolbar.pause.outer, lum, lum)
-        elif is_active():
+        elif is_active() and player.amp > 1 / 16:
             c = (lum, toolbar.pause.outer, lum)
         else:
             c = (toolbar.pause.outer, toolbar.pause.outer, lum)
@@ -1131,17 +1150,25 @@ def draw_menu():
         elif sidebar.resizer:
             pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
             sidebar.resizer = False
-    if not tick & 7 or toolbar.rect in modified:
-        if highlighted:
-            pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
-            pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
-            pygame.draw.circle(DISP, (255, 0, 0), mpos2, 9, width=2)
+    if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified):
+        pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
+        pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
+        pygame.draw.circle(DISP, (255, 0, 0), mpos2, 9, width=2)
+        if crosshair & 1:
             p = max(0, min(1, (mpos2[0] - progress.pos[0] + progress.width // 2) / progress.length) * player.end)
             s = time_disp(p)
             message_display(
                 s,
                 min(20, toolbar_height // 3),
-                (mpos2[0], mpos2[1] - 16),
+                (mpos2[0], mpos2[1] - 17),
+                (255, 255, 127),
+                surface=DISP,
+            )
+        if hovertext:
+            message_display(
+                hovertext,
+                10,
+                (mpos2[0], mpos2[1] - 17),
                 (255, 255, 127),
                 surface=DISP,
             )
@@ -1171,6 +1198,14 @@ try:
             minimised = False
         else:
             minimised = is_minimised()
+        if not tick & 15:
+            if player.paused:
+                colour = 4
+            elif is_active() and player.amp > 1 / 16:
+                colour = 2
+            else:
+                colour = 8
+            submit(taskbar_progress_bar, player.pos / player.end, colour | (player.end >= inf))
         if not minimised:
             mclick = [x and not y for x, y in zip(mheld, mprev)]
             mrelease = [not x and y for x, y in zip(mheld, mprev)]

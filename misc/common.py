@@ -465,28 +465,51 @@ def adj_colour(colour, brightness=0, intensity=1, hue=0):
 
 gsize = (1920, 1)
 gradient = ((np.arange(1, 0, -1 / gsize[0], dtype=np.float64)) ** 2 * 256).astype(np.uint8).reshape(tuple(reversed(gsize)))
-ohue = Image.fromarray(gradient, "L")
-sat = val = Image.new("L", gsize, 255)
-rainbows = [None] * 256
+qhue = Image.fromarray(gradient, "L")
+qsat = qval = Image.new("L", gsize, 255)
+quadratics = [None] * 256
 
-def rainbow_gradient(size=gsize, t=None):
+def quadratic_gradient(size=gsize, t=None):
     size = tuple(size)
     if t is None:
         t = pc()
     x = int(t * 128) & 255
-    if not rainbows[x]:
-        hue = ohue.point(lambda i: i + x & 255)
-        img = Image.merge("HSV", (hue, sat, val)).convert("RGB")
+    if not quadratics[x]:
+        hue = qhue.point(lambda i: i + x & 255)
+        img = Image.merge("HSV", (hue, qsat, qval)).convert("RGB")
         b = img.tobytes()
-        rainbows[x] = pygame.image.frombuffer(b, gsize, "RGB")
-        # print(sum(map(bool, rainbows)))
-    surf = rainbows[x]
+        quadratics[x] = pygame.image.frombuffer(b, gsize, "RGB")
+    surf = quadratics[x]
     if surf.get_size() != size:
         surf = pygame.transform.scale(surf, size)
     return surf
 
-# print(pygame.transform.get_smoothscale_backend())
-# pygame.transform.set_smoothscale_backend()
+rgw = 256
+mid = (rgw - 1) / 2
+row = np.arange(rgw, dtype=np.float64) - mid
+data = [None] * rgw
+for i in range(rgw):
+    data[i] = a = np.arctan2(i - mid, row)
+    np.around(np.multiply(a, 256 / tau, out=a), 0, out=a)
+data = np.uint8(data)
+rhue = Image.fromarray(data, "L")
+rsat = rval = Image.new("L", (rgw,) * 2, 255)
+radials = [None] * 256
+
+def radial_gradient(size=(rgw,) * 2, t=None):
+    size = tuple(size)
+    if t is None:
+        t = pc()
+    x = int(t * 128) & 255
+    if not radials[x]:
+        hue = rhue.point(lambda i: i + x & 255)
+        img = Image.merge("HSV", (hue, rsat, rval)).convert("RGB")
+        b = img.tobytes()
+        radials[x] = pygame.image.frombuffer(b, (rgw,) * 2, "RGB")
+    surf = radials[x]
+    if surf.get_size() != size:
+        surf = pygame.transform.scale(surf, size)
+    return surf
 
 draw_line = pygame.draw.line
 draw_aaline = pygame.draw.aaline
@@ -531,8 +554,10 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
                 s = source.convert_alpha()
             except:
                 s = source.copy()
-        if alpha != 255 or any(i != 255 for i in colour):
+        if alpha != 255:
             s.fill(tuple(colour) + (alpha,), special_flags=BLEND_RGBA_MULT)
+        elif any(i != 255 for i in colour):
+            s.fill(tuple(colour), special_flags=BLEND_RGB_MULT)
     if angle:
         ckf = [s.get_colorkey(), s.get_flags()]
         s = pygame.transform.rotate(s, -angle / d2r)

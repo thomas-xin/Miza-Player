@@ -66,6 +66,7 @@ toolbar = cdict(
         num=0,
         particles=alist(),
     ),
+    buttons=alist(),
 )
 queue = sidebar.queue
 entries = sidebar.entries
@@ -76,9 +77,11 @@ modified = set()
 def setup_buttons():
     try:
         gears = pygame.image.load("misc/gears.bmp").convert_alpha()
+        def settings_toggle():
+            sidebar.abspos ^= 1
         sidebar.buttons.append(cdict(
             sprite=gears,
-            click=lambda: sidebar.__setitem__("abspos", sidebar.get("abspos", 0) ^ 1),
+            click=settings_toggle,
         ))
         reset_menu(full=False)
         folder = pygame.image.load("misc/folder.bmp").convert_alpha()
@@ -91,6 +94,22 @@ def setup_buttons():
         sidebar.buttons.append(cdict(
             sprite=hyperlink,
             click=enqueue_search,
+        ))
+        reset_menu(full=False)
+        repeat = pygame.image.load("misc/repeat.bmp").convert_alpha()
+        def repeat_1():
+            control.loop = (control.loop + 1) % 3
+        toolbar.buttons.append(cdict(
+            image=repeat,
+            click=repeat_1,
+        ))
+        reset_menu(full=False)
+        shuffle = pygame.image.load("misc/shuffle.bmp").convert_alpha()
+        def shuffle_1():
+            control.shuffle = (control.shuffle + 1) % 3
+        toolbar.buttons.append(cdict(
+            image=shuffle,
+            click=shuffle_1,
         ))
         reset_menu(full=False)
         microphone = pygame.image.load("misc/microphone.bmp").convert_alpha()
@@ -219,7 +238,10 @@ if len(sys.argv) > 1:
     submit(enqueue_auto, *sys.argv[1:])
 
 
+sidebar.abspos = 0
+osize = None
 def reset_menu(full=True, reset=False):
+    global osize
     if full:
         globals().update(options)
         common.__dict__.update(options)
@@ -250,10 +272,26 @@ def reset_menu(full=True, reset=False):
     progress.width = min(16, toolbar_height // 6)
     progress.rect = (progress.pos[0] - progress.width // 2 - 3, progress.pos[1] - progress.width // 2 - 3, progress.length + 6, progress.width + 6)
     progress.seeking = False
+    bsize = min(40, toolbar_height // 3 - 4)
+    for i, button in enumerate(toolbar.buttons):
+        button.pos = (toolbar_height + 8 + (bsize + 4) * i, screensize[1] - toolbar_height // 3 - 4)
+        rect = button.pos + (bsize,) * 2
+        sprite = button.get("sprite", button.image)
+        ssize = (bsize - 6,) * 2
+        if sprite.get_size() != ssize:
+            sprite = pygame.transform.smoothscale(sprite, ssize)
+        button.sprite = sprite
+        button.on = button.sprite.convert_alpha()
+        button.on.fill((0, 255, 255), special_flags=BLEND_RGB_MULT)
+        button.off = button.sprite.convert_alpha()
+        button.off.fill((0,) * 3, special_flags=BLEND_RGB_MULT)
+        button.rect = rect
     toolbar.resizing = False
     toolbar.resizer = False
-    osize = (progress.box, toolbar_height * 2 // 3 - 3)
-    mixer.submit(f"~osize {' '.join(map(str, osize))}")
+    osize2 = (progress.box, toolbar_height * 2 // 3 - 3)
+    if osize != osize2:
+        osize = osize2
+        mixer.submit(f"~osize {' '.join(map(str, osize))}")
 
 
 submit(setup_buttons)
@@ -521,6 +559,15 @@ def update_menu():
     toolbar.updated = toolbar.colour != c
     toolbar.colour = c
     if mclick[0]:
+        for button in toolbar.buttons:
+            if in_rect(mpos, button.rect):
+                button.flash = 64
+                button.click()
+    else:
+        for button in toolbar.buttons:
+            if "flash" in button:
+                button.flash = max(0, button.flash - duration * 64)
+    if mclick[0]:
         for button in sidebar.buttons:
             if in_rect(mpos, button.rect):
                 button.flash = 32
@@ -540,7 +587,7 @@ def update_menu():
         c = (64, 0, 96)
     sidebar.updated = sidebar.colour != c
     sidebar.colour = c
-    sidebar.relpos = min(1, (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.get("abspos", 0)) / ratio)
+    sidebar.relpos = min(1, (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.abspos) / ratio)
 
 def draw_menu():
     ts = toolbar.progress.setdefault("timestamp", 0)
@@ -855,7 +902,7 @@ def draw_menu():
                     rect,
                     3,
                 )
-                rainbow = rainbow_gradient((w, 9), pc() / 2 + i / 4)
+                rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
                 DISP.blit(
                     rainbow,
                     (screensize[0] + offs + 8 + x, 69 + i * 32),
@@ -870,7 +917,7 @@ def draw_menu():
                     rect,
                     3,
                 )
-                rainbow = rainbow_gradient((w, 9), pc() + i / 4)
+                rainbow = quadratic_gradient((w, 9), pc() + i / 4)
                 DISP.blit(
                     rainbow,
                     (screensize[0] + offs + 8, 69 + i * 32),
@@ -959,7 +1006,7 @@ def draw_menu():
             (xv2 + pos[0] - width // 2, pos[1] - width // 2, length - xv2, width),
             min(4, width >> 1),
         )
-        rainbow = rainbow_gradient((length, width), pc() / 2)
+        rainbow = quadratic_gradient((length, width), pc() / 2)
         DISP.blit(
             rainbow,
             (pos[0] - width // 2 + xv, pos[1] - width // 2),
@@ -977,13 +1024,54 @@ def draw_menu():
                 (pos[0] - width // 2, pos[1] - width // 2, xv, width),
                 min(4, width >> 1),
             )
-        rainbow = rainbow_gradient((length, width))
+        rainbow = quadratic_gradient((length, width))
         DISP.blit(
             rainbow,
             (pos[0] - width // 2, pos[1] - width // 2),
             (0, 0, xv, width),
             special_flags=BLEND_RGB_MULT,
         )
+        for i, button in enumerate(toolbar.buttons):
+            if button.get("rect"):
+                lum = 191 if in_rect(mpos, button.rect) else 127
+                lum += button.get("flash", 0)
+                bevel_rectangle(
+                    DISP,
+                    (lum,) * 3,
+                    button.rect,
+                    3,
+                )
+                if i:
+                    val = control.shuffle
+                else:
+                    val = control.loop
+                if val == 2:
+                    if i:
+                        sprite = quadratic_gradient(button.sprite.get_size(), pc()).convert_alpha()
+                    else:
+                        sprite = radial_gradient(button.sprite.get_size(), -pc()).convert_alpha()
+                    sprite.blit(
+                        button.sprite,
+                        (0, 0),
+                        special_flags=BLEND_RGBA_MULT,
+                    )
+                elif val == 1:
+                    sprite = button.on
+                else:
+                    sprite = button.off
+                DISP.blit(
+                    sprite,
+                    (button.rect[0] + 3, button.rect[1] + 3),
+                    special_flags=BLEND_ALPHA_SDL2,
+                )
+                if val == 2:
+                    message_display(
+                        "1",
+                        12,
+                        (button.rect[0] + button.rect[2] - 4, button.rect[1] + button.rect[3] - 8),
+                        colour=(0,) * 3,
+                        surface=DISP,
+                    )
         pos = toolbar.pause.pos
         radius = toolbar.pause.radius
         spl = max(4, radius >> 2)
@@ -1275,15 +1363,7 @@ try:
                 player.last = 0
                 progress.num = 0
                 progress.alpha = 0
-            # if not tick + 4 & 15:
-            #     buffer = player.get("buffer")
-            #     if buffer is not None:
-            #         player.task = submit(update_render, buffer)
             if not tick + 12 & 15 or tuple(screensize) in modified:
-                # if player.get("task"):
-                #     data = player.task.result()
-                #     if data:
-                #         DISP.blit(data.surf, (0, 0))
                 for i, k in enumerate(("peak", "amplitude", "velocity", "energy")):
                     v = player.stats.get(k, 0) if is_active() else 0
                     message_display(
@@ -1308,6 +1388,9 @@ try:
                         player.rect,
                     )
                 modified.clear()
+        else:
+            sidebar.particles.clear()
+            progress.particles.clear()
         delay = max(0, last_tick - pc() + 1 / 480)
         last_tick = pc()
         time.sleep(delay)

@@ -307,7 +307,18 @@ def start():
 
 def skip():
     if queue:
-        sidebar.particles.append(queue.popleft())
+        if control.loop == 2:
+            pass
+        elif control.loop == 1:
+            e = queue.popleft()
+            sidebar.particles.append(e)
+            if control.shuffle:
+                queue.shuffle()
+            queue.append(e)
+        else:
+            sidebar.particles.append(queue.popleft())
+            if control.shuffle:
+                queue.shuffle()
         if queue:
             return enqueue(queue[0])
         mixer.clear()

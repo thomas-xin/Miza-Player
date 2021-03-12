@@ -240,7 +240,7 @@ def reader(f, proc, reverse=False, pos=None):
         pos = f.tell()
     if reverse:
         pos -= 65536
-        f.seek(pos)
+    f.seek(pos)
     while True:
         b = f.read(65536)
         if not b:
@@ -694,7 +694,7 @@ while not sys.stdin.closed and failed < 16:
                 proc.readable = lambda: f.get_read_available() >= req >> 2
             else:
                 f = None
-                if pos >= 960 and not fn or settings.speed < 0 and not is_url(stream):
+                if not fn and (pos >= 960 or settings.speed < 0):
                     f = open(stream, "rb")
                 cmd = ["ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-vn"]
                 if not is_url(stream) and stream.endswith(".pcm"):

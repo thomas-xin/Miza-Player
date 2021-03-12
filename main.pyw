@@ -319,12 +319,19 @@ submit(setup_buttons)
 
 is_active = lambda: pc() - player.get("last", 0) <= max(player.get("lastframe", 0), 1 / 30) * 4
 
+e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else nan)
+
 def prepare(entry, force=False):
     stream = entry.get("stream")
     if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 3)[3]) < utc() + 60 or is_youtube_stream(stream) and int(stream.split("expire=", 1)[1].split("&", 1)[0]) < utc() + 60):
         ytdl = downloader.result()
-        data = ytdl.search(entry.url)[0]
-        entry.update(data)
+        try:
+            data = ytdl.search(entry.url)[0]
+        except:
+            print_exc()
+            return
+        else:
+            entry.update(data)
     return entry.stream.strip()
 
 def start_player(entry, pos=None, force=False):
@@ -332,8 +339,14 @@ def start_player(entry, pos=None, force=False):
     player.amp = 0
     player.pop("osci", None)
     stream = prepare(entry, force=True)
+    if not stream:
+        player.fut = None
+        return
     duration = entry.duration or get_duration(stream)
     entry.duration = duration
+    if duration is None:
+        player.fut = None
+        return
     if pos is None:
         if audio.speed >= 0:
             pos = 0
@@ -528,7 +541,7 @@ def update_menu():
         player.index = player.pos * 30
         if not mheld[0]:
             progress.seeking = False
-            if queue and isfinite(queue[0].duration):
+            if queue and isfinite(e_dur(queue[0].duration)):
                 seek_abs(player.pos)
     if sidebar.resizing:
         sidebar_width = min(512, max(144, screensize[0] - mpos2[0] + 2))
@@ -537,7 +550,7 @@ def update_menu():
             reset_menu()
             sidebar.resizing = True
             modified.add(sidebar.rect)
-    if queue and isfinite(queue[0].duration):
+    if queue and isfinite(e_dur(queue[0].duration)):
         if kspam[K_PAGEUP]:
             seek_rel(300)
         elif kspam[K_PAGEDOWN]:
@@ -570,7 +583,7 @@ def update_menu():
     if in_rect(mpos, progress.rect):
         if mclick[0]:
             progress.seeking = True
-            if queue and isfinite(queue[0].duration):
+            if queue and isfinite(e_dur(queue[0].duration)):
                 mixer.clear()
     if toolbar.resizing or in_rect(mpos, toolbar.rect):
         c = (64, 32, 96)

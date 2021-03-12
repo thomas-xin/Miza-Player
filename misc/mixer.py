@@ -694,14 +694,22 @@ while not sys.stdin.closed and failed < 16:
                 proc.readable = lambda: f.get_read_available() >= req >> 2
             else:
                 f = None
-                if not fn and (pos >= 960 or settings.speed < 0):
+                if not fn and pos >= 960 or settings.speed < 0:
+                    if fn or not stream.endswith(".pcm"):
+                        ostream = stream
+                        stream = "cache/~" + shash(ostream) + ".pcm"
+                        if not os.path.exists(stream):
+                            cmd = ["ffmpeg", "-nostdin", "-n", "-hide_banner", "-loglevel", "error", "-vn", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream]
+                            print(cmd)
+                            resp = subprocess.run(cmd, stderr=subprocess.PIPE)
+                    fn = None
                     f = open(stream, "rb")
                 cmd = ["ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-vn"]
-                if not is_url(stream) and stream.endswith(".pcm"):
+                if not fn and stream.endswith(".pcm"):
                     cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
                 cmd.extend(("-i", "-" if f else stream))
                 cmd.extend(ext)
-                cmd.extend(("-map_metadata", "-1", "-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
+                cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
                 if pos and not f:
                     i = cmd.index("-i")
                     ss = "-ss"

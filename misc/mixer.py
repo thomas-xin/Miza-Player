@@ -326,7 +326,7 @@ def construct_options(full=True):
         )
         volume *= 2
     if stats.compressor:
-        comp = min(8000, abs(stats.compressor * 10 + sgn(stats.compressor)))
+        comp = min(8000, abs(stats.compressor * 10 + (1 if stats.compressor >= 0 else -1)))
         while abs(comp) > 1:
             c = min(20, comp)
             try:

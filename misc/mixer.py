@@ -4,12 +4,22 @@ import sys
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, pyaudio, numpy, math, base64, hashlib, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, concurrent.futures
+import os, sys, pyaudio, numpy, math, base64, hashlib, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, concurrent.futures
 from math import *
 np = numpy
+deque = collections.deque
 suppress = contextlib.suppress
 hwnd = int(sys.stdin.readline()[1:])
 is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
+
+pt = None
+def pc():
+    global pt
+    t = time.perf_counter()
+    if not pt:
+        pt = t
+        return 0
+    return t - pt
 
 def as_str(s):
     if type(s) in (bytes, bytearray, memoryview):
@@ -234,6 +244,128 @@ def reader(f, proc):
     proc.stdin.close()
     f.close()
 
+def construct_options(full=True):
+    stats = cdict(settings)
+    pitchscale = 2 ** ((stats.pitch + stats.nightcore) / 12)
+    chorus = min(16, abs(stats.chorus))
+    reverb = stats.reverb
+    volume = 1
+    if reverb:
+        args = ["-i", "misc/SNB3,0all.wav"]
+    else:
+        args = []
+    options = deque()
+    if not isfinite(stats.compressor):
+        options.extend(("anoisesrc=a=.001953125:c=brown", "amerge"))
+    if stats.speed < 0:
+        options.append("areverse")
+    if pitchscale != 1 or stats.speed != 1:
+        speed = abs(stats.speed) / pitchscale
+        speed *= 2 ** (stats.nightcore / 12)
+        if round(speed, 9) != 1:
+            speed = max(0.005, speed)
+            if speed >= 64:
+                raise OverflowError
+            opts = ""
+            while speed > 3:
+                opts += "atempo=3,"
+                speed /= 3
+            while speed < 0.5:
+                opts += "atempo=0.5,"
+                speed /= 0.5
+            opts += "atempo=" + str(speed)
+            options.append(opts)
+    if pitchscale != 1:
+        if abs(pitchscale) >= 64:
+            raise OverflowError
+        if full:
+            options.append("aresample=48k")
+        options.append("asetrate=" + str(48000 * pitchscale))
+    if chorus:
+        A = B = C = D = ""
+        for i in range(ceil(chorus)):
+            neg = ((i & 1) << 1) - 1
+            i = 1 + i >> 1
+            i *= stats.chorus / ceil(chorus)
+            if i:
+                A += "|"
+                B += "|"
+                C += "|"
+                D += "|"
+            delay = (25 + i * tau * neg) % 39 + 18
+            A += str(round(delay, 3))
+            decay = (0.125 + i * 0.03 * neg) % 0.25 + 0.25
+            B += str(round(decay, 3))
+            speed = (2 + i * 0.61 * neg) % 4.5 + 0.5
+            C += str(round(speed, 3))
+            depth = (i * 0.43 * neg) % max(4, stats.chorus) + 0.5
+            D += str(round(depth, 3))
+        b = 0.5 / sqrt(ceil(chorus + 1))
+        options.append(
+            "chorus=0.5:" + str(round(b, 3)) + ":"
+            + A + ":"
+            + B + ":"
+            + C + ":"
+            + D
+        )
+        volume *= 2
+    if stats.compressor:
+        comp = min(8000, abs(stats.compressor * 10 + sgn(stats.compressor)))
+        while abs(comp) > 1:
+            c = min(20, comp)
+            try:
+                comp /= c
+            except ZeroDivisionError:
+                comp = 1
+            mult = str(round((c * math.sqrt(2)) ** 0.5, 4))
+            options.append(
+                "acompressor=mode=" + ("upward" if stats.compressor < 0 else "downward")
+                + ":ratio=" + str(c) + ":level_in=" + mult + ":threshold=0.0625:makeup=" + mult
+            )
+    if stats.bassboost:
+        opt = "anequalizer="
+        width = 4096
+        x = round(sqrt(1 + abs(stats.bassboost)), 5)
+        coeff = width * max(0.03125, (0.25 / x))
+        ch = " f=" + str(coeff if stats.bassboost > 0 else width - coeff) + " w=" + str(coeff / 2) + " g=" + str(max(0.5, min(48, 4 * math.log2(x * 5))))
+        opt += "c0" + ch + "|c1" + ch
+        options.append(opt)
+    if reverb:
+        coeff = abs(reverb)
+        wet = min(3, coeff) / 3
+        if wet != 1:
+            options.append("asplit[2]")
+        volume *= 1.2
+        options.append("afir=dry=10:wet=10")
+        if wet != 1:
+            dry = 1 - wet
+            options.append("[2]amix=weights=" + str(round(dry, 6)) + " " + str(round(wet, 6)))
+        if coeff > 1:
+            decay = str(round(1 - 4 / (3 + coeff), 4))
+            options.append("aecho=1:1:479|613:" + decay + "|" + decay)
+            if not isfinite(coeff):
+                options.append("aecho=1:1:757|937:1|1")
+    if stats.pan != 1:
+        pan = min(10000, max(-10000, stats.pan))
+        while abs(abs(pan) - 1) > 0.001:
+            p = max(-10, min(10, pan))
+            try:
+                pan /= p
+            except ZeroDivisionError:
+                pan = 1
+            options.append("extrastereo=m=" + str(p) + ":c=0")
+            volume *= 1 / max(1, round(math.sqrt(abs(p)), 4))
+    if volume != 1:
+        options.append("volume=" + str(round(volume, 7)))
+    if options:
+        if stats.compressor:
+            options.append("alimiter")
+        elif volume > 1:
+            options.append("asoftclip=atan")
+        args.append(("-af", "-filter_complex")[bool(reverb)])
+        args.append(",".join(options))
+    return args
+
 def oscilloscope(buffer):
     try:
         if packet:
@@ -328,7 +460,7 @@ def render():
 def play(pos):
     global file, fn, proc, drop, frame, packet, lastpacket, sample
     try:
-        frame = round(pos * 30)
+        frame = pos * 30
         while True:
             if paused and drop <= 0:
                 paused.result()
@@ -398,7 +530,7 @@ def play(pos):
                 out[:] = frame, r
                 if not channel2:
                     channel.queue(sound)
-            frame += 1
+            frame += settings.speed * 2 ** (settings.nightcore / 12)
     except:
         try:
             proc.kill()
@@ -432,15 +564,17 @@ paused = None
 req = 1600 * 2 * 2
 frame = 0
 drop = 0
+failed = 0
 submit(communicate)
 submit(render)
 submit(remover)
 submit(duration_est)
 submit(ensure_parent)
-while not sys.stdin.closed:
+while not sys.stdin.closed and failed < 16:
     try:
         command = sys.stdin.readline().rstrip()
         if command:
+            failed = 0
             if command == "~clear":
                 if proc:
                     temp, proc = proc, None
@@ -467,8 +601,10 @@ while not sys.stdin.closed:
             if command.startswith("~setting"):
                 setting, value = command[9:].split()
                 settings[setting] = float(value)
-                continue
-            if command.startswith("~drop"):
+                if setting == "volume" or not stream:
+                    continue
+                pos = frame / 30
+            elif command.startswith("~drop"):
                 drop += float(command[5:]) * 30
                 if drop <= 180 * 30:
                     continue
@@ -489,19 +625,20 @@ while not sys.stdin.closed:
                     remove(file)
             if fut:
                 fut.result()
+            ext = construct_options()
             if is_url(stream):
                 fn = "cache/~" + shash(stream) + ".pcm"
                 if os.path.exists(fn):
                     stream = fn
                     fn = None
                     file = None
-                elif pos or not duration < inf:
+                elif pos or not duration < inf or ext:
                     ts = time.time_ns() // 1000
                     fn = "cache/\x7f" + str(ts) + ".pcm"
             else:
                 fn = None
                 file = None
-            if not is_url(stream) and stream.endswith(".pcm"):
+            if not is_url(stream) and stream.endswith(".pcm") and ext:
                 f = open(stream, "rb")
                 proc = cdict(
                     stdout=cdict(
@@ -543,7 +680,12 @@ while not sys.stdin.closed:
                 f = None
                 if pos >= 960 and not fn:
                     f = open(stream, "rb")
-                cmd = ["ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-vn", "-i", "-" if f else stream, "-map_metadata", "-1", "-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"]
+                cmd = ["ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-vn"]
+                if not is_url(stream) and stream.endswith(".pcm"):
+                    cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
+                cmd.extend(("-i", "-" if f else stream))
+                cmd.extend(ext)
+                cmd.extend(("-map_metadata", "-1", "-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
                 if pos and not f:
                     i = cmd.index("-i")
                     ss = "-ss"
@@ -559,6 +701,8 @@ while not sys.stdin.closed:
                     proc.kill = lambda: (kill(), f.close())
                     submit(reader, f, proc)
             fut = submit(play, pos)
+        else:
+            failed += 1
     except:
         print_exc()
     time.sleep(0.001)

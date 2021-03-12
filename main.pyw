@@ -253,8 +253,7 @@ def reset_menu(full=True, reset=False):
     toolbar.resizing = False
     toolbar.resizer = False
     osize = (progress.box, toolbar_height * 2 // 3 - 3)
-    mixer.stdin.write(f"~osize {' '.join(map(str, osize))}\n".encode("utf-8"))
-    mixer.stdin.flush()
+    mixer.submit(f"~osize {' '.join(map(str, osize))}")
 
 
 submit(setup_buttons)
@@ -281,8 +280,7 @@ def start_player(entry, pos=0, force=False):
         return skip()
     elif pos < 0:
         pos = 0
-    mixer.stdin.write((stream + "\n" + str(pos) + " " + str(duration) + "\n").encode("utf-8"))
-    mixer.stdin.flush()
+    mixer.submit(stream + "\n" + str(pos) + " " + str(duration))
     if force:
         mixer.state(0)
     player.pos = pos
@@ -303,6 +301,7 @@ def skip():
         sidebar.particles.append(queue.popleft())
         if queue:
             return enqueue(queue[0])
+        mixer.clear()
     player.last = 0
     player.pos = 0
     player.end = inf
@@ -782,23 +781,33 @@ def draw_menu():
                     surface=DISP,
                     align=0,
                 )
+                # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
                 s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
                 message_display(
                     s,
                     11,
-                    (screensize[0] + offs + sidebar_width - 8, 69 + i * 32),
+                    (screensize[0] + offs + sidebar_width - 8, 68 + i * 32),
                     surface=DISP,
                     align=2,
                 )
                 srange = asettings[opt]
                 w = (sidebar_width - 16)
-                x = round((options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0]) * w)
+                x = (options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
+                if opt in ("speed", "pitch", "nightcore"):
+                    x = min(1, max(0, x))
+                else:
+                    x = min(1, abs(x))
+                x = round(x * w)
                 brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
                 hovered = in_rect(mpos, brect) or aediting[opt]
                 crosshair |= bool(hovered) << 1
                 v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
                 if len(srange) > 2:
                     v = round_min(math.round(v / srange[2]) * srange[2])
+                else:
+                    rv = round_min(math.round(v * 64) / 64)
+                    if type(rv) is int:
+                        v = rv
                 if hovered and not hovertext:
                     hovertext = str(round(v * 100, 2)) + "%"
                     if aediting[opt]:
@@ -808,9 +817,8 @@ def draw_menu():
                         aediting[opt] = True
                     if aediting[opt]:
                         orig, options.audio[opt] = options.audio[opt], v
-                        if orig != v:
-                            mixer.stdin.write(f"~setting {opt} {v}\n".encode('utf-8'))
-                            mixer.stdin.flush()
+                        if orig != v and opt != "volume":
+                            mixer.submit(f"~setting {opt} {v}")
                 z = max(0, x - 4)
                 rect = (screensize[0] + offs + 8 + z, 69 + i * 32, sidebar_width - 16 - z, 9)
                 col = (48 if hovered else 32,) * 3
@@ -987,7 +995,6 @@ def draw_menu():
             repetition=radius - spl,
             angle=toolbar.pause.angle,
         )
-        modified.add(toolbar.rect)
         lum = toolbar.pause.outer + 224 >> 1
         rad = max(4, radius // 2)
         col = (lum,) * 3

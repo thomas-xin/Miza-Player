@@ -1,4 +1,4 @@
-import os, sys, json, traceback, subprocess, psutil, concurrent.futures
+import os, sys, json, traceback, subprocess, psutil, copy, concurrent.futures
 
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 
@@ -61,6 +61,12 @@ class cdict(dict):
     to_list = lambda self: list(super().values())
 
 
+def as_str(s):
+    if type(s) in (bytes, bytearray, memoryview):
+        return bytes(s).decode("utf-8", "replace")
+    return str(s)
+
+
 hasmisc = os.path.exists("misc")
 if hasmisc:
     submit(import_audio_downloader)
@@ -80,9 +86,29 @@ def drop(i):
     mixer.stdin.write(f"~drop {i}\n".encode("utf-8"))
     mixer.stdin.flush()
 
+laststart = set()
+def mixer_submit(s):
+    ts = pc()
+    if laststart:
+        diff = ts - min(laststart)
+        if diff < 0.5:
+            delay = 0.5 - diff
+            laststart.add(ts)
+            time.sleep(delay)
+            if ts < max(laststart):
+                return
+        laststart.clear()
+    laststart.add(ts)
+    s = as_str(s)
+    if not s.endswith("\n"):
+        s += "\n"
+    mixer.stdin.write(s.encode("utf-8"))
+    mixer.stdin.flush()
+
 mixer.state = lambda i=0: state(i)
 mixer.clear = lambda: clear()
 mixer.drop = lambda i=0: drop(i)
+mixer.submit = lambda s: submit(mixer_submit, s)
 
 write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame
@@ -132,7 +158,7 @@ else:
             loop=1
         ),
     )
-orig_options = cdict(options)
+orig_options = copy.deepcopy(options)
 globals().update(options)
 
 

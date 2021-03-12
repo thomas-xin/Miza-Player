@@ -695,7 +695,7 @@ while not sys.stdin.closed and failed < 16:
             else:
                 f = None
                 if not fn and pos >= 960 or settings.speed < 0:
-                    if fn or not stream.endswith(".pcm"):
+                    if (fn or not stream.endswith(".pcm")) and settings.speed < 0:
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"
                         if not os.path.exists(stream):

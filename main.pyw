@@ -799,7 +799,7 @@ def draw_menu():
                 v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
                 if len(srange) > 2:
                     v = round_min(math.round(v / srange[2]) * srange[2])
-                if hovered:
+                if hovered and not hovertext:
                     hovertext = str(round(v * 100, 2)) + "%"
                     if aediting[opt]:
                         if not mheld[0]:

@@ -298,7 +298,7 @@ def reset_menu(full=True, reset=False):
         sprite = button.get("sprite", button.image)
         ssize = (bsize - 6,) * 2
         if sprite.get_size() != ssize:
-            sprite = pygame.transform.smoothscale(sprite, ssize)
+            sprite = pygame.transform.smoothscale(button.image, ssize)
         button.sprite = sprite
         if i < 2:
             button.on = button.sprite.convert_alpha()

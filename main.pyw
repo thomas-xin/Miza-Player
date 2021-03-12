@@ -112,6 +112,25 @@ def setup_buttons():
             click=shuffle_1,
         ))
         reset_menu(full=False)
+        back = pygame.image.load("misc/back.bmp").convert_alpha()
+        def rleft():
+            mixer.clear()
+            queue.rotate(1)
+            start()
+        toolbar.buttons.append(cdict(
+            image=back,
+            click=rleft,
+        ))
+        front = pygame.transform.flip(back, True, False)
+        def rright():
+            mixer.clear()
+            queue.rotate(-1)
+            start()
+        toolbar.buttons.append(cdict(
+            image=front,
+            click=rright,
+        ))
+        reset_menu(full=False)
         microphone = pygame.image.load("misc/microphone.bmp").convert_alpha()
         globals()["pya"] = afut.result()
         sidebar.buttons.append(cdict(
@@ -281,10 +300,11 @@ def reset_menu(full=True, reset=False):
         if sprite.get_size() != ssize:
             sprite = pygame.transform.smoothscale(sprite, ssize)
         button.sprite = sprite
-        button.on = button.sprite.convert_alpha()
-        button.on.fill((0, 255, 255), special_flags=BLEND_RGB_MULT)
-        button.off = button.sprite.convert_alpha()
-        button.off.fill((0,) * 3, special_flags=BLEND_RGB_MULT)
+        if i < 2:
+            button.on = button.sprite.convert_alpha()
+            button.on.fill((0, 255, 255), special_flags=BLEND_RGB_MULT)
+            button.off = button.sprite.convert_alpha()
+            button.off.fill((0,) * 3, special_flags=BLEND_RGB_MULT)
         button.rect = rect
     toolbar.resizing = False
     toolbar.resizer = False
@@ -351,12 +371,12 @@ def skip():
             e = queue.popleft()
             sidebar.particles.append(e)
             if control.shuffle:
-                queue.shuffle()
+                queue[:] = queue.shuffle()
             queue.append(e)
         else:
             sidebar.particles.append(queue.popleft())
             if control.shuffle:
-                queue.shuffle()
+                queue[:] = queue.shuffle()
         if queue:
             return enqueue(queue[0])
         mixer.clear()
@@ -1041,10 +1061,12 @@ def draw_menu():
                     button.rect,
                     3,
                 )
-                if i:
+                if i == 1:
                     val = control.shuffle
-                else:
+                elif i == 0:
                     val = control.loop
+                else:
+                    val = -1
                 if val == 2:
                     if i:
                         sprite = quadratic_gradient(button.sprite.get_size(), pc()).convert_alpha()
@@ -1057,8 +1079,10 @@ def draw_menu():
                     )
                 elif val == 1:
                     sprite = button.on
-                else:
+                elif val == 0:
                     sprite = button.off
+                else:
+                    sprite = button.sprite
                 DISP.blit(
                     sprite,
                     (button.rect[0] + 3, button.rect[1] + 3),

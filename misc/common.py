@@ -87,18 +87,19 @@ def drop(i):
     mixer.stdin.flush()
 
 laststart = set()
-def mixer_submit(s):
-    ts = pc()
-    if laststart:
-        diff = ts - min(laststart)
-        if diff < 0.5:
-            delay = 0.5 - diff
-            laststart.add(ts)
-            time.sleep(delay)
-            if ts < max(laststart):
-                return
-        laststart.clear()
-    laststart.add(ts)
+def mixer_submit(s, force):
+    if not force:
+        ts = pc()
+        if laststart:
+            diff = ts - min(laststart)
+            if diff < 0.5:
+                delay = 0.5 - diff
+                laststart.add(ts)
+                time.sleep(delay)
+                if ts < max(laststart):
+                    return
+            laststart.clear()
+        laststart.add(ts)
     s = as_str(s)
     if not s.endswith("\n"):
         s += "\n"
@@ -108,7 +109,7 @@ def mixer_submit(s):
 mixer.state = lambda i=0: state(i)
 mixer.clear = lambda: clear()
 mixer.drop = lambda i=0: drop(i)
-mixer.submit = lambda s: submit(mixer_submit, s)
+mixer.submit = lambda s, force=False: submit(mixer_submit, s, force)
 
 write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame

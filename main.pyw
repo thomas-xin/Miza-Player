@@ -817,8 +817,8 @@ def draw_menu():
                         aediting[opt] = True
                     if aediting[opt]:
                         orig, options.audio[opt] = options.audio[opt], v
-                        if orig != v and opt != "volume":
-                            mixer.submit(f"~setting {opt} {v}")
+                        if orig != v:
+                            mixer.submit(f"~setting {opt} {v}", force=opt == "volume")
                 z = max(0, x - 4)
                 rect = (screensize[0] + offs + 8 + z, 69 + i * 32, sidebar_width - 16 - z, 9)
                 col = (48 if hovered else 32,) * 3

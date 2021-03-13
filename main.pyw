@@ -372,7 +372,7 @@ def start_player(entry, pos=None, force=False):
         pos = 0
     if not pos:
         if control.shuffle == 2:
-            pos = 0.001
+            # pos = 0.001
             player.needs_shuffle = False
         else:
             player.needs_shuffle = not is_url(stream)
@@ -452,7 +452,11 @@ def seek_rel(pos):
 def play():
     try:
         while True:
-            osize = list(map(int, mixer.stderr.readline().split()))
+            b = as_str(mixer.stderr.readline().rstrip())
+            if "~" not in b:
+                print(b)
+                continue
+            osize = list(map(int, b.split("~")))
             req = int(np.prod(osize) * 3)
             b = mixer.stderr.read(req)
             while len(b) < req:

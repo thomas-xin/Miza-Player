@@ -178,14 +178,38 @@ def get_duration(filename):
             return (int(head["Content-Length"]) << 3) / bps
         return dur
 
+probe_cache = {}
+def probe(stream):
+    try:
+        return probe_cache[stream]
+    except KeyError:
+        pass
+    command = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=codec_name,",
+        "-show_entries",
+        "format=format_name",
+        "-of",
+        "default=nokey=1:noprint_wrappers=1",
+        stream,
+    )
+    print(command)
+    resp = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return list(s.strip() for s in reversed(as_str(resp.stdout).splitlines()))
+
 def duration_est():
     global duration
     last_fn = ""
     last_mt = 0
     last_fs = 0
-    try:
-        while True:
-            if stream and not is_url(stream) and (stream[0] != "<" or stream[-1] != ">"):
+    while True:
+        try:
+            if stream and not is_url(stream) and (stream[0] != "<" or stream[-1] != ">") and os.path.exists(stream):
                 stat = None
                 if last_fn == stream:
                     stat = os.stat(stream)
@@ -198,9 +222,9 @@ def duration_est():
                 last_mt = stat.st_mtime
                 last_fs = stat.st_size
                 duration = get_duration(stream)
-            time.sleep(0.5)
-    except:
-        print_exc()
+        except:
+            print_exc()
+        time.sleep(0.5)
 
 
 removing = set()
@@ -236,16 +260,19 @@ def communicate():
         print_exc()
 
 def stdclose(p):
-    p.stdin.write(emptybuff[:BSIZE])
-    p.stdin.close()
-    time.sleep(1)
+    try:
+        p.stdin.write(emptybuff[:BSIZE])
+        p.stdin.close()
+        time.sleep(1)
+    except:
+        print_exc()
     p.kill()
 
 shuffling = False
 transfer = False
 BSIZE = 1600
 RSIZE = BSIZE << 1
-TSIZE = BSIZE * 3 >> 3
+TSIZE = BSIZE >> 2
 def reader(f, reverse=False, pos=None):
     global proc, transfer
     shuffling = False
@@ -288,17 +315,21 @@ def reader(f, reverse=False, pos=None):
                     shuffling = False
                     p = proc
                     print(p.args)
-                    proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
                     submit(stdclose, p)
                     opos = pos
                     transfer = True
-            b = f.read(RSIZE)
+            try:
+                b = f.read(RSIZE)
+            except ValueError:
+                b = b""
             if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
-                a = np.frombuffer(b[:BSIZE], dtype=np.int16)
+                a = np.frombuffer(b, dtype=np.int16)
                 u, c = np.unique(a, return_counts=True)
                 s = np.sort(c)
                 x = np.sum(s[-3:])
                 if x >= TSIZE:
+                    print(x, TSIZE)
                     shuffling = True
             if not b:
                 break
@@ -448,8 +479,8 @@ def construct_options(full=True):
     if options:
         if stats.compressor:
             options.append("alimiter")
-        elif volume > 1:
-            options.append("asoftclip=atan")
+        # elif volume > 1:
+        #     options.append("asoftclip=atan")
         args.append(("-af", "-filter_complex")[bool(reverb)])
         args.append(",".join(options))
     return args
@@ -488,7 +519,7 @@ def oscilloscope(buffer):
                     time.sleep(0.001)
                     if packet:
                         b = pygame.image.tostring(OSCI, "RGB")
-                        bsend(" ".join(map(str, size)).encode("utf-8") + b"\n" + b)
+                        bsend("~".join(map(str, size)).encode("utf-8") + b"\n" + b)
     except:
         print_exc()
 
@@ -642,7 +673,7 @@ def ensure_parent():
             proc.kill()
 
 
-ffmpeg_start = ("ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-err_detect", "ignore_err", "-vn")
+ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-err_detect", "ignore_err", "-vn")
 settings = cdict()
 osize = (152, 61)
 lastpacket = None
@@ -774,19 +805,22 @@ while not sys.stdin.closed and failed < 16:
                 proc.readable = lambda: f.get_read_available() >= req >> 2
             else:
                 f = None
-                if not fn and pos or settings.speed < 0:
-                    if (fn or not stream.endswith(".pcm")) and settings.speed < 0:
+                if not fn and (pos >= 960 or settings.shuffle == 2 and duration > 120) or settings.speed < 0:
+                    if (fn or not stream.endswith(".pcm")) and settings.speed < 0 or probe(stream)[1] != "mp3":
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"
                         if not os.path.exists(stream):
                             cmd = ffmpeg_start + ("-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
                             print(cmd)
-                            resp = subprocess.run(cmd, stderr=subprocess.PIPE)
+                            resp = subprocess.run(cmd)
                     fn = None
                     f = open(stream, "rb")
                 cmd = list(ffmpeg_start)
                 if not fn and stream.endswith(".pcm"):
                     cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
+                # else:
+                #     fmt, cdc = probe(stream)
+                #     cmd.extend(("-f", fmt, "-c", cdc))
                 cmd.extend(("-i", "-" if f else stream))
                 cmd.extend(ext)
                 cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
@@ -795,7 +829,7 @@ while not sys.stdin.closed and failed < 16:
                     ss = "-ss"
                     cmd = cmd[:i] + [ss, str(pos)] + cmd[i:]
                 print(cmd)
-                proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, stderr=subprocess.PIPE)
+                proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE)
                 if fn and not pos:
                     proc.kill = lambda: None
                 elif f:

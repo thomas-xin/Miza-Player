@@ -442,8 +442,12 @@ def seek_rel(pos):
     progress.num += pos
     progress.alpha = 255
     if audio.speed > 0 and pos > 0 and pos <= 180:
+        player.shuffleable = False
+        player.lastshuffle = pc()
         mixer.drop(pos)
     elif audio.speed < 0 and pos < 0 and pos >= -180:
+        player.shuffleable = False
+        player.lastshuffle = pc()
         mixer.drop(pos)
     else:
         seek_abs(max(0, player.pos + pos))

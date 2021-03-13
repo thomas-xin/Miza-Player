@@ -545,13 +545,13 @@ def play(pos):
                         else:
                             shuffling = False
                             skipzeros = True
-                            print(f"Autoshuffle: {pos}")
                     else:
                         shuffling = fshuffling = False
                 elif skipzeros:
                     m = sqrt(min(1, np.mean(np.abs(sample)) / 32767))
                     if m > 1 / 64:
                         skipzeros = False
+                        print(f"Autoshuffle: {pos}")
                     else:
                         frame += settings.speed * 2 ** (settings.nightcore / 12)
                         continue

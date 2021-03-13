@@ -280,7 +280,8 @@ def reader(f, reverse=False, pos=None):
                 print(f"Autoshuffle {pos}")
                 shuffling = False
                 p = proc
-                proc = psutil.Popen(proc.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                print(p.args)
+                proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 p.stdin.close()
                 opos = pos
                 transfer = True
@@ -550,7 +551,7 @@ def play(pos):
                 except:
                     pass
             if not b:
-                if transfer and proc.is_running():
+                if transfer and proc and proc.is_running():
                     transfer = False
                     b = proc.stdout.read(req)
                     drop = 0
@@ -674,7 +675,7 @@ while not sys.stdin.closed and failed < 16:
                 pos = frame / 30
             elif command.startswith("~drop"):
                 drop += float(command[5:]) * 30
-                if drop <= 180 * 30:
+                if drop <= 60 * 30:
                     continue
                 pos = (frame + drop) / 30
             else:

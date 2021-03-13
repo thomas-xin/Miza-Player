@@ -236,11 +236,12 @@ def communicate():
         print_exc()
 
 shuffling = False
+transfer = False
 BSIZE = 1600
 RSIZE = BSIZE << 1
 TSIZE = BSIZE * 3 >> 3
 def reader(f, reverse=False, pos=None):
-    global proc
+    global proc, transfer
     shuffling = False
     if pos is None:
         pos = f.tell()
@@ -278,9 +279,11 @@ def reader(f, reverse=False, pos=None):
                 globals()["frame"] = globals()["pos"] * 30
                 print(f"Autoshuffle {pos}")
                 shuffling = False
-                proc.stdin.close()
+                p = proc
                 proc = psutil.Popen(proc.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                p.stdin.close()
                 opos = pos
+                transfer = True
         b = f.read(RSIZE)
         if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
             a = np.frombuffer(b[:BSIZE], dtype=np.int16)
@@ -516,7 +519,7 @@ emptybuff = b"\x00" * (1600 * 2 * 2)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
-    global file, fn, proc, drop, frame, packet, lastpacket, sample, frame
+    global file, fn, proc, drop, frame, packet, lastpacket, sample, frame, transfer
     skipzeros = False
     try:
         frame = pos * 30
@@ -547,28 +550,33 @@ def play(pos):
                 except:
                     pass
             if not b:
-                out[:] = frame, b"\x00" * 4
-                print(f"{proc} {fn}")
-                if proc:
-                    if proc.is_running():
-                        try:
-                            proc.kill()
-                        except:
-                            pass
-                    point("~s")
-                if file:
-                    file.close()
-                    remove(file)
-                fn = file = proc = None
-                packet = None
-                drop = 0
-                return
+                if transfer and proc.is_running():
+                    transfer = False
+                    b = proc.stdout.read(req)
+                    drop = 0
+                else:
+                    out[:] = frame, b"\x00" * 4
+                    print(f"{proc} {fn}")
+                    if proc:
+                        if proc.is_running():
+                            try:
+                                proc.kill()
+                            except:
+                                pass
+                        point("~s")
+                    if file:
+                        file.close()
+                        remove(file)
+                    fn = file = proc = None
+                    packet = None
+                    drop = 0
+                    return
             if drop > 0:
                 drop -= 1
             else:
                 r = b
                 if len(b) < req:
-                    b += emptybuff[req - len(b)]
+                    b += emptybuff[:req - len(b)]
                 lastpacket = packet
                 packet = b
                 sample = np.frombuffer(b, dtype=np.int16)

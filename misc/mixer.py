@@ -325,7 +325,8 @@ def reader(f, reverse=False, pos=None):
                     except:
                         pass
                 break
-        proc.stdin.close()
+        if proc and proc.is_running():
+            proc.stdin.close()
         f.close()
     except:
         print_exc()

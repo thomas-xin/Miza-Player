@@ -282,7 +282,7 @@ def reader(f, reverse=False, pos=None):
                 proc = psutil.Popen(proc.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 opos = pos
         b = f.read(RSIZE)
-        if settings.shuffle and abs(pos - opos) / fsize * duration >= 60:
+        if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
             a = np.frombuffer(b[:BSIZE], dtype=np.int16)
             u, c = np.unique(a, return_counts=True)
             s = np.sort(c)

@@ -113,6 +113,8 @@ def setup_buttons():
         shuffle = pygame.image.load("misc/shuffle.bmp").convert_alpha()
         def shuffle_1():
             control.shuffle = (control.shuffle + 1) % 3
+            if control.shuffle == 2 and player.get("needs_shuffle"):
+                seek_abs(player.pos)
         toolbar.buttons.append(cdict(
             image=shuffle,
             click=shuffle_1,
@@ -366,6 +368,11 @@ def start_player(entry, pos=None, force=False):
         if audio.speed < 0:
             return skip()
         pos = 0
+    if not pos:
+        if control.shuffle == 2:
+            pos = 0.001
+        else:
+            player.needs_shuffle = not is_url(stream)
     player.shuffleable = False
     player.lastshuffle = pc()
     mixer.submit(stream + "\n" + str(pos) + " " + str(duration))

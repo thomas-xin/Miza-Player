@@ -476,6 +476,7 @@ emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
     global file, fn, proc, drop, frame, packet, lastpacket, sample, shuffling, fshuffling, shufflepos
+    skipzeros = False
     try:
         frame = pos * 30
         while True:
@@ -531,7 +532,7 @@ def play(pos):
                 packet = b
                 sample = np.frombuffer(b, dtype=np.int16)
                 if shuffling or fshuffling:
-                    if f:
+                    if not fn and f:
                         m = sqrt(min(1, np.mean(np.abs(sample)) / 32767))
                         if m > 1 / 64 or fshuffling:
                             shufflepos = random.randint(0, fsize >> 1) << 1
@@ -540,10 +541,20 @@ def play(pos):
                             pos = shufflepos / fsize * duration
                             frame = pos * 30
                             fshuffling = False
+                            continue
                         else:
                             shuffling = False
+                            skipzeros = True
+                            print(f"Autoshuffle: {pos}")
                     else:
                         shuffling = fshuffling = False
+                elif skipzeros:
+                    m = sqrt(min(1, np.mean(np.abs(sample)) / 32767))
+                    if m > 1 / 64:
+                        skipzeros = False
+                    else:
+                        frame += settings.speed * 2 ** (settings.nightcore / 12)
+                        continue
                 if settings.volume != 1:
                     s = sample * settings.volume
                     if abs(settings.volume) > 1:
@@ -713,7 +724,7 @@ while not sys.stdin.closed and failed < 16:
                 proc.readable = lambda: f.get_read_available() >= req >> 2
             else:
                 f = None
-                if not fn and pos >= 960 or settings.speed < 0:
+                if not fn and pos or settings.speed < 0:
                     if (fn or not stream.endswith(".pcm")) and settings.speed < 0:
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"

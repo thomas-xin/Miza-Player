@@ -77,10 +77,16 @@ modified = set()
 def setup_buttons():
     try:
         gears = pygame.image.load("misc/gears.bmp").convert_alpha()
+        img = Image.frombuffer("RGBA", gears.get_size(), pygame.image.tostring(gears, "RGBA"))
+        B, A = img.getchannel("B"), img.getchannel("A")
+        I = ImageChops.invert(B)
+        R = Image.new("L", I.size, 0)
+        inv = pygame.image.frombuffer(Image.merge("RGBA", (R, I, I, A)).tobytes(), I.size, "RGBA")
         def settings_toggle():
             sidebar.abspos ^= 1
         sidebar.buttons.append(cdict(
             sprite=gears,
+            invert=inv,
             click=settings_toggle,
         ))
         reset_menu(full=False)
@@ -360,6 +366,8 @@ def start_player(entry, pos=None, force=False):
         if audio.speed < 0:
             return skip()
         pos = 0
+    player.shuffleable = False
+    player.lastshuffle = pc()
     mixer.submit(stream + "\n" + str(pos) + " " + str(duration))
     if force:
         mixer.state(0)
@@ -382,13 +390,22 @@ def skip():
             pass
         elif control.loop == 1:
             e = queue.popleft()
-            sidebar.particles.append(e)
             if control.shuffle:
+                maxitems = int(screensize[1] - options.toolbar_height - 20 >> 5)
+                for i, entry in enumerate(queue):
+                    if i >= maxitems:
+                        break
+                    entry.pos = maxitems
                 queue[:] = queue.shuffle()
             queue.append(e)
         else:
             sidebar.particles.append(queue.popleft())
             if control.shuffle:
+                maxitems = int(screensize[1] - options.toolbar_height - 20 >> 5)
+                for i, entry in enumerate(queue):
+                    if i >= maxitems:
+                        break
+                    entry.pos = maxitems
                 queue[:] = queue.shuffle()
         if queue:
             return enqueue(queue[0])
@@ -407,11 +424,11 @@ def seek_rel(pos):
     player.last = 0
     player.amp = 0
     player.pop("osci", None)
-    if pos >= player.end:
+    if pos + player.pos >= player.end:
         if audio.speed > 0:
             return skip()
         pos = player.end
-    if pos <= 0:
+    if pos + player.pos <= 0:
         if audio.speed < 0:
             return skip()
         pos = 0
@@ -442,6 +459,13 @@ def play():
             print(mixer.stderr.read().decode("utf-8", "replace"))
         print_exc()
 
+def check_shuffle():
+    shuffleable = player.amp > 1 / 64
+    if control.shuffle == 2 and player.shuffleable and not shuffleable and pc() - player.lastshuffle > 60:
+        mixer.submit("~shuffle")
+        player.lastshuffle = pc()
+    player.shuffleable = shuffleable
+
 def pos():
     try:
         while True:
@@ -460,7 +484,7 @@ def pos():
             player.last = pc()
             s = s[1:]
             if s == "s":
-                skip()
+                submit(skip)
                 player.last = 0
                 continue
             if s[0] == "x":
@@ -470,9 +494,11 @@ def pos():
                 player.stats.velocity = spl[2]
                 player.stats.energy = spl[3]
                 player.amp = float(spl[4])
+                check_shuffle()
                 continue
             elif s[0] == "y":
                 player.amp = float(s[2:])
+                check_shuffle()
                 continue
             i, dur = map(float, s.split(" ", 1))
             if not progress.seeking:
@@ -492,6 +518,7 @@ def enqueue(entry, start=True):
     try:
         if len(queue) > 1:
             submit(prepare, queue[1])
+        flash_window()
         stream, duration = start_player(entry)
         progress.num = 0
         progress.alpha = 0
@@ -519,7 +546,10 @@ def update_menu():
     progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
     toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * 2) % tau
     toolbar.pause.speed *= 0.995 ** (duration * 480)
+    maxitems = int(screensize[1] - options.toolbar_height - 20 >> 5)
     for i, entry in enumerate(queue):
+        if i >= maxitems:
+            break
         entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
     if kspam[K_SPACE]:
         player.paused ^= True
@@ -542,7 +572,7 @@ def update_menu():
         if not mheld[0]:
             progress.seeking = False
             if queue and isfinite(e_dur(queue[0].duration)):
-                seek_abs(player.pos)
+                submit(seek_abs, player.pos)
     if sidebar.resizing:
         sidebar_width = min(512, max(144, screensize[0] - mpos2[0] + 2))
         if options.sidebar_width != sidebar_width:
@@ -552,17 +582,17 @@ def update_menu():
             modified.add(sidebar.rect)
     if queue and isfinite(e_dur(queue[0].duration)):
         if kspam[K_PAGEUP]:
-            seek_rel(300)
+            submit(seek_rel, 300)
         elif kspam[K_PAGEDOWN]:
-            seek_rel(-300)
+            submit(seek_rel, -300)
         elif kspam[K_UP]:
-            seek_rel(30)
+            submit(seek_rel, 30)
         elif kspam[K_DOWN]:
-            seek_rel(-30)
+            submit(seek_rel, -30)
         elif kspam[K_RIGHT]:
-            seek_rel(5)
+            submit(seek_rel, 5)
         elif kspam[K_LEFT]:
-            seek_rel(-5)
+            submit(seek_rel, -5)
     if in_rect(mpos, toolbar.rect[:3] + (5,)):
         if mclick[0]:
             toolbar.resizing = True
@@ -600,8 +630,9 @@ def update_menu():
         for button in toolbar.buttons:
             if "flash" in button:
                 button.flash = max(0, button.flash - duration * 64)
+    maxb = (options.sidebar_width - 12) // 44
     if mclick[0]:
-        for button in sidebar.buttons:
+        for button in sidebar.buttons[:maxb]:
             if in_rect(mpos, button.rect):
                 button.flash = 32
                 button.click()
@@ -782,11 +813,10 @@ def draw_menu():
                 pyperclip.copy("\n".join(copies))
             sidebar.particles.extend(queue[i] for i in pops)
             skipping = 0 in pops
-            if skipping:
-                pops.discard(0)
             queue.pops(pops)
             if skipping:
-                submit(skip)
+                mixer.clear()
+                submit(start)
             for i, entry in enumerate(queue):
                 if i >= maxitems:
                     break
@@ -912,8 +942,8 @@ def draw_menu():
                 if len(srange) > 2:
                     v = round_min(math.round(v / srange[2]) * srange[2])
                 else:
-                    rv = round_min(math.round(v * 64) / 64)
-                    if type(rv) is int:
+                    rv = round_min(math.round(v * 32) / 32)
+                    if type(rv) is int and rv not in srange:
                         v = rv
                 if hovered and not hovertext:
                     hovertext = str(round(v * 100, 2)) + "%"
@@ -966,18 +996,24 @@ def draw_menu():
                         filled=False,
                     )
         maxb = (sidebar_width - 12) // 44
-        for button in sidebar.buttons[:maxb]:
+        for i, button in enumerate(sidebar.buttons[:maxb]):
             if button.get("rect"):
                 lum = 223 if in_rect(mpos, button.rect) else 191
                 lum += button.get("flash", 0)
+                if not i:
+                    lum -= 32
+                    lum += button.get("flash", 0)
                 bevel_rectangle(
                     DISP,
                     (lum,) * 3,
                     button.rect,
                     4,
                 )
+                sprite = button.sprite
+                if not i and sidebar.abspos:
+                    sprite = button.invert
                 DISP.blit(
-                    button.sprite,
+                    sprite,
                     (button.rect[0] + 5, button.rect[1] + 5),
                     special_flags=BLEND_ALPHA_SDL2,
                 )
@@ -1115,7 +1151,7 @@ def draw_menu():
         lum = round(toolbar.pause.speed / toolbar.pause.maxspeed * toolbar.pause.outer)
         if player.paused:
             c = (toolbar.pause.outer, lum, lum)
-        elif is_active() and player.amp > 1 / 16:
+        elif is_active() and player.amp > 1 / 64:
             c = (lum, toolbar.pause.outer, lum)
         else:
             c = (toolbar.pause.outer, toolbar.pause.outer, lum)
@@ -1360,7 +1396,7 @@ try:
         if not tick & 15:
             if player.paused:
                 colour = 4
-            elif is_active() and player.amp > 1 / 16:
+            elif is_active() and player.amp > 1 / 64:
                 colour = 2
             else:
                 colour = 8

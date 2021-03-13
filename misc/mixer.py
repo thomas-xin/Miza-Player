@@ -4,7 +4,7 @@ import sys
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, pyaudio, numpy, math, base64, hashlib, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, concurrent.futures
+import os, sys, pyaudio, numpy, math, random, base64, hashlib, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, concurrent.futures
 from math import *
 np = numpy
 deque = collections.deque
@@ -235,13 +235,20 @@ def communicate():
     except:
         print_exc()
 
+fshuffling = None
+shuffling = None
+shufflepos = None
 def reader(f, proc, reverse=False, pos=None):
+    global shufflepos
     if pos is None:
         pos = f.tell()
     if reverse:
         pos -= 65536
     f.seek(pos)
     while True:
+        if shuffling and shufflepos:
+            f.seek(shufflepos)
+            shufflepos = None
         b = f.read(65536)
         if not b:
             break
@@ -428,13 +435,7 @@ def render():
                 lastpacket = packet
                 buffer = sample.astype(np.float64)
 
-                msk1 = buffer >= 0
-                msk2 = buffer < 0
-                b1 = buffer[msk1]
-                b2 = buffer[msk2]
-                h = np.mean(b1) if len(b1) else 0
-                l = np.mean(b2) if len(b2) else 0
-                amp = (h - l) / 2
+                amp = np.mean(np.abs(buffer))
                 p_amp = sqrt(amp / 32767)
 
                 if is_minimised():
@@ -461,9 +462,6 @@ def render():
                             amp2 = np.mean(np.abs(vel2[1::2][1:] - vel2[1::2][:-1]))
                             out.append(round((amp1 + amp2) / 262136 * 100, 3))
 
-                            # nrg = (amp1 + amp2)
-                            # adj = nrg / 32767 + vel / 65534 + amp / 49150.5
-                            # out.append(min(1, sqrt(adj)))
                             out = [min(i, 100) for i in out]
                             out.append(p_amp)
 
@@ -473,8 +471,11 @@ def render():
     except:
         print_exc()
 
+emptybuff = b"\x00" * (1600 * 2 * 2)
+emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
+
 def play(pos):
-    global file, fn, proc, drop, frame, packet, lastpacket, sample
+    global file, fn, proc, drop, frame, packet, lastpacket, sample, shuffling, fshuffling, shufflepos
     try:
         frame = pos * 30
         while True:
@@ -529,6 +530,20 @@ def play(pos):
                 lastpacket = packet
                 packet = b
                 sample = np.frombuffer(b, dtype=np.int16)
+                if shuffling or fshuffling:
+                    if f:
+                        m = sqrt(min(1, np.mean(np.abs(sample)) / 32767))
+                        if m > 1 / 64 or fshuffling:
+                            shufflepos = random.randint(0, fsize >> 1) << 1
+                            packet = b = emptybuff
+                            sample = emptysample
+                            pos = shufflepos / fsize * duration
+                            frame = pos * 30
+                            fshuffling = False
+                        else:
+                            shuffling = False
+                    else:
+                        shuffling = fshuffling = False
                 if settings.volume != 1:
                     s = sample * settings.volume
                     if abs(settings.volume) > 1:
@@ -564,6 +579,7 @@ def ensure_parent():
             proc.kill()
 
 
+ffmpeg_start = ("ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-err_detect", "ignore_err", "-vn")
 settings = cdict()
 osize = (152, 61)
 lastpacket = None
@@ -625,6 +641,9 @@ while not sys.stdin.closed and failed < 16:
                 if drop <= 180 * 30:
                     continue
                 pos = (frame + drop) / 30
+            elif command == "~shuffle":
+                fshuffling = True
+                continue
             else:
                 pos, duration = map(float, sys.stdin.readline().split(" ", 1))
                 stream = command
@@ -699,12 +718,12 @@ while not sys.stdin.closed and failed < 16:
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"
                         if not os.path.exists(stream):
-                            cmd = ["ffmpeg", "-nostdin", "-n", "-hide_banner", "-loglevel", "error", "-vn", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream]
+                            cmd = ffmpeg_start + ("-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
                             print(cmd)
                             resp = subprocess.run(cmd, stderr=subprocess.PIPE)
                     fn = None
                     f = open(stream, "rb")
-                cmd = ["ffmpeg", "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-vn"]
+                cmd = list(ffmpeg_start)
                 if not fn and stream.endswith(".pcm"):
                     cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
                 cmd.extend(("-i", "-" if f else stream))

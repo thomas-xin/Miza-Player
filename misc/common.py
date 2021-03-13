@@ -121,7 +121,7 @@ asettings = cdict(
     speed=(-1, 3),
     pitch=(-12, 12, 0.5),
     pan=(0, 4),
-    bassboost=(0, 4),
+    bassboost=(0, 7),
     reverb=(0, 3),
     compressor=(0, 6),
     chorus=(0, 5),
@@ -287,7 +287,6 @@ elif options.get("screenpos"):# and not options.get("maximised"):
 screenpos2 = get_window_rect()[:2]
 
 flash_window = lambda bInvert=True: ctypes.windll.user32.FlashWindow(hwnd, bInvert)
-# flash_window()
 
 spath = "misc/Shobjidl.dll"
 shobjidl_core = ctypes.cdll.LoadLibrary(spath)
@@ -350,7 +349,7 @@ def taskbar_progress_bar(ratio=1, colour=0):
 
 
 import PIL, easygui, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio
-from PIL import Image
+from PIL import Image, ImageChops
 from math import *
 np = numpy
 deque = collections.deque
@@ -1481,7 +1480,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
     def clear(self):
         self.size = 0
         if self.data is not None:
-            self.offs = len(self.data) >> 1
+            self.offs = len(self.data) // 3
         else:
             self.offs = 0
         return self
@@ -1519,7 +1518,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
                 self.appendright(self.popleft(force=True), force=True)
                 steps += 1
             return self
-        self.offs = min(len(self.data) // 3, len(self.data) - s)
+        self.offs = (len(self.data) - self.size) // 3
         self.view[:] = np.roll(self.view, steps)
         return self
 
@@ -1672,7 +1671,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
                     temp[x] = None
             temp = tuple(temp.keys())
         self.size = len(temp)
-        self.offs = min(len(self.data) // 3, len(self.data) - self.size)
+        self.offs = (len(self.data) - self.size) // 3
         self.view[:] = temp
         return self
 
@@ -1840,7 +1839,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
     # Fills list with value(s).
     @blocking
     def fill(self, value):
-        self.offs = len(self.data) // 3
+        self.offs = (len(self.data) - self.size) // 3
         self.view[:] = value
         return self
 
@@ -2018,7 +2017,7 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
         temp = np.delete(self.view, np.asarray(iterable, dtype=np.int32))
         self.size = len(temp)
         if self.data is not None:
-            self.offs = min(len(self.data) // 3, len(self.data) - self.size)
+            self.offs = (len(self.data) - self.size) // 3
             self.view[:] = temp
         else:
             self.reconstitute(temp, force=True)

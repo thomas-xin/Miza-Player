@@ -246,7 +246,7 @@ def reader(f, proc, reverse=False, pos=None):
         pos -= 65536
     f.seek(pos)
     while True:
-        if shuffling and shufflepos:
+        if (fshuffling or shuffling) and shufflepos:
             f.seek(shufflepos)
             shufflepos = None
         b = f.read(65536)

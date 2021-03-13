@@ -238,6 +238,8 @@ def communicate():
 def stdclose(p):
     p.stdin.write(emptybuff[:BSIZE])
     p.stdin.close()
+    time.sleep(1)
+    p.kill()
 
 shuffling = False
 transfer = False

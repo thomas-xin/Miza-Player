@@ -235,6 +235,10 @@ def communicate():
     except:
         print_exc()
 
+def stdclose(p):
+    p.stdin.write(emptybuff[:BSIZE])
+    p.stdin.close()
+
 shuffling = False
 transfer = False
 BSIZE = 1600
@@ -243,76 +247,80 @@ TSIZE = BSIZE * 3 >> 3
 def reader(f, reverse=False, pos=None):
     global proc, transfer
     shuffling = False
-    if pos is None:
-        pos = f.tell()
-    if reverse:
-        pos -= RSIZE
-    f.seek(pos)
-    opos = pos
-    while True:
-        lpos = pos
-        while shuffling:
-            for i in range(1024):
-                pos = random.randint(0, fsize >> 1) << 1
-                if abs(pos - lpos) > 65536:
-                    break
-            f.seek(pos)
-            pos += BSIZE
-            b = f.read(BSIZE)
-            a = np.frombuffer(b, dtype=np.int16)
-            u, c = np.unique(a, return_counts=True)
-            s = np.sort(c)
-            x = np.sum(s[-3:])
-            if x >= TSIZE:
-                while True:
-                    b = f.read(BSIZE)
-                    pos += BSIZE
-                    if not b:
-                        break
-                    a = np.frombuffer(b, dtype=np.int16)
-                    u, c = np.unique(a, return_counts=True)
-                    s = np.sort(c)
-                    x = np.sum(s[-3:])
-                    if not x >= TSIZE:
-                        break
-                globals()["pos"] = pos / fsize * duration
-                globals()["frame"] = globals()["pos"] * 30
-                print(f"Autoshuffle {pos}")
-                shuffling = False
-                p = proc
-                print(p.args)
-                proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                p.stdin.close()
-                opos = pos
-                transfer = True
-        b = f.read(RSIZE)
-        if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
-            a = np.frombuffer(b[:BSIZE], dtype=np.int16)
-            u, c = np.unique(a, return_counts=True)
-            s = np.sort(c)
-            x = np.sum(s[-3:])
-            if x >= TSIZE:
-                shuffling = True
-        if not b:
-            break
+    try:
+        if pos is None:
+            pos = f.tell()
         if reverse:
-            b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
             pos -= RSIZE
-            if pos <= 0:
-                proc.stdin.write(b)
-                size = -pos
-                if size:
-                    f.seek(0)
-                    b = f.read(size)
-                    b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
-                    proc.stdin.write(b)
+        f.seek(pos)
+        opos = pos
+        while True:
+            lpos = pos
+            while shuffling:
+                for i in range(1024):
+                    pos = random.randint(0, fsize >> 1) << 1
+                    if abs(pos - lpos) > 65536:
+                        break
+                f.seek(pos)
+                pos += BSIZE
+                b = f.read(BSIZE)
+                a = np.frombuffer(b, dtype=np.int16)
+                u, c = np.unique(a, return_counts=True)
+                s = np.sort(c)
+                x = np.sum(s[-3:])
+                if x >= TSIZE:
+                    while True:
+                        b = f.read(BSIZE)
+                        pos += BSIZE
+                        if not b:
+                            break
+                        a = np.frombuffer(b, dtype=np.int16)
+                        u, c = np.unique(a, return_counts=True)
+                        s = np.sort(c)
+                        x = np.sum(s[-3:])
+                        if not x >= TSIZE:
+                            break
+                    globals()["pos"] = pos / fsize * duration
+                    globals()["frame"] = globals()["pos"] * 30
+                    print(f"Autoshuffle {pos}")
+                    shuffling = False
+                    p = proc
+                    print(p.args)
+                    proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    submit(stdclose, p)
+                    opos = pos
+                    transfer = True
+            b = f.read(RSIZE)
+            if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
+                a = np.frombuffer(b[:BSIZE], dtype=np.int16)
+                u, c = np.unique(a, return_counts=True)
+                s = np.sort(c)
+                x = np.sum(s[-3:])
+                if x >= TSIZE:
+                    shuffling = True
+            if not b:
                 break
-            f.seek(pos)
-        else:
-            pos += RSIZE
-        proc.stdin.write(b)
-    proc.stdin.close()
-    f.close()
+            if reverse:
+                b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
+                pos -= RSIZE
+                if pos <= 0:
+                    proc.stdin.write(b)
+                    size = -pos
+                    if size:
+                        f.seek(0)
+                        b = f.read(size)
+                        b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
+                        proc.stdin.write(b)
+                    break
+                f.seek(pos)
+            else:
+                pos += RSIZE
+            proc.stdin.write(b)
+        proc.stdin.close()
+        f.close()
+    except:
+        print_exc()
+        raise
 
 def construct_options(full=True):
     stats = cdict(settings)
@@ -527,6 +535,7 @@ def play(pos):
         while True:
             if paused and drop <= 0:
                 paused.result()
+            p = proc
             if fn:
                 if not file:
                     try:
@@ -572,6 +581,11 @@ def play(pos):
                     packet = None
                     drop = 0
                     return
+            if p and p != proc and p.is_running():
+                try:
+                    p.kill()
+                except:
+                    pass
             if drop > 0:
                 drop -= 1
             else:

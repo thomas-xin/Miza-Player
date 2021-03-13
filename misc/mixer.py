@@ -200,7 +200,9 @@ def probe(stream):
     )
     print(command)
     resp = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return list(s.strip() for s in reversed(as_str(resp.stdout).splitlines()))
+    out = list(s.strip() for s in reversed(as_str(resp.stdout).splitlines()))
+    probe_cache[stream] = out
+    return out
 
 def duration_est():
     global duration
@@ -308,6 +310,8 @@ def reader(f, reverse=False, pos=None):
                         s = np.sort(c)
                         x = np.sum(s[-3:])
                         if not x >= TSIZE:
+                            pos = round(pos / 4) << 2
+                            f.seek(pos)
                             break
                     globals()["pos"] = pos / fsize * duration
                     globals()["frame"] = globals()["pos"] * 30

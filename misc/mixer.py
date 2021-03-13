@@ -315,7 +315,16 @@ def reader(f, reverse=False, pos=None):
                 f.seek(pos)
             else:
                 pos += RSIZE
-            proc.stdin.write(b)
+            try:
+                p = proc
+                proc.stdin.write(b)
+            except (OSError, BrokenPipeError):
+                if p.is_running():
+                    try:
+                        p.kill()
+                    except:
+                        pass
+                break
         proc.stdin.close()
         f.close()
     except:

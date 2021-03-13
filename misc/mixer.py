@@ -287,7 +287,7 @@ def reader(f, reverse=False, pos=None):
             lpos = pos
             while shuffling:
                 for i in range(1024):
-                    pos = random.randint(0, fsize >> 1) << 1
+                    pos = random.randint(0, fsize >> 2) << 2
                     if abs(pos - lpos) > 65536:
                         break
                 f.seek(pos)

@@ -355,7 +355,7 @@ def reader(f, reverse=False, pos=None):
             try:
                 p = proc
                 proc.stdin.write(b)
-            except (OSError, BrokenPipeError):
+            except (OSError, BrokenPipeError, ValueError):
                 if p.is_running():
                     try:
                         p.kill()

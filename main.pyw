@@ -115,6 +115,8 @@ def setup_buttons():
             control.shuffle = (control.shuffle + 1) % 3
             if control.shuffle == 2 and player.get("needs_shuffle"):
                 seek_abs(player.pos)
+            if control.shuffle in (0, 2):
+                mixer.submit(f"~setting shuffle {control.shuffle}")
         toolbar.buttons.append(cdict(
             image=shuffle,
             click=shuffle_1,
@@ -371,10 +373,9 @@ def start_player(entry, pos=None, force=False):
     if not pos:
         if control.shuffle == 2:
             pos = 0.001
+            player.needs_shuffle = False
         else:
             player.needs_shuffle = not is_url(stream)
-    player.shuffleable = False
-    player.lastshuffle = pc()
     mixer.submit(stream + "\n" + str(pos) + " " + str(duration))
     if force:
         mixer.state(0)
@@ -442,12 +443,8 @@ def seek_rel(pos):
     progress.num += pos
     progress.alpha = 255
     if audio.speed > 0 and pos > 0 and pos <= 180:
-        player.shuffleable = False
-        player.lastshuffle = pc()
         mixer.drop(pos)
     elif audio.speed < 0 and pos < 0 and pos >= -180:
-        player.shuffleable = False
-        player.lastshuffle = pc()
         mixer.drop(pos)
     else:
         seek_abs(max(0, player.pos + pos))
@@ -469,13 +466,6 @@ def play():
         if not mixer.is_running():
             print(mixer.stderr.read().decode("utf-8", "replace"))
         print_exc()
-
-def check_shuffle():
-    shuffleable = player.amp > 1 / 64
-    if control.shuffle == 2 and player.shuffleable and not shuffleable and pc() - player.lastshuffle > 60:
-        mixer.submit("~shuffle")
-        player.lastshuffle = pc()
-    player.shuffleable = shuffleable
 
 def pos():
     try:
@@ -505,11 +495,9 @@ def pos():
                 player.stats.velocity = spl[2]
                 player.stats.energy = spl[3]
                 player.amp = float(spl[4])
-                check_shuffle()
                 continue
             elif s[0] == "y":
                 player.amp = float(s[2:])
-                check_shuffle()
                 continue
             i, dur = map(float, s.split(" ", 1))
             if not progress.seeking:

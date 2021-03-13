@@ -235,27 +235,26 @@ def communicate():
     except:
         print_exc()
 
-blocked = None
 shuffling = False
 BSIZE = 1600
+RSIZE = BSIZE << 1
+TSIZE = BSIZE * 3 >> 3
 def reader(f, reverse=False, pos=None):
-    global shuffling, proc, blocked
+    global proc
+    shuffling = False
     if pos is None:
         pos = f.tell()
     if reverse:
-        pos -= BSIZE
+        pos -= RSIZE
     f.seek(pos)
+    opos = pos
     while True:
         lpos = pos
         while shuffling:
-            if not blocked:
-                blocked = concurrent.futures.Future()
             for i in range(1024):
                 pos = random.randint(0, fsize >> 1) << 1
                 if abs(pos - lpos) > 65536:
                     break
-            globals()["pos"] = pos / fsize * duration
-            globals()["frame"] = globals()["pos"] * 30
             f.seek(pos)
             pos += BSIZE
             b = f.read(BSIZE)
@@ -263,8 +262,7 @@ def reader(f, reverse=False, pos=None):
             u, c = np.unique(a, return_counts=True)
             s = np.sort(c)
             x = np.sum(s[-3:])
-            targ = BSIZE * 3 >> 3
-            if x >= targ:
+            if x >= TSIZE:
                 while True:
                     b = f.read(BSIZE)
                     pos += BSIZE
@@ -274,22 +272,29 @@ def reader(f, reverse=False, pos=None):
                     u, c = np.unique(a, return_counts=True)
                     s = np.sort(c)
                     x = np.sum(s[-3:])
-                    targ = BSIZE * 3 >> 3
-                    if not x >= targ:
+                    if not x >= TSIZE:
                         break
+                globals()["pos"] = pos / fsize * duration
+                globals()["frame"] = globals()["pos"] * 30
                 print(f"Autoshuffle {pos}")
                 shuffling = False
                 proc.stdin.close()
                 proc = psutil.Popen(proc.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                blocked.set_result(None)
-                blocked = None
-        b = f.read(BSIZE)
-        pos += BSIZE
+                opos = pos
+        b = f.read(RSIZE)
+        if settings.shuffle and (pos - opos) / fsize * duration >= 60:
+            a = np.frombuffer(b[:BSIZE], dtype=np.int16)
+            u, c = np.unique(a, return_counts=True)
+            s = np.sort(c)
+            x = np.sum(s[-3:])
+            if x >= TSIZE:
+                shuffling = True
+        pos += RSIZE
         if not b:
             break
         if reverse:
             b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
-            pos -= BSIZE
+            pos -= RSIZE
             if pos <= 0:
                 proc.stdin.write(b)
                 size = -pos
@@ -517,9 +522,6 @@ def play(pos):
         while True:
             if paused and drop <= 0:
                 paused.result()
-            if blocked:
-                blocked.result()
-                drop = 0
             if fn:
                 if not file:
                     try:
@@ -658,7 +660,7 @@ while not sys.stdin.closed and failed < 16:
             if command.startswith("~setting"):
                 setting, value = command[9:].split()
                 settings[setting] = float(value)
-                if setting == "volume" or not stream:
+                if setting in ("volume", "shuffle") or not stream:
                     continue
                 pos = frame / 30
             elif command.startswith("~drop"):
@@ -666,9 +668,6 @@ while not sys.stdin.closed and failed < 16:
                 if drop <= 180 * 30:
                     continue
                 pos = (frame + drop) / 30
-            elif command == "~shuffle":
-                shuffling = True
-                continue
             else:
                 pos, duration = map(float, sys.stdin.readline().split(" ", 1))
                 stream = command

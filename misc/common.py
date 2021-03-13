@@ -227,6 +227,7 @@ if hasmisc:
     s.write(("%" + str(hwnd) + "\n"))
     for k, v in audio.items():
         s.write(f"~setting {k} {v}\n")
+    s.write(f"~setting shuffle {control.shuffle}\n")
     s.seek(0)
     mixer.stdin.write(s.read().encode("utf-8"))
     mixer.stdin.flush()

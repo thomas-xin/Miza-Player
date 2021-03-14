@@ -361,7 +361,7 @@ def reader(f, reverse=False, pos=None):
                         p.kill()
                     except:
                         pass
-                if not proc.is_running():
+                if not proc or not proc.is_running():
                     break
         if proc and proc.is_running():
             submit(stdclose, proc)

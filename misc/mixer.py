@@ -272,7 +272,7 @@ def stdclose(p):
     try:
         p.stdin.write(emptybuff[:BSIZE])
         p.stdin.close()
-        time.sleep(1)
+        time.sleep(2)
     except:
         print_exc()
     print("Closing", p)
@@ -339,12 +339,12 @@ def reader(f, reverse=False, pos=None):
             except ValueError:
                 b = b""
             if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
-                if pos != 0:
+                if pos != 0 and b:
                     a = np.frombuffer(b, dtype=np.int16)
                     u, c = np.unique(a, return_counts=True)
                     s = np.sort(c)
                     x = np.sum(s[-3:])
-                if pos == 0 or x >= TSIZE:
+                if pos == 0 or x >= TSIZE << 1:
                     if pos != 0:
                         print(x, TSIZE)
                     shuffling = True

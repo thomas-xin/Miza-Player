@@ -332,17 +332,23 @@ def reader(f, reverse=False, pos=None):
                     opos = pos
                     transfer = True
             try:
+                if pos == 0 and settings.shuffle == 2:
+                    opos = -inf
+                    raise ValueError
                 b = f.read(RSIZE)
             except ValueError:
                 b = b""
             if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
-                a = np.frombuffer(b, dtype=np.int16)
-                u, c = np.unique(a, return_counts=True)
-                s = np.sort(c)
-                x = np.sum(s[-3:])
-                if x >= TSIZE:
-                    print(x, TSIZE)
+                if pos != 0:
+                    a = np.frombuffer(b, dtype=np.int16)
+                    u, c = np.unique(a, return_counts=True)
+                    s = np.sort(c)
+                    x = np.sum(s[-3:])
+                if pos == 0 or x >= TSIZE:
+                    if pos != 0:
+                        print(x, TSIZE)
                     shuffling = True
+                continue
             if not b:
                 break
             if reverse:

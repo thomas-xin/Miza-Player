@@ -374,7 +374,6 @@ def start_player(entry, pos=None, force=False):
         pos = 0
     if not pos:
         if control.shuffle == 2:
-            # pos = 0.001
             player.needs_shuffle = False
         else:
             player.needs_shuffle = not is_url(stream)

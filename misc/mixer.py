@@ -311,6 +311,9 @@ def reader(f, reverse=False, pos=None, shuffling=False):
                         b = f.read(BSIZE)
                         pos += BSIZE
                         if not b:
+                            if type(proc) is cdict:
+                                pos = 0
+                                f.seek(0)
                             break
                         a = np.frombuffer(b, dtype=np.int16)
                         u, c = np.unique(a, return_counts=True)
@@ -318,16 +321,21 @@ def reader(f, reverse=False, pos=None, shuffling=False):
                         x = np.sum(s[-3:])
                         if not x >= TSIZE:
                             pos = round(pos / 4) << 2
+                            if type(proc) is cdict and pos >= fsize - 65536:
+                                pos = 0
                             f.seek(pos)
                             break
                     globals()["pos"] = pos / fsize * duration
                     globals()["frame"] = globals()["pos"] * 30
-                    print(f"Autoshuffle {pos}")
+                    print(f"Autoshuffle {pos}/{fsize}")
                     shuffling = False
                     p = proc
                     print(p.args)
                     proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                    proc.kill2 = p.kill2
+                    try:
+                        proc.kill2 = p.kill2
+                    except AttributeError:
+                        pass
                     submit(stdclose, p)
                     opos = pos
                     transfer = True
@@ -824,7 +832,7 @@ while not sys.stdin.closed and failed < 16:
                 proc.readable = lambda: f.get_read_available() >= req >> 2
             else:
                 f = None
-                if not fn and (pos >= 960 or settings.shuffle == 2 and duration > 120) or settings.speed < 0:
+                if not fn and (pos >= 960 or settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
                     if (fn or not stream.endswith(".pcm")) and settings.speed < 0 or cdc != "mp3":
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"
@@ -844,7 +852,7 @@ while not sys.stdin.closed and failed < 16:
                     i = cmd.index("-i")
                     ss = "-ss"
                     cmd = cmd[:i] + [ss, str(pos)] + cmd[i:]
-                if not fn and f and pos == 0 and settings.shuffle == 2:
+                if not fn and f and pos == 0 and settings.shuffle == 2 and duration >= 960:
                     proc = cdict(
                         args=cmd,
                         is_running=lambda: True,

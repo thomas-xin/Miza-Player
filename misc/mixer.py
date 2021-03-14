@@ -270,7 +270,7 @@ def communicate():
 
 def stdclose(p):
     try:
-        p.stdin.write(emptybuff[:BSIZE])
+        p.stdin.write(emptymem[:BSIZE])
         p.stdin.close()
         time.sleep(2)
     except:
@@ -283,9 +283,8 @@ transfer = False
 BSIZE = 1600
 RSIZE = BSIZE << 1
 TSIZE = BSIZE >> 2
-def reader(f, reverse=False, pos=None):
+def reader(f, reverse=False, pos=None, shuffling=False):
     global proc, transfer
-    shuffling = False
     try:
         if pos is None:
             pos = f.tell()
@@ -328,27 +327,25 @@ def reader(f, reverse=False, pos=None):
                     p = proc
                     print(p.args)
                     proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                    proc.kill2 = p.kill2
                     submit(stdclose, p)
                     opos = pos
                     transfer = True
             try:
-                if pos == 0 and settings.shuffle == 2:
-                    opos = -inf
-                    raise ValueError
                 b = f.read(RSIZE)
             except ValueError:
                 b = b""
             if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
-                if pos != 0 and b:
+                if b:
                     a = np.frombuffer(b, dtype=np.int16)
                     u, c = np.unique(a, return_counts=True)
                     s = np.sort(c)
                     x = np.sum(s[-3:])
-                if pos == 0 or x >= TSIZE << 1:
-                    if pos != 0:
-                        print(x, TSIZE)
-                    shuffling = True
-                continue
+                    if x >= TSIZE << 1:
+                        if pos != 0:
+                            print(x, TSIZE << 1)
+                        shuffling = True
+                        continue
             if not b:
                 break
             if reverse:
@@ -587,6 +584,7 @@ def render():
         print_exc()
 
 emptybuff = b"\x00" * (1600 * 2 * 2)
+emptymem = memoryview(emptybuff)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
@@ -653,7 +651,7 @@ def play(pos):
             else:
                 r = b
                 if len(b) < req:
-                    b += emptybuff[:req - len(b)]
+                    b += emptymem[:req - len(b)]
                 lastpacket = packet
                 packet = b
                 sample = np.frombuffer(b, dtype=np.int16)
@@ -846,8 +844,26 @@ while not sys.stdin.closed and failed < 16:
                     i = cmd.index("-i")
                     ss = "-ss"
                     cmd = cmd[:i] + [ss, str(pos)] + cmd[i:]
-                print(cmd)
-                proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE)
+                if not fn and f and pos == 0 and settings.shuffle == 2:
+                    proc = cdict(
+                        args=cmd,
+                        is_running=lambda: True,
+                        stdin=cdict(
+                            write=lambda b: None,
+                            close=lambda: None,
+                        ),
+                        stdout=cdict(
+                            read=lambda n: emptymem[:n],
+                        ),
+                        stderr=cdict(
+                            read=lambda n: emptymem[:n],
+                        ),
+                        kill=lambda: None,
+                        kill2=f.close,
+                    )
+                else:
+                    print(cmd)
+                    proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE)
                 if fn and not pos:
                     proc.kill = lambda: None
                 elif f:
@@ -858,8 +874,7 @@ while not sys.stdin.closed and failed < 16:
                             fp = fsize - 2
                     else:
                         fp = 0 if settings.speed >= 0 else fsize - 2
-                    proc.kill2 = lambda: (proc.kill(), f.close())
-                    submit(reader, f, settings.speed < 0, fp)
+                    submit(reader, f, settings.speed < 0, fp, shuffling=pos == 0 and settings.shuffle == 2)
             fut = submit(play, pos)
         else:
             failed += 1

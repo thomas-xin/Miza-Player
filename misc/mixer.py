@@ -204,6 +204,13 @@ def probe(stream):
     probe_cache[stream] = out
     return out
 
+def kill(proc):
+    try:
+        return proc.kill2()
+    except:
+        pass
+    proc.kill()
+
 def duration_est():
     global duration
     last_fn = ""
@@ -618,7 +625,7 @@ def play(pos):
                     if proc:
                         if proc.is_running():
                             try:
-                                proc.kill()
+                                kill(proc)
                             except:
                                 pass
                         point("~s")
@@ -663,7 +670,7 @@ def play(pos):
             frame += settings.speed * 2 ** (settings.nightcore / 12)
     except:
         try:
-            proc.kill()
+            kill(proc)
         except:
             pass
         print_exc()
@@ -845,8 +852,7 @@ while not sys.stdin.closed and failed < 16:
                             fp = fsize - 2
                     else:
                         fp = 0 if settings.speed >= 0 else fsize - 2
-                    kill = proc.kill
-                    proc.kill = lambda: (kill(), f.close())
+                    proc.kill2 = lambda: (proc.kill(), f.close())
                     submit(reader, f, settings.speed < 0, fp)
             fut = submit(play, pos)
         else:

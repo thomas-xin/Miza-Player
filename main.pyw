@@ -170,11 +170,13 @@ def _enqueue_local(*files):
                     if "/" not in fn:
                         fn = "/" + fn
                     options.path, name = fn.rsplit("/", 1)
+                    dur, cdc = get_duration_2(fn)
                     entry = cdict(
                         url=fn,
                         stream=fn,
                         name=name.rsplit(".", 1)[0],
-                        duration=get_duration(fn),
+                        duration=dur,
+                        cdc=cdc,
                     )
                 queue.append(entry)
             sidebar.loading = False
@@ -351,12 +353,12 @@ def start_player(entry, pos=None, force=False):
     stream = prepare(entry, force=True)
     if not stream:
         player.fut = None
-        return
-    duration = entry.duration or get_duration(stream)
+        return None, inf
+    duration = entry.duration or get_duration_2(stream)[0]
     entry.duration = duration
     if duration is None:
         player.fut = None
-        return
+        return None, inf
     if pos is None:
         if audio.speed >= 0:
             pos = 0
@@ -376,7 +378,7 @@ def start_player(entry, pos=None, force=False):
             player.needs_shuffle = False
         else:
             player.needs_shuffle = not is_url(stream)
-    mixer.submit(stream + "\n" + str(pos) + " " + str(duration))
+    mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")))
     if force:
         mixer.state(0)
     player.pos = pos

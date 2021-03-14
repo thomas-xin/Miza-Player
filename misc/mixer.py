@@ -275,6 +275,7 @@ def stdclose(p):
         time.sleep(1)
     except:
         print_exc()
+    print("Closing", p)
     p.kill()
 
 shuffling = False
@@ -692,6 +693,7 @@ lastpacket = None
 packet = None
 out = [-1, b""]
 prev = list(out)
+cdc = "auto"
 duration = inf
 stream = ""
 fut = None
@@ -748,7 +750,8 @@ while not sys.stdin.closed and failed < 16:
                     continue
                 pos = (frame + drop) / 30
             else:
-                pos, duration = map(float, sys.stdin.readline().split(" ", 1))
+                pos, duration, cdc = sys.stdin.readline().rstrip().split(" ", 2)
+                pos, duration = map(float, (pos, duration))
                 stream = command
             shuffling = False
             if aout.done():
@@ -818,7 +821,7 @@ while not sys.stdin.closed and failed < 16:
             else:
                 f = None
                 if not fn and (pos >= 960 or settings.shuffle == 2 and duration > 120) or settings.speed < 0:
-                    if (fn or not stream.endswith(".pcm")) and settings.speed < 0 or probe(stream)[1] != "mp3":
+                    if (fn or not stream.endswith(".pcm")) and settings.speed < 0 or cdc != "mp3":
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"
                         if not os.path.exists(stream):
@@ -830,9 +833,6 @@ while not sys.stdin.closed and failed < 16:
                 cmd = list(ffmpeg_start)
                 if not fn and stream.endswith(".pcm"):
                     cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
-                # else:
-                #     fmt, cdc = probe(stream)
-                #     cmd.extend(("-f", fmt, "-c", cdc))
                 cmd.extend(("-i", "-" if f else stream))
                 cmd.extend(ext)
                 cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))

@@ -2037,13 +2037,15 @@ azero = lambda size: alist(repeat(0, size))
 
 
 # Runs ffprobe on a file or url, returning the duration if possible.
-def _get_duration(filename, _timeout=12):
+def _get_duration_2(filename, _timeout=12):
     command = (
         "ffprobe",
         "-v",
         "error",
         "-select_streams",
         "a:0",
+        "-show_entries",
+        "stream=codec_name,",
         "-show_entries",
         "format=duration,bit_rate",
         "-of",
@@ -2055,45 +2057,51 @@ def _get_duration(filename, _timeout=12):
         proc = psutil.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
         fut = submit(proc.wait, timeout=_timeout)
         res = fut.result(timeout=_timeout)
-        resp = proc.stdout.read().split()
+        resp = proc.stdout.read().splitlines()
     except:
         with suppress():
             proc.kill()
         print_exc()
     try:
-        dur = float(resp[0])
+        cdc = as_str(resp[0].rstrip())
+    except (IndexError, ValueError):
+        cdc = "auto"
+    try:
+        dur = float(resp[1])
     except (IndexError, ValueError):
         dur = None
     bps = None
-    if len(resp) > 1:
+    if len(resp) > 2:
         with suppress(ValueError):
-            bps = float(resp[1])
-    return dur, bps
+            bps = float(resp[2])
+    return dur, bps, cdc
 
-def get_duration(filename):
+def get_duration_2(filename):
     if not is_url(filename) and filename.endswith(".pcm"):
-        return os.path.getsize(filename) / (48000 * 2 * 2)
+        return os.path.getsize(filename) / (48000 * 2 * 2), "pcm"
     if filename:
-        dur, bps = _get_duration(filename, 4)
+        dur, bps, cdc = _get_duration_2(filename, 4)
         if not dur and is_url(filename):
             with requests.get(filename, headers=Request.header(), stream=True) as resp:
                 head = fcdict(resp.headers)
                 if "Content-Length" not in head:
-                    return _get_duration(filename, 20)[0]
+                    dur, bps, cdc = _get_duration_2(filename, 20)
+                    return dur, cdc
                 if bps:
-                    return (int(head["Content-Length"]) << 3) / bps
+                    return (int(head["Content-Length"]) << 3) / bps, cdc
                 ctype = [e.strip() for e in head.get("Content-Type", "").split(";") if "/" in e][0]
                 if ctype.split("/", 1)[0] not in ("audio", "video"):
-                    return nan
+                    return nan, cdc
                 if ctype == "audio/midi":
-                    return nan
+                    return nan, cdc
                 it = resp.iter_content(65536)
                 data = next(it)
             ident = str(magic.from_buffer(data))
             try:
                 bitrate = regexp("[0-9]+\\s.bps").findall(ident)[0].casefold()
             except IndexError:
-                return _get_duration(filename, 16)[0]
+                dur, bps, cdc = _get_duration_2(filename, 16)
+                return dur, cdc
             bps, key = bitrate.split(None, 1)
             bps = float(bps)
             if key.startswith("k"):
@@ -2102,8 +2110,8 @@ def get_duration(filename):
                 bps *= 1e6
             elif key.startswith("g"):
                 bps *= 1e9
-            return (int(head["Content-Length"]) << 3) / bps
-        return dur
+            return (int(head["Content-Length"]) << 3) / bps, cdc
+        return dur, cdc
 
 def time_disp(s, rounded=True):
     if not isfinite(s):

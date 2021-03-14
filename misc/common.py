@@ -986,6 +986,10 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
                     pass
 
     def __getstate__(self):
+        if self.size <= 0:
+            self.clear()
+            self.data = None
+            self.offs = 0
         return self.data, self.offs, self.size
 
     def __setstate__(self, s):
@@ -2027,9 +2031,8 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
     pops = delitems
 
 hlist = alist
-
-arange = lambda a, b=None, c=None: alist(range(a, b, c))
-
+arange = lambda *args, **kwargs: alist(range(*args, **kwargs))
+afull = lambda size, n=0: alist(repeat(n, size))
 azero = lambda size: alist(repeat(0, size))
 
 

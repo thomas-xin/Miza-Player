@@ -1424,7 +1424,6 @@ try:
                 kspam = KeyList(x or y >= 240 for x, y in zip(kclick, kheld))
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
                 try:
-                    # print(mpos, mpos3, mpos2, foc, common.rel, mheld)
                     update_menu()
                 except:
                     print_exc()
@@ -1495,6 +1494,7 @@ except Exception as ex:
     pygame.quit()
     if type(ex) is not StopIteration:
         print_exc()
+    print("Exiting...")
     options.screensize = screensize2
     if options != orig_options:
         with open(config, "w", encoding="utf-8") as f:

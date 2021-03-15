@@ -778,7 +778,11 @@ while not sys.stdin.closed and failed < 16:
                     file.close()
                     remove(file)
             if fut:
+                if paused:
+                    paused.set_result(None)
                 fut.result()
+                if paused:
+                    paused = concurrent.futures.Future()
             ext = construct_options()
             if is_url(stream):
                 fn = "cache/~" + shash(stream) + ".pcm"

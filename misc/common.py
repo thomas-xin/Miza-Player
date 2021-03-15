@@ -358,6 +358,8 @@ suppress = contextlib.suppress
 d2r = pi / 180
 utc = time.time
 
+afut = submit(pyaudio.PyAudio)
+
 pt = None
 def pc():
     global pt
@@ -368,7 +370,6 @@ def pc():
     return t - pt
 
 math.round = round
-afut = submit(pyaudio.PyAudio)
 
 def round(x, y=None):
     try:

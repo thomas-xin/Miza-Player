@@ -270,9 +270,14 @@ def communicate():
 
 def stdclose(p):
     try:
-        p.stdin.write(emptymem[:BSIZE])
-        p.stdin.close()
+        if not p.stdin.closed:
+            fut = submit(p.stdin.write, emptymem[:BSIZE])
+            fut.result(timeout=1)
+            fut = submit(p.stdin.close)
+            fut.result(timeout=1)
         time.sleep(2)
+    except concurrent.futures.TimeoutError:
+        pass
     except:
         print_exc()
     print("Closing", p)
@@ -659,7 +664,7 @@ def play(pos):
             else:
                 r = b
                 if len(b) < req:
-                    b += emptymem[:req - len(b)]
+                    b += bytes(emptymem[:req - len(b)])
                 lastpacket = packet
                 packet = b
                 sample = np.frombuffer(b, dtype=np.int16)
@@ -863,6 +868,7 @@ while not sys.stdin.closed and failed < 16:
                         stdin=cdict(
                             write=lambda b: None,
                             close=lambda: None,
+                            closed=None,
                         ),
                         stdout=cdict(
                             read=lambda n: emptymem[:n],

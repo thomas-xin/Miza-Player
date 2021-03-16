@@ -260,7 +260,7 @@ def remove(file):
 def communicate():
     try:
         while True:
-            if out[0] != prev[0] and not is_minimised():
+            if out[0] != prev[0]:
                 prev[:] = out
                 # sample(out[1])
                 point(f"~{out[0]} {duration}")

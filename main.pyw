@@ -113,10 +113,10 @@ def setup_buttons():
         shuffle = pygame.image.load("misc/shuffle.bmp").convert_alpha()
         def shuffle_1():
             control.shuffle = (control.shuffle + 1) % 3
-            if control.shuffle == 2 and player.get("needs_shuffle"):
-                seek_abs(player.pos)
             if control.shuffle in (0, 2):
                 mixer.submit(f"~setting shuffle {control.shuffle}")
+            if control.shuffle == 2 and player.get("needs_shuffle"):
+                seek_abs(player.pos)
         toolbar.buttons.append(cdict(
             image=shuffle,
             click=shuffle_1,

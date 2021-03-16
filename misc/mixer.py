@@ -307,6 +307,8 @@ def reader(f, reverse=False, pos=None, shuffling=False):
                 f.seek(pos)
                 pos += BSIZE
                 b = f.read(BSIZE)
+                if len(b) & 1:
+                    b = memoryview(b)[:-1]
                 a = np.frombuffer(b, dtype=np.int16)
                 u, c = np.unique(a, return_counts=True)
                 s = np.sort(c)
@@ -320,6 +322,8 @@ def reader(f, reverse=False, pos=None, shuffling=False):
                                 pos = 0
                                 f.seek(0)
                             break
+                        if len(b) & 1:
+                            b = memoryview(b)[:-1]
                         a = np.frombuffer(b, dtype=np.int16)
                         u, c = np.unique(a, return_counts=True)
                         s = np.sort(c)
@@ -350,6 +354,8 @@ def reader(f, reverse=False, pos=None, shuffling=False):
                 b = b""
             if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
                 if b:
+                    if len(b) & 1:
+                        b = memoryview(b)[:-1]
                     a = np.frombuffer(b, dtype=np.int16)
                     u, c = np.unique(a, return_counts=True)
                     s = np.sort(c)
@@ -362,6 +368,8 @@ def reader(f, reverse=False, pos=None, shuffling=False):
             if not b:
                 break
             if reverse:
+                if len(b) & 1:
+                    b = memoryview(b)[:-1]
                 b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
                 pos -= RSIZE
                 if pos <= 0:
@@ -370,6 +378,8 @@ def reader(f, reverse=False, pos=None, shuffling=False):
                     if size:
                         f.seek(0)
                         b = f.read(size)
+                        if len(b) & 1:
+                            b = memoryview(b)[:-1]
                         b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
                         proc.stdin.write(b)
                     break
@@ -667,6 +677,8 @@ def play(pos):
                     b += bytes(emptymem[:req - len(b)])
                 lastpacket = packet
                 packet = b
+                if len(b) & 1:
+                    b = memoryview(b)[:-1]
                 sample = np.frombuffer(b, dtype=np.int16)
                 if settings.volume != 1:
                     s = sample * settings.volume

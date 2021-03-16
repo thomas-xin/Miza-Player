@@ -675,7 +675,7 @@ def play(pos):
                     sample = s.astype(np.int16)
                     b = sample.tobytes()
                 if channel2:
-                    channel2.write(b)
+                    channel2.write(bytes(b))
                 else:
                     buffer = sample.reshape((1600, 2))
                     sound = pygame.sndarray.make_sound(buffer)

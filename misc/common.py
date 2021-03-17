@@ -70,7 +70,7 @@ def as_str(s):
 hasmisc = os.path.exists("misc")
 if hasmisc:
     submit(import_audio_downloader)
-    mixer = psutil.Popen(("py", "misc/mixer.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    mixer = psutil.Popen(("py", "-3.8", "misc/mixer.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 else:
     mixer = cdict()
 
@@ -87,7 +87,7 @@ def drop(i):
     mixer.stdin.flush()
 
 laststart = set()
-def mixer_submit(s, force):
+def mixer_submit(s, force, debug):
     if not force:
         ts = pc()
         if laststart:
@@ -103,13 +103,15 @@ def mixer_submit(s, force):
     s = as_str(s)
     if not s.endswith("\n"):
         s += "\n"
+    if debug:
+        sys.stdout.write(s)
     mixer.stdin.write(s.encode("utf-8"))
     mixer.stdin.flush()
 
 mixer.state = lambda i=0: state(i)
 mixer.clear = lambda: clear()
 mixer.drop = lambda i=0: drop(i)
-mixer.submit = lambda s, force=False: submit(mixer_submit, s, force)
+mixer.submit = lambda s, force=False, debug=False: submit(mixer_submit, s, force, debug)
 
 write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame

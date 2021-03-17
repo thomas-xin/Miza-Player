@@ -114,7 +114,7 @@ def setup_buttons():
         def shuffle_1():
             control.shuffle = (control.shuffle + 1) % 3
             if control.shuffle in (0, 2):
-                mixer.submit(f"~setting shuffle {control.shuffle}")
+                mixer.submit(f"~setting shuffle {control.shuffle}", force=True)
             if control.shuffle == 2 and player.get("needs_shuffle"):
                 seek_abs(player.pos)
         toolbar.buttons.append(cdict(
@@ -271,15 +271,20 @@ if len(sys.argv) > 1:
 
 sidebar.abspos = 0
 osize = None
+ssize = None
 def reset_menu(full=True, reset=False):
-    global osize
+    global osize, ssize
     if full:
         globals().update(options)
         common.__dict__.update(options)
         if reset:
             DISP.fill(0)
             modified.add(tuple(screensize))
-    player.rect = (0, 0, screensize[0] - sidebar_width, screensize[1] - toolbar_height)
+    ssize2 = (screensize[0] - sidebar_width, screensize[1] - toolbar_height)
+    if ssize != ssize2:
+        ssize = ssize2
+        mixer.submit(f"~ssize {' '.join(map(str, ssize))}", True)
+    player.rect = (0,) * 2 + ssize
     sidebar.colour = None
     sidebar.updated = False
     sidebar.rect = (screensize[0] - sidebar_width, 0, sidebar_width, screensize[1] - toolbar_height)
@@ -303,14 +308,14 @@ def reset_menu(full=True, reset=False):
     progress.width = min(16, toolbar_height // 6)
     progress.rect = (progress.pos[0] - progress.width // 2 - 3, progress.pos[1] - progress.width // 2 - 3, progress.length + 6, progress.width + 6)
     progress.seeking = False
-    bsize = min(40, toolbar_height // 3 - 4)
+    bsize = min(40, toolbar_height // 3)
     for i, button in enumerate(toolbar.buttons):
-        button.pos = (toolbar_height + 8 + (bsize + 4) * i, screensize[1] - toolbar_height // 3 - 4)
+        button.pos = (toolbar_height + 8 + (bsize + 4) * i, screensize[1] - toolbar_height // 3 - 8)
         rect = button.pos + (bsize,) * 2
         sprite = button.get("sprite", button.image)
-        ssize = (bsize - 6,) * 2
-        if sprite.get_size() != ssize:
-            sprite = pygame.transform.smoothscale(button.image, ssize)
+        isize = (bsize - 6,) * 2
+        if sprite.get_size() != isize:
+            sprite = pygame.transform.smoothscale(button.image, isize)
         button.sprite = sprite
         if i < 2:
             button.on = button.sprite.convert_alpha()
@@ -323,7 +328,7 @@ def reset_menu(full=True, reset=False):
     osize2 = (progress.box, toolbar_height * 2 // 3 - 3)
     if osize != osize2:
         osize = osize2
-        mixer.submit(f"~osize {' '.join(map(str, osize))}")
+        mixer.submit(f"~osize {' '.join(map(str, osize))}", True)
 
 
 submit(setup_buttons)
@@ -346,7 +351,7 @@ def prepare(entry, force=False):
             entry.update(data)
     return entry.stream.strip()
 
-def start_player(entry, pos=None, force=False):
+def start_player(entry, pos=None):
     player.last = 0
     player.amp = 0
     player.pop("osci", None)
@@ -372,14 +377,11 @@ def start_player(entry, pos=None, force=False):
         if audio.speed < 0:
             return skip()
         pos = 0
-    if not pos:
-        if control.shuffle == 2:
-            player.needs_shuffle = False
-        else:
-            player.needs_shuffle = not is_url(stream)
+    if control.shuffle == 2:
+        player.needs_shuffle = False
+    else:
+        player.needs_shuffle = not is_url(stream)
     mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")))
-    if force:
-        mixer.state(0)
     player.pos = pos
     player.index = player.pos * 30
     player.end = duration
@@ -425,7 +427,7 @@ def skip():
     return None, inf
 
 def seek_abs(pos):
-    start_player(queue[0], pos, force=True) if queue else (None, inf)
+    start_player(queue[0], pos) if queue else (None, inf)
 
 def seek_rel(pos):
     if not pos:
@@ -455,18 +457,32 @@ def play():
         while True:
             b = as_str(mixer.stderr.readline().rstrip())
             if "~" not in b:
-                print(b)
+                if b:
+                    print(b)
                 continue
-            osize = list(map(int, b.split("~")))
-            req = int(np.prod(osize) * 3)
-            b = mixer.stderr.read(req)
-            while len(b) < req:
-                if not mixer.is_running():
-                    raise StopIteration
-                b += mixer.stderr.read(req - len(b))
-            osci = pygame.image.frombuffer(b, osize, "RGB")
-            osci.set_colorkey((0,) * 3)
-            player.osci = osci
+            if b[0] == "o":
+                b = b[1:]
+                osize = list(map(int, b.split("~")))
+                req = int(np.prod(osize) * 3)
+                b = mixer.stderr.read(req)
+                while len(b) < req:
+                    if not mixer.is_running():
+                        raise StopIteration
+                    b += mixer.stderr.read(req - len(b))
+                osci = pygame.image.frombuffer(b, osize, "RGB")
+                osci.set_colorkey((0,) * 3)
+                player.osci = osci
+            else:
+                b = b[1:]
+                ssize = list(map(int, b.split("~")))
+                req = int(np.prod(ssize) * 3)
+                b = mixer.stderr.read(req)
+                while len(b) < req:
+                    if not mixer.is_running():
+                        raise StopIteration
+                    b += mixer.stderr.read(req - len(b))
+                spec = pygame.image.frombuffer(b, ssize, "RGB")
+                player.spec = spec
     except:
         if not mixer.is_running():
             print(mixer.stderr.read().decode("utf-8", "replace"))
@@ -1439,7 +1455,17 @@ try:
                 player.last = 0
                 progress.num = 0
                 progress.alpha = 0
-            if not tick + 12 & 15 or tuple(screensize) in modified:
+            if not tick + 2 & 7:
+                if player.get("spec"):
+                    rect = player.rect
+                    surf = player.spec
+                    if tuple(rect[2:]) != surf.get_size():
+                        player.spec = surf = pygame.transform.scale(surf, rect[2:])
+                    DISP.blit(
+                        surf,
+                        rect[:2],
+                    )
+            if not tick + 6 & 7 or tuple(screensize) in modified:
                 for i, k in enumerate(("peak", "amplitude", "velocity", "energy")):
                     v = player.stats.get(k, 0) if is_active() else 0
                     message_display(
@@ -1458,7 +1484,7 @@ try:
                     pygame.display.flip()
                 else:
                     pygame.display.update(tuple(modified))
-                if not tick + 12 & 15 and (tuple(screensize) in modified or player.rect in modified):
+                if not tick + 6 & 7 and (tuple(screensize) in modified or player.rect in modified):
                     DISP.fill(
                         (0,) * 3,
                         player.rect,
@@ -1514,7 +1540,7 @@ except Exception as ex:
             pass
     futs = set()
     for fn in os.listdir("cache"):
-        if fn[0] in "~\x7f" and fn.endswith(".pcm"):
+        if fn[0] == "\x7f" and fn.endswith(".pcm"):
             futs.add(submit(os.remove, "cache/" + fn))
     for fut in futs:
         try:

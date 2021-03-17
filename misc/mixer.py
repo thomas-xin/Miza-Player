@@ -6,6 +6,7 @@ import pygame
 
 import os, sys, pyaudio, numpy, math, random, base64, hashlib, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, concurrent.futures
 from math import *
+from PIL import Image, ImageDraw, ImageFont
 np = numpy
 deque = collections.deque
 suppress = contextlib.suppress
@@ -13,6 +14,7 @@ hwnd = int(sys.stdin.readline()[1:])
 is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 
 pt = None
+pt2 = None
 def pc():
     global pt
     t = time.perf_counter()
@@ -29,7 +31,7 @@ def as_str(s):
 is_url = lambda url: "://" in url and url.split("://", 1)[0].removesuffix("s") in ("http", "hxxp", "ftp", "fxp")
 shash = lambda s: as_str(base64.b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
 
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=12)
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 submit = exc.submit
 
 afut = submit(pyaudio.PyAudio)
@@ -257,17 +259,6 @@ def remove(file):
     if "\x7f" in fn:
         removing.add(fn)
 
-def communicate():
-    try:
-        while True:
-            if out[0] != prev[0]:
-                prev[:] = out
-                # sample(out[1])
-                point(f"~{out[0]} {duration}")
-            time.sleep(0.001)
-    except:
-        print_exc()
-
 def stdclose(p):
     try:
         if not p.stdin.closed:
@@ -386,9 +377,15 @@ def reader(f, reverse=False, pos=None, shuffling=False):
                 f.seek(pos)
             else:
                 pos += RSIZE
+            p = proc
+            fut = submit(proc.stdin.write, b)
             try:
-                p = proc
-                proc.stdin.write(b)
+                try:
+                    fut.result(timeout=12)
+                except concurrent.futures.TimeoutError:
+                    if not paused:
+                        raise ValueError
+                    paused.result()
             except (OSError, BrokenPipeError, ValueError):
                 if p.is_running():
                     try:
@@ -397,12 +394,14 @@ def reader(f, reverse=False, pos=None, shuffling=False):
                         pass
                 if not proc or not proc.is_running():
                     break
+    except:
+        print_exc()
+    try:
         if proc and proc.is_running():
             submit(stdclose, proc)
         f.close()
     except:
-        print_exc()
-        raise
+        pass
 
 def construct_options(full=True):
     stats = cdict(settings)
@@ -524,7 +523,9 @@ def construct_options(full=True):
         args.append(",".join(options))
     return args
 
+stderr_lock = None
 def oscilloscope(buffer):
+    global stderr_lock
     try:
         if packet:
             arr = buffer[::2] + buffer[1::2]
@@ -535,11 +536,10 @@ def oscilloscope(buffer):
                 y = round(i * r + r)
                 osci[i] = np.mean(arr[x:y])
             osci = np.clip(osci * (1 / 65536), -1, 1, out=osci)
-            time.sleep(0.001)
             if packet:
                 size = osize
                 OSCI = pygame.Surface(size)
-                time.sleep(0.001)
+                time.sleep(0.01)
                 if packet:
                     point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
                     for i in range(1, len(osci)):
@@ -555,20 +555,224 @@ def oscilloscope(buffer):
                             point,
                             prev,
                         )
-                    time.sleep(0.001)
+                    time.sleep(0.01)
                     if packet:
                         b = pygame.image.tostring(OSCI, "RGB")
-                        bsend("~".join(map(str, size)).encode("utf-8") + b"\n" + b)
+                        while stderr_lock:
+                            stderr_lock.result()
+                        stderr_lock = concurrent.futures.Future()
+                        bsend(b"o" + "~".join(map(str, size)).encode("utf-8") + b"\n")
+                        bsend(b)
+                        stderr_lock.set_result(None)
+                        stderr_lock = None
     except:
         print_exc()
 
+higher_bound = "F#10"
+highest_note = "C~D~EF~G~A~B".index(higher_bound[0].upper()) - 9 + ("#" in higher_bound)
+while higher_bound[0] not in "0123456789-":
+    higher_bound = higher_bound[1:]
+    if not higher_bound:
+        raise ValueError("Octave not found.")
+highest_note += int(higher_bound) * 12 + 1
+
+lower_bound = "A0"
+lowest_note = "C~D~EF~G~A~B".index(lower_bound[0].upper()) - 9 + ("#" in lower_bound)
+while lower_bound[0] not in "0123456789-":
+    lower_bound = lower_bound[1:]
+    if not lower_bound:
+        raise ValueError("Octave not found.")
+lowest_note += int(lower_bound) * 12 - 1
+
+maxfreq = 27.5 * 2 ** ((highest_note + 0.5) / 12)
+minfreq = 27.5 * 2 ** ((lowest_note - 0.5) / 12)
+barcount = int(highest_note - lowest_note) + 1 + 2
+freqmul = 1 / (1 - log(minfreq, maxfreq))
+
+barheight = 720
+res_scale = 65536
+dfts = (res_scale >> 1) + 1
+fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
+fftrans = np.zeros(dfts, dtype=int)
+
+for i, x in enumerate(fff):
+    if x <= 0:
+        continue
+    else:
+        x = round((1 - log(x, maxfreq)) * freqmul * (barcount - 1))
+    if x > barcount - 1 or x < 0:
+        continue
+    fftrans[i] = x
+
+spec_empty = np.zeros(res_scale, dtype=np.float32)
+spec_buffer = spec_empty
+
+PARTICLES = set()
+P_ORDER = 0
+TICK = 0
+
+class Particle(collections.abc.Hashable):
+
+    __slots__ = ("hash", "order")
+
+    def __init__(self):
+        global P_ORDER
+        self.order = P_ORDER
+        P_ORDER += 1
+        self.hash = random.randint(-2147483648, 2147483647)
+
+    __hash__ = lambda self: self.hash
+    update = lambda self: None
+    render = lambda self, surf: None
+
+class Bar(Particle):
+
+    __slots__ = ("x", "colour", "height", "height2", "surf", "line")
+
+    font = ImageFont.truetype("misc/Pacifico.ttf", 12)
+
+    def __init__(self, x):
+        super().__init__()
+        dark = False
+        self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / barcount, 1, 1))
+        note = highest_note - x + 9
+        if note % 12 in (1, 3, 6, 8, 10):
+            dark = True
+        name = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")[note % 12]
+        octave = note // 12
+        self.line = name + str(octave)
+        self.x = x
+        if dark:
+            self.colour = tuple(i + 1 >> 1 for i in self.colour)
+            self.surf = Image.new("RGB", (1, 3), self.colour)
+        else:
+            self.surf = Image.new("RGB", (1, 2), self.colour)
+        self.surf.putpixel((0, 0), 0)
+        self.height = 0
+        self.height2 = 0
+
+    def update(self):
+        if self.height:
+            self.height = self.height * 0.93 - 1
+            if self.height < 0:
+                self.height = 0
+        if self.height2:
+            self.height2 = self.height2 * 0.97 - 1
+            if self.height2 < 0:
+                self.height2 = 0
+
+    def ensure(self, value):
+        if self.height < value:
+            self.height = value
+        if self.height2 < value:
+            self.height2 = value
+
+    def render(self, sfx, **void):
+        size = min(2 * barheight, round(self.height))
+        if size:
+            dark = False
+            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc() / 2 + self.x / barcount) % 1, 1, 1))
+            note = highest_note - self.x + 9
+            if note % 12 in (1, 3, 6, 8, 10):
+                dark = True
+            if dark:
+                self.colour = tuple(i + 1 >> 1 for i in self.colour)
+                self.surf = Image.new("RGB", (1, 3), self.colour)
+            else:
+                self.surf = Image.new("RGB", (1, 2), self.colour)
+            self.surf.putpixel((0, 0), 0)
+            # sx = round(self.x / barcount * ssize2[0])
+            # width = round((self.x + 1) / barcount * ssize2[0]) - sx
+            surf = self.surf.resize((1, size), resample=Image.BILINEAR)
+            sfx.paste(surf, (barcount - 2 - self.x, barheight - size))
+
+    def post_render(self, sfx, scale, **void):
+        size = round(self.height2)
+        if size > 8:
+            ix = barcount - 1 - self.x - 1
+            sx = round(ix / barcount * ssize2[0])
+            width = round((ix + 1) / barcount * ssize2[0]) - sx
+            x = sx + (width >> 1) - 8
+            try:
+                width = DRAW.textlength(self.line, self.font)
+            except (TypeError, AttributeError):
+                width = 8 * len(self.line)
+            pos = max(64, ssize2[1] - size - width)
+            factor = round(255 * scale)
+            col = sum(factor << (i << 3) for i in range(3))
+            DRAW.text((x, pos), self.line, col, self.font)
+
+bars = [Bar(i - 1) for i in range(barcount)]
+
+def spectrogram_render():
+    global stderr_lock, ssize2, spectrobytes
+    try:
+        ssize2 = ssize
+        sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
+        time.sleep(0.01)
+        globals()["DRAW"] = ImageDraw.Draw(sfx)
+        for bar in bars:
+            bar.render(sfx=sfx)
+
+        sfx = sfx.resize(ssize2, resample=Image.NEAREST)
+        globals()["DRAW"] = ImageDraw.Draw(sfx)
+        time.sleep(0.01)
+        highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:32]
+        high = highbars[0]
+        for bar in reversed(highbars):
+            bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
+        time.sleep(0.01)
+        spectrobytes = sfx.tobytes()
+        # elif "spectrobytes" not in globals():
+        #     spectrobytes = b"\x00" * (np.prod(ssize2) * 3)
+        
+        write = False
+        for bar in bars:
+            if bar.height2:
+                write = True
+            bar.update()
+
+        if write:
+            while stderr_lock:
+                stderr_lock.result()
+            stderr_lock = concurrent.futures.Future()
+            bsend(b"s" + "~".join(map(str, ssize2)).encode("utf-8") + b"\n")
+            bsend(spectrobytes)
+            stderr_lock.set_result(None)
+            stderr_lock = None
+    except:
+        print_exc()
+
+def spectrogram(buffer):
+    global spec_buffer
+    try:
+        if packet:
+            buffer = sample.astype(np.float32)
+            spec_buffer = np.concatenate((spec_buffer, buffer))
+            dft = np.fft.rfft(spec_buffer[:res_scale])
+            spec_buffer = spec_buffer[len(buffer):]
+            np.multiply(spec_buffer, 0.95, out=spec_buffer)
+            arr = np.zeros(barcount, dtype=np.complex64)
+            np.add.at(arr, fftrans, dft)
+            arr[0] = 0
+            amp = np.abs(arr, dtype=np.float32)
+            for i, pwr in enumerate(amp):
+                bars[i].ensure(pwr / dfts / 8)
+    except:
+        print_exc()
+
+packet_advanced = None
+emptyamp = np.zeros(barcount, dtype=np.float32)
+osci_fut = None
+spec_fut = None
+spec2_fut = None
 def render():
-    global lastpacket
+    global lastpacket, osci_fut, spec_fut, spec2_fut, packet_advanced, sbuffer
     try:
         while True:
             if lastpacket != packet:
                 lastpacket = packet
-                buffer = sample.astype(np.float64)
+                buffer = sbuffer
 
                 amp = np.mean(np.abs(buffer))
                 p_amp = sqrt(amp / 32767)
@@ -576,13 +780,12 @@ def render():
                 if is_minimised():
                     point(f"~y {p_amp}")
                 else:
-                    submit(oscilloscope, buffer)
+                    if osize[0] and osize[1] and (not osci_fut or osci_fut.done()):
+                        osci_fut = submit(oscilloscope, buffer)
                     out = []
                     out.append(round(max(np.max(buffer), -np.min(buffer)) / 32767 * 100, 3))
-
                     out.append(round(amp / 32767 * 100, 2))
 
-                    time.sleep(0.001)
                     if packet:
                         vel1 = buffer[::2][1:] - buffer[::2][:-1]
                         vel2 = buffer[1::2][1:] - buffer[1::2][:-1]
@@ -591,7 +794,6 @@ def render():
                         vel = (amp1 + amp2)
                         out.append(round(vel / 131068 * 100, 3))
 
-                        time.sleep(0.001)
                         if packet:
                             amp1 = np.mean(np.abs(vel1[::2][1:] - vel1[::2][:-1]))
                             amp2 = np.mean(np.abs(vel2[1::2][1:] - vel2[1::2][:-1]))
@@ -602,7 +804,14 @@ def render():
 
                             if packet:
                                 point("~x " + " ".join(map(str, out)))
-            time.sleep(0.001)
+
+                    if ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
+                        spec2_fut = submit(spectrogram_render)
+            elif packet_advanced:
+                if ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
+                    spec2_fut = submit(spectrogram_render)
+            packet_advanced = False
+            time.sleep(0.01)
     except:
         print_exc()
 
@@ -611,7 +820,7 @@ emptymem = memoryview(emptybuff)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
-    global file, fn, proc, drop, frame, packet, lastpacket, sample, frame, transfer
+    global file, fn, proc, drop, frame, packet, lastpacket, sample, transfer, packet_advanced, point_fut, spec_fut, sbuffer
     skipzeros = False
     try:
         frame = pos * 30
@@ -628,27 +837,27 @@ def play(pos):
                     except (OSError, FileNotFoundError, PermissionError):
                         if proc and not proc.is_running():
                             raise
-                        time.sleep(0.001)
+                        time.sleep(0.01)
                         continue
                 try:
                     b = file.read(req)
                 except:
                     b = b""
             else:
-                b = b""
                 while not getattr(proc, "readable", lambda: True)():
-                    time.sleep(0.001)
+                    time.sleep(0.01)
                 try:
-                    b = proc.stdout.read(req)
+                    fut = submit(proc.stdout.read, req)
+                    b = fut.result(timeout=4)
                 except:
-                    pass
+                    b = b""
             if not b:
                 if transfer and proc and proc.is_running():
                     transfer = False
-                    b = proc.stdout.read(req)
+                    fut = submit(proc.stdout.read, req)
+                    b = fut.result(timeout=4)
                     drop = 0
                 else:
-                    out[:] = frame, b"\x00" * 4
                     print(f"{proc} {fn}")
                     if proc:
                         if proc.is_running():
@@ -677,26 +886,49 @@ def play(pos):
                     b += bytes(emptymem[:req - len(b)])
                 lastpacket = packet
                 packet = b
+                packet_advanced = True
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
-                sample = np.frombuffer(b, dtype=np.int16)
+                smp = np.frombuffer(b, dtype=np.int16)
                 if settings.volume != 1:
-                    s = sample * settings.volume
+                    s = smp * settings.volume
                     if abs(settings.volume) > 1:
                         s = np.clip(s, -32767, 32767)
                     sample = s.astype(np.int16)
                     b = sample.tobytes()
-                if channel2:
-                    channel2.write(bytes(b))
                 else:
+                    sample = smp
+                sbuffer = sample.astype(np.float32)
+                if channel2:
+                    b = bytes(b)
+                    fut = submit(channel2.write, b)
+                    try:
+                        fut.result(timeout=0.12)
+                    except:
+                        print("Pyaudio timed out.")
+                        globals()["aout"] = submit(pya_init)
+                        globals()["channel2"] = None
+                if not channel2:
                     buffer = sample.reshape((1600, 2))
                     sound = pygame.sndarray.make_sound(buffer)
                     channel = pygame.mixer.Channel(0)
-                    while channel.get_queue():
-                        time.sleep(0.001)
-                out[:] = frame, r
+                    for i in range(120):
+                        if not channel.get_queue():
+                            break
+                        time.sleep(0.01)
+                    if channel.get_queue():
+                        print("Pygame timed out.")
+                        channel.stop()
+                        if aout.done():
+                            globals()["channel2"] = aout.result()
+                if not point_fut or point_fut.done():
+                    point_fut = submit(point, f"~{frame} {duration}")
                 if not channel2:
                     channel.queue(sound)
+                if ssize[0] and ssize[1] and not is_minimised():
+                    if spec_fut:
+                        spec_fut.result()
+                    spec_fut = submit(spectrogram, sbuffer)
             frame += settings.speed * 2 ** (settings.nightcore / 12)
     except:
         try:
@@ -717,15 +949,16 @@ def ensure_parent():
 
 ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-err_detect", "ignore_err", "-vn")
 settings = cdict()
-osize = (152, 61)
+osize = (0, 0)
+ssize = (0, 0)
 lastpacket = None
 packet = None
-out = [-1, b""]
-prev = list(out)
+sample = None
 cdc = "auto"
 duration = inf
 stream = ""
 fut = None
+point_fut = None
 proc = None
 fn = None
 file = None
@@ -734,14 +967,13 @@ req = 1600 * 2 * 2
 frame = 0
 drop = 0
 failed = 0
-submit(communicate)
 submit(render)
 submit(remover)
 submit(duration_est)
 submit(ensure_parent)
 while not sys.stdin.closed and failed < 16:
     try:
-        command = sys.stdin.readline().rstrip()
+        command = sys.stdin.readline().rstrip().rstrip("\x00")
         if command:
             failed = 0
             if command == "~clear":
@@ -763,9 +995,19 @@ while not sys.stdin.closed and failed < 16:
                 elif paused:
                     paused.set_result(None)
                     paused = None
+                packet_advanced = paused
+                if paused:
+                    pt2 = time.perf_counter() - pt
+                else:
+                    if pt2:
+                        pt = time.perf_counter() - pt2
+                    pt2 = None
                 continue
             if command.startswith("~osize"):
                 osize = tuple(map(int, command[7:].split()))
+                continue
+            if command.startswith("~ssize"):
+                ssize = tuple(map(int, command[7:].split()))
                 continue
             if command.startswith("~setting"):
                 setting, value = command[9:].split()
@@ -783,7 +1025,7 @@ while not sys.stdin.closed and failed < 16:
                 pos, duration = map(float, (pos, duration))
                 stream = command
             shuffling = False
-            if aout.done():
+            if not settings.get("low") or aout.done():
                 channel2 = aout.result()
             if proc:
                 temp, proc = proc, None
@@ -797,7 +1039,7 @@ while not sys.stdin.closed and failed < 16:
             if fut:
                 if paused:
                     paused.set_result(None)
-                fut.result()
+                fut.result(timeout=4)
                 if paused:
                     paused = concurrent.futures.Future()
             ext = construct_options()
@@ -905,9 +1147,12 @@ while not sys.stdin.closed and failed < 16:
                     else:
                         fp = 0 if settings.speed >= 0 else fsize - 2
                     submit(reader, f, settings.speed < 0, fp, shuffling=pos == 0 and settings.shuffle == 2)
+            if point_fut and not point_fut.done():
+                point_fut.result()
+            point(f"~{pos * 30} {duration}")
             fut = submit(play, pos)
         else:
             failed += 1
     except:
         print_exc()
-    time.sleep(0.001)
+    time.sleep(0.01)

@@ -671,7 +671,7 @@ class Bar(Particle):
         size = min(2 * barheight, round(self.height))
         if size:
             dark = False
-            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc() / 2 + self.x / barcount) % 1, 1, 1))
+            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, 1, 1))
             note = highest_note - self.x + 9
             if note % 12 in (1, 3, 6, 8, 10):
                 dark = True

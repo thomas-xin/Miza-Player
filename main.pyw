@@ -28,7 +28,7 @@ ftypes[0].append("All supported audio files")
         # subprocess.run(("runas", "/user:Administrator", "temp.bat"), stderr=subprocess.PIPE)
 
 with open("assoc.bat", "w", encoding="utf-8") as f:
-    f.write(f"cd {os.path.abspath('')}\nstart /MIN py -3.{sys.version_info[1]} {sys.argv[0]} %*")
+    f.write(f"cd {os.path.abspath('')}\nstart /MIN py -3.{pyv} {sys.argv[0]} %*")
 if not os.path.exists("cache"):
     os.mkdir("cache")
 

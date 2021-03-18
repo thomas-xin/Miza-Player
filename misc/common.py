@@ -68,8 +68,9 @@ def as_str(s):
 
 
 hasmisc = os.path.exists("misc")
+argp = ["py"]
+pyv = sys.version_info[1]
 if hasmisc:
-    argp = ["py"]
     if sys.version_info[1] in range(5, 9):
         argp = ["py", f"-3.{sys.version_info[1]}"]
         from install_pillow_simd import *
@@ -85,7 +86,8 @@ if hasmisc:
                     print(out)
                 print(f"pillow-simd versioning successful for Python 3.{v}")
                 argp = ["py", f"-3.{v}"]
-                if sys.version_info[1] != int(argp[-1].rsplit(".", 1)[-1]):
+                pyv = int(argp[-1].rsplit(".", 1)[-1])
+                if sys.version_info[1] != pyv:
                     from install_pillow_simd import *
                 break
 

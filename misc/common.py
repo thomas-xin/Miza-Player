@@ -1,4 +1,4 @@
-import os, sys, json, traceback, subprocess, psutil, copy, concurrent.futures
+import os, sys, json, traceback, subprocess, copy, concurrent.futures
 
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 
@@ -69,10 +69,10 @@ def as_str(s):
 
 hasmisc = os.path.exists("misc")
 if hasmisc:
-    submit(import_audio_downloader)
     argp = ["py"]
     if sys.version_info[1] in range(5, 9):
         argp = ["py", f"-3.{sys.version_info[1]}"]
+        from install_pillow_simd import *
     else:
         for v in range(8, 4, -1):
             print(f"Attempting to find/install pillow-simd for Python 3.{v}...")
@@ -86,9 +86,13 @@ if hasmisc:
                 print(f"pillow-simd versioning successful for Python 3.{v}")
                 argp = ["py", f"-3.{v}"]
                 if sys.version_info[1] != int(argp[-1].rsplit(".", 1)[-1]):
-                    subprocess.run(argp + sys.argv)
-                    sys.exit()
+                    from install_pillow_simd import *
                 break
+
+import psutil
+
+if hasmisc:
+    submit(import_audio_downloader)
     mixer = psutil.Popen(argp + ["misc/mixer.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 else:
     mixer = cdict()
@@ -189,9 +193,15 @@ globals().update(options)
 if os.name != "nt":
     raise NotImplementedError("This program is currently implemented to use Windows API only.")
 
-import ctypes, ctypes.wintypes, io
+import ctypes, struct, io
 appid = "Miza Player (" + str(os.getpid()) + ")"
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
+
+psize = struct.calcsize("P")
+if psize == 8:
+    win = "win_amd64"
+else:
+    win = "win32"
 
 class POINT(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
@@ -314,12 +324,20 @@ screenpos2 = get_window_rect()[:2]
 
 flash_window = lambda bInvert=True: ctypes.windll.user32.FlashWindow(hwnd, bInvert)
 
-spath = "misc/Shobjidl.dll"
-shobjidl_core = ctypes.cdll.LoadLibrary(spath)
+if win == "win32":
+    spath = "misc/Shobjidl-32.dll"
+else:
+    spath = "misc/Shobjidl.dll"
+try:
+    shobjidl_core = ctypes.cdll.LoadLibrary(spath)
+except OSError:
+    print_exc()
 # shobjidl_core.SetWallpaper(0, os.path.abspath("misc/icon.png"))
 
 proglast = (0, 0)
 def taskbar_progress_bar(ratio=1, colour=0):
+    if not shobjidl_core:
+        return
     global proglast
     if ratio <= 0 and not colour & 1 or not colour:
         ratio = colour = 0

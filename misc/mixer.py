@@ -281,12 +281,17 @@ RSIZE = BSIZE << 1
 TSIZE = BSIZE >> 2
 def reader(f, pos=None, reverse=False, shuffling=False):
     global proc, transfer
+    print(f, pos, reverse, shuffling)
     try:
+        if f.closed:
+            raise StopIteration
         if pos is None:
             pos = f.tell()
         if reverse:
             pos -= RSIZE
-        f.seek(pos)
+        if pos:
+            f.seek(pos)
+        shuffling = True
         opos = pos
         while True:
             lpos = pos
@@ -382,6 +387,7 @@ def reader(f, pos=None, reverse=False, shuffling=False):
                 fut = submit(proc.stdin.write, b)
                 try:
                     fut.result(timeout=12)
+                    proc.stdin.flush()
                 except concurrent.futures.TimeoutError:
                     if not paused:
                         raise ValueError
@@ -394,6 +400,8 @@ def reader(f, pos=None, reverse=False, shuffling=False):
                         pass
                 if not proc or not proc.is_running():
                     break
+    except StopIteration:
+        pass
     except:
         print_exc()
     try:
@@ -681,8 +689,6 @@ class Bar(Particle):
             else:
                 self.surf = Image.new("RGB", (1, 2), self.colour)
             self.surf.putpixel((0, 0), 0)
-            # sx = round(self.x / barcount * ssize2[0])
-            # width = round((self.x + 1) / barcount * ssize2[0]) - sx
             surf = self.surf.resize((1, size), resample=Image.BILINEAR)
             sfx.paste(surf, (barcount - 2 - self.x, barheight - size))
 
@@ -723,8 +729,6 @@ def spectrogram_render():
             bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
         time.sleep(0.01)
         spectrobytes = sfx.tobytes()
-        # elif "spectrobytes" not in globals():
-        #     spectrobytes = b"\x00" * (np.prod(ssize2) * 3)
         
         write = False
         for bar in bars:
@@ -774,7 +778,11 @@ def render():
                 lastpacket = packet
                 buffer = sbuffer
 
-                amp = np.mean(np.abs(buffer))
+                ampm1 = buffer > 0
+                ampm2 = buffer < 0
+                amp1 = sum(buffer[ampm1])
+                amp2 = -sum(buffer[ampm2])
+                amp = (amp1 + amp2) / len(buffer)
                 p_amp = sqrt(amp / 32767)
 
                 if is_minimised():
@@ -912,7 +920,7 @@ def play(pos):
                     buffer = sample.reshape((1600, 2))
                     sound = pygame.sndarray.make_sound(buffer)
                     channel = pygame.mixer.Channel(0)
-                    for i in range(120):
+                    for i in range(12):
                         if not channel.get_queue():
                             break
                         time.sleep(0.01)
@@ -947,7 +955,7 @@ def ensure_parent():
             proc.kill()
 
 
-ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-err_detect", "ignore_err", "-vn")
+ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+fastseek+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "-vn")
 settings = cdict()
 osize = (0, 0)
 ssize = (0, 0)
@@ -1107,10 +1115,10 @@ while not sys.stdin.closed and failed < 16:
                     cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", "-"))
                     print(cmd)
                     proc = psutil.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                    reading = submit(reader, f, 0)
+                    reading = submit(reader, f, pos=0)
             else:
                 f = None
-                if not fn and (pos >= 960 or settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
+                if not fn and (settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
                     if (fn or not stream.endswith(".pcm")) and (settings.speed < 0 or cdc != "mp3"):
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"
@@ -1121,8 +1129,11 @@ while not sys.stdin.closed and failed < 16:
                     fn = None
                     f = open(stream, "rb")
                 cmd = list(ffmpeg_start)
-                if not fn and stream.endswith(".pcm"):
-                    cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
+                if not fn:
+                    if stream.endswith(".pcm"):
+                        cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
+                    elif cdc == "mp3":
+                        cmd.extend(("-c:a", "mp3"))
                 cmd.extend(("-i", "-" if f else stream))
                 cmd.extend(ext)
                 cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
@@ -1161,7 +1172,7 @@ while not sys.stdin.closed and failed < 16:
                             fp = fsize - 2
                     else:
                         fp = 0 if settings.speed >= 0 else fsize - 2
-                    reading = submit(reader, f, settings.speed < 0, fp, shuffling=pos == 0 and settings.shuffle == 2)
+                    reading = submit(reader, f, pos=fp, reverse=settings.speed < 0, shuffling=pos == 0 and settings.shuffle == 2)
             if point_fut and not point_fut.done():
                 point_fut.result()
             point(f"~{pos * 30} {duration}")

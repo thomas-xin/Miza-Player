@@ -612,9 +612,6 @@ for i, x in enumerate(fff):
         continue
     fftrans[i] = x
 
-spec_empty = np.zeros(res_scale, dtype=np.float32)
-spec_buffer = spec_empty
-
 PARTICLES = set()
 P_ORDER = 0
 TICK = 0
@@ -659,13 +656,13 @@ class Bar(Particle):
         self.height = 0
         self.height2 = 0
 
-    def update(self):
+    def update(self, dur=1):
         if self.height:
-            self.height = self.height * 0.93 - 1
+            self.height = self.height * 0.25 ** dur - 1
             if self.height < 0:
                 self.height = 0
         if self.height2:
-            self.height2 = self.height2 * 0.97 - 1
+            self.height2 = self.height2 * 0.5 ** dur - 1
             if self.height2 < 0:
                 self.height2 = 0
 
@@ -709,10 +706,17 @@ class Bar(Particle):
             DRAW.text((x, pos), self.line, col, self.font)
 
 bars = [Bar(i - 1) for i in range(barcount)]
+spec_update_fut = None
+lastspec = 0
+lastspec2 = 0
 
 def spectrogram_render():
-    global stderr_lock, ssize2, spectrobytes
+    global stderr_lock, ssize2, spectrobytes, lastspec2, spec_update_fut
     try:
+        t = pc()
+        dur = max(0.001, min(0.125, t - lastspec2))
+        lastspec2 = t
+
         ssize2 = ssize
         sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
         time.sleep(0.01)
@@ -723,7 +727,7 @@ def spectrogram_render():
         sfx = sfx.resize(ssize2, resample=Image.NEAREST)
         globals()["DRAW"] = ImageDraw.Draw(sfx)
         time.sleep(0.01)
-        highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:32]
+        highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:24]
         high = highbars[0]
         for bar in reversed(highbars):
             bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
@@ -734,7 +738,7 @@ def spectrogram_render():
         for bar in bars:
             if bar.height2:
                 write = True
-            bar.update()
+            bar.update(dur=dur)
 
         if write:
             while stderr_lock:
@@ -744,24 +748,42 @@ def spectrogram_render():
             bsend(spectrobytes)
             lock, stderr_lock = stderr_lock, None
             lock.set_result(None)
+        if packet_advanced and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
+            spec_update_fut = submit(spectrogram_render)
     except:
         print_exc()
 
+def spectrogram_update():
+    global lastspec, spec_update_fut, spec2_fut
+    try:
+        if packet_advanced and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
+            spec_update_fut = submit(spectrogram_render)
+        t = pc()
+        dur = max(0.001, min(0.125, t - lastspec))
+        lastspec = t
+        dft = np.fft.rfft(spec_buffer)
+        np.multiply(spec_buffer, 0.25 ** dur, out=spec_buffer)
+        arr = np.zeros(barcount, dtype=np.complex64)
+        np.add.at(arr, fftrans, dft)
+        arr[0] = 0
+        amp = np.abs(arr, dtype=np.float32)
+        for i, pwr in enumerate(amp):
+            bars[i].ensure(pwr / dfts / 8)
+        if packet_advanced and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
+            spec2_fut = submit(spectrogram_update)
+    except:
+        print_exc()
+
+spec_empty = np.zeros(res_scale, dtype=np.float32)
+spec_buffer = spec_empty
 def spectrogram(buffer):
-    global spec_buffer
+    global spec_buffer, spec2_fut
     try:
         if packet:
             buffer = sample.astype(np.float32)
-            spec_buffer = np.concatenate((spec_buffer, buffer))
-            dft = np.fft.rfft(spec_buffer[:res_scale])
-            spec_buffer = spec_buffer[len(buffer):]
-            np.multiply(spec_buffer, 0.95, out=spec_buffer)
-            arr = np.zeros(barcount, dtype=np.complex64)
-            np.add.at(arr, fftrans, dft)
-            arr[0] = 0
-            amp = np.abs(arr, dtype=np.float32)
-            for i, pwr in enumerate(amp):
-                bars[i].ensure(pwr / dfts / 8)
+            spec_buffer = np.concatenate((spec_buffer[-res_scale + len(buffer):], buffer))
+            if packet_advanced and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
+                spec2_fut = submit(spectrogram_update)
     except:
         print_exc()
 
@@ -814,10 +836,10 @@ def render():
                                 point("~x " + " ".join(map(str, out)))
 
                     if ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
-                        spec2_fut = submit(spectrogram_render)
+                        spec2_fut = submit(spectrogram_update)
             elif packet_advanced:
                 if ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
-                    spec2_fut = submit(spectrogram_render)
+                    spec2_fut = submit(spectrogram_update)
             packet_advanced = False
             time.sleep(0.01)
     except:

@@ -711,7 +711,7 @@ lastspec = 0
 lastspec2 = 0
 
 def spectrogram_render():
-    global stderr_lock, ssize2, spectrobytes, lastspec2, spec_update_fut
+    global stderr_lock, ssize2, spectrobytes, lastspec2, spec_update_fut, packet_advanced2
     try:
         t = pc()
         dur = max(0.001, min(0.125, t - lastspec2))
@@ -748,13 +748,14 @@ def spectrogram_render():
             bsend(spectrobytes)
             lock, stderr_lock = stderr_lock, None
             lock.set_result(None)
-        if packet_advanced and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
+        if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
             spec_update_fut = submit(spectrogram_render)
+            packet_advanced2 = False
     except:
         print_exc()
 
 def spectrogram_update():
-    global lastspec, spec_update_fut, spec2_fut
+    global lastspec, spec_update_fut, spec2_fut, packet_advanced3
     try:
         if packet_advanced and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
             spec_update_fut = submit(spectrogram_render)
@@ -769,25 +770,29 @@ def spectrogram_update():
         amp = np.abs(arr, dtype=np.float32)
         for i, pwr in enumerate(amp):
             bars[i].ensure(pwr / dfts / 8)
-        if packet_advanced and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
+        if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
             spec2_fut = submit(spectrogram_update)
+            packet_advanced3 = False
     except:
         print_exc()
 
 spec_empty = np.zeros(res_scale, dtype=np.float32)
 spec_buffer = spec_empty
 def spectrogram(buffer):
-    global spec_buffer, spec2_fut
+    global spec_buffer, spec2_fut, packet_advanced3
     try:
         if packet:
             buffer = sample.astype(np.float32)
             spec_buffer = np.concatenate((spec_buffer[-res_scale + len(buffer):], buffer))
-            if packet_advanced and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
+            if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
                 spec2_fut = submit(spectrogram_update)
+                packet_advanced3 = None
     except:
         print_exc()
 
 packet_advanced = None
+packet_advanced2 = None
+packet_advanced3 = None
 emptyamp = np.zeros(barcount, dtype=np.float32)
 osci_fut = None
 spec_fut = None
@@ -850,7 +855,7 @@ emptymem = memoryview(emptybuff)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
-    global file, fn, proc, drop, frame, packet, lastpacket, sample, transfer, packet_advanced, point_fut, spec_fut, sbuffer
+    global file, fn, proc, drop, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, packet_advanced, packet_advanced2, packet_advanced3
     skipzeros = False
     try:
         frame = pos * 30
@@ -917,6 +922,8 @@ def play(pos):
                 lastpacket = packet
                 packet = b
                 packet_advanced = True
+                packet_advanced2 = True
+                packet_advanced3 = True
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
                 smp = np.frombuffer(b, dtype=np.int16)

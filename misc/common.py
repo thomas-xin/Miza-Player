@@ -70,7 +70,20 @@ def as_str(s):
 hasmisc = os.path.exists("misc")
 if hasmisc:
     submit(import_audio_downloader)
-    mixer = psutil.Popen(("py", "-3.8", "misc/mixer.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    argp = ["py"]
+    for v in range(8, 4, -1):
+        print(f"Attempting to find/install pillow-simd for Python 3.{v}...")
+        args = ["py", f"-3.{v}", "misc/install_pillow_simd.py"]
+        print(args)
+        resp = subprocess.run(args, stdout=subprocess.PIPE)
+        out = as_str(resp.stdout).strip()
+        if not out.startswith(f"Python 3.{v} not found!"):
+            if out:
+                print(out)
+            print(f"pillow-simd versioning successful for Python 3.{v}")
+            argp = ["py", f"-3.{v}"]
+            break
+    mixer = psutil.Popen(argp + ["misc/mixer.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 else:
     mixer = cdict()
 
@@ -232,7 +245,11 @@ if hasmisc:
     s.write(f"~setting shuffle {control.shuffle}\n")
     s.seek(0)
     mixer.stdin.write(s.read().encode("utf-8"))
-    mixer.stdin.flush()
+    try:
+        mixer.stdin.flush()
+    except OSError:
+        print(mixer.stderr.read(), end="")
+        raise
 
 in_rect = lambda point, rect: point[0] >= rect[0] and point[0] < rect[0] + rect[2] and point[1] >= rect[1] and point[1] < rect[1] + rect[3]
 in_circ = lambda point, dest, radius=1: hypot(dest[0] - point[0], dest[1] - point[1]) <= radius

@@ -755,10 +755,11 @@ def spectrogram_render():
         print_exc()
 
 def spectrogram_update():
-    global lastspec, spec_update_fut, spec2_fut, packet_advanced3
+    global lastspec, spec_update_fut, spec2_fut, packet_advanced2, packet_advanced3
     try:
-        if packet_advanced and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
+        if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
             spec_update_fut = submit(spectrogram_render)
+            packet_advanced2 = False
         t = pc()
         dur = max(0.001, min(0.125, t - lastspec))
         lastspec = t

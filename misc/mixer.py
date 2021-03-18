@@ -279,7 +279,7 @@ transfer = False
 BSIZE = 1600
 RSIZE = BSIZE << 1
 TSIZE = BSIZE >> 2
-def reader(f, reverse=False, pos=None, shuffling=False):
+def reader(f, pos=None, reverse=False, shuffling=False):
     global proc, transfer
     try:
         if pos is None:
@@ -378,16 +378,16 @@ def reader(f, reverse=False, pos=None, shuffling=False):
             else:
                 pos += RSIZE
             p = proc
-            fut = submit(proc.stdin.write, b)
             try:
+                fut = submit(proc.stdin.write, b)
                 try:
                     fut.result(timeout=12)
                 except concurrent.futures.TimeoutError:
                     if not paused:
                         raise ValueError
                     paused.result()
-            except (OSError, BrokenPipeError, ValueError):
-                if p.is_running():
+            except (OSError, BrokenPipeError, ValueError, AttributeError):
+                if p and p.is_running():
                     try:
                         p.kill()
                     except:
@@ -498,10 +498,10 @@ def construct_options(full=True):
             dry = 1 - wet
             options.append("[2]amix=weights=" + str(round(dry, 6)) + " " + str(round(wet, 6)))
         if coeff > 1:
-            decay = str(round(1 - 4 / (3 + coeff), 4))
-            options.append("aecho=1:1:479|613:" + decay + "|" + decay)
-            if not isfinite(coeff):
-                options.append("aecho=1:1:757|937:1|1")
+            decay = round(1 - 4 / (3 + coeff), 4)
+            options.append(f"aecho=1:1:400|600:{decay}|{decay / 2}")
+            if decay >= 0.25:
+                options.append(f"aecho=1:1:800|1100:{decay / 4}|{decay / 8}")
     if stats.pan != 1:
         pan = min(10000, max(-10000, stats.pan))
         while abs(abs(pan) - 1) > 0.001:
@@ -958,6 +958,7 @@ cdc = "auto"
 duration = inf
 stream = ""
 fut = None
+reading = None
 point_fut = None
 proc = None
 fn = None
@@ -1042,6 +1043,9 @@ while not sys.stdin.closed and failed < 16:
                 fut.result(timeout=4)
                 if paused:
                     paused = concurrent.futures.Future()
+            if reading:
+                reading.result()
+                reading = None
             ext = construct_options()
             if is_url(stream):
                 fn = "cache/~" + shash(stream) + ".pcm"
@@ -1074,7 +1078,7 @@ while not sys.stdin.closed and failed < 16:
                 pya = afut.result()
                 i = int(stream.strip("<>"))
                 d = pya.get_device_info_by_index(i)
-                f = pya.open(
+                ai = pya.open(
                     48000,
                     2,
                     pyaudio.paInt16,
@@ -1084,15 +1088,26 @@ while not sys.stdin.closed and failed < 16:
                 )
                 proc = cdict(
                     stdout=cdict(
-                        read=lambda n: f.read(n >> 2, exception_on_overflow=False),
+                        read=lambda n: ai.read(n >> 2, exception_on_overflow=False),
                     ),
                     stderr=cdict(
                         read=lambda: b"",
                     ),
                     is_running=lambda: True,
-                    kill=f.close,
+                    kill=ai.close,
                 )
-                proc.readable = lambda: f.get_read_available() >= req >> 2
+                proc.readable = lambda: ai.get_read_available() >= req >> 2
+                if ext:
+                    fsize = inf
+                    f = proc.stdout
+                    f.seek = f.tell = lambda *args: 0
+                    f.close = ai.close
+                    cmd = list(ffmpeg_start + ("-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "-"))
+                    cmd.extend(ext)
+                    cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", "-"))
+                    print(cmd)
+                    proc = psutil.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                    reading = submit(reader, f, 0)
             else:
                 f = None
                 if not fn and (pos >= 960 or settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
@@ -1146,7 +1161,7 @@ while not sys.stdin.closed and failed < 16:
                             fp = fsize - 2
                     else:
                         fp = 0 if settings.speed >= 0 else fsize - 2
-                    submit(reader, f, settings.speed < 0, fp, shuffling=pos == 0 and settings.shuffle == 2)
+                    reading = submit(reader, f, settings.speed < 0, fp, shuffling=pos == 0 and settings.shuffle == 2)
             if point_fut and not point_fut.done():
                 point_fut.result()
             point(f"~{pos * 30} {duration}")

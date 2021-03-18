@@ -6,7 +6,7 @@ exc = concurrent.futures.ThreadPoolExecutor(max_workers=12)
 submit = exc.submit
 print_exc = traceback.print_exc
 
-is_url = lambda url: "://" in url and url.split("://", 1)[0].removesuffix("s") in ("http", "hxxp", "ftp", "fxp")
+is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
 
 downloader = concurrent.futures.Future()
 def import_audio_downloader():
@@ -71,18 +71,24 @@ hasmisc = os.path.exists("misc")
 if hasmisc:
     submit(import_audio_downloader)
     argp = ["py"]
-    for v in range(8, 4, -1):
-        print(f"Attempting to find/install pillow-simd for Python 3.{v}...")
-        args = ["py", f"-3.{v}", "misc/install_pillow_simd.py"]
-        print(args)
-        resp = subprocess.run(args, stdout=subprocess.PIPE)
-        out = as_str(resp.stdout).strip()
-        if not out.startswith(f"Python 3.{v} not found!"):
-            if out:
-                print(out)
-            print(f"pillow-simd versioning successful for Python 3.{v}")
-            argp = ["py", f"-3.{v}"]
-            break
+    if sys.version_info[1] in range(5, 9):
+        argp = ["py", f"-3.{sys.version_info[1]}"]
+    else:
+        for v in range(8, 4, -1):
+            print(f"Attempting to find/install pillow-simd for Python 3.{v}...")
+            args = ["py", f"-3.{v}", "misc/install_pillow_simd.py"]
+            print(args)
+            resp = subprocess.run(args, stdout=subprocess.PIPE)
+            out = as_str(resp.stdout).strip()
+            if not out.startswith(f"Python 3.{v} not found!"):
+                if out:
+                    print(out)
+                print(f"pillow-simd versioning successful for Python 3.{v}")
+                argp = ["py", f"-3.{v}"]
+                if sys.version_info[1] != int(argp[-1].rsplit(".", 1)[-1]):
+                    subprocess.run(argp + sys.argv)
+                    sys.exit()
+                break
     mixer = psutil.Popen(argp + ["misc/mixer.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 else:
     mixer = cdict()
@@ -813,9 +819,10 @@ def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, rat
             bevel_rectangle(surface, (255,) * 3, (rect[0], rect[1] + max(pos, 0), rect[2], min(rect[3] + pos, rect[3]) - max(pos, 0)), 0, 159)
             bevel_rectangle(surface, (255,) * 3, (rect[0], rect[1] + max(pos + 8, 0), rect[2], min(rect[3] + pos, rect[3]) - max(pos + 16, 0)), 0, 159)
     perimeter = rect[2] * 2 + rect[3] * 2
-    increment = 0
-    f = frame
-    while frame > 0:
+    increment = 3
+    orig = frame
+    f = orig - reduction
+    while frame > 1:
         c = list(colour)
         for i in range(count):
             pos = perimeter * ((i / count - increment / perimeter + ratio * speed) % 1)
@@ -838,9 +845,32 @@ def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, rat
             else:
                 r = [round(rect[0]), round(rect[1] + rect[3] - pos + 0.5)]
             r_rect = [r[0] - round(frame), r[1] - round(frame), round(frame) << 1, round(frame) << 1]
-            pygame.draw.rect(surface, adj_colour(c, (frame * 8) - f * 4), r_rect)
+            pygame.draw.rect(surface, adj_colour(c, (frame - f) * 16), r_rect)
         frame -= reduction
         increment += 3
+    frame = orig
+    for i in range(count):
+        pos = perimeter * ((i / count + ratio * speed) % 1)
+        side = 0
+        if pos >= rect[2]:
+            pos -= rect[2]
+            side = 1
+            if pos >= rect[3]:
+                pos -= rect[3]
+                side = 2
+                if pos >= rect[2]:
+                    pos -= rect[2]
+                    side = 3
+        if side == 0:
+            r = [round(rect[0] + pos), round(rect[1] + 0.5)]
+        elif side == 1:
+            r = [round(rect[0] + rect[2]), round(rect[1] + pos + 0.5)]
+        elif side == 2:
+            r = [round(rect[0] + rect[2] - pos), round(rect[1] + rect[3] + 0.5)]
+        else:
+            r = [round(rect[0]), round(rect[1] + rect[3] - pos + 0.5)]
+        r_rect = [r[0] - round(frame) - 1, r[1] - round(frame) - 1, round(frame) + 1 << 1, round(frame) + 1 << 1]
+        bevel_rectangle(surface, colour, r_rect, 3)
 
 def text_objects(text, font, colour):
     text_surface = font.render(text, True, colour)

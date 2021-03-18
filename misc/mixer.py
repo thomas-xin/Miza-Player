@@ -28,7 +28,7 @@ def as_str(s):
         return bytes(s).decode("utf-8", "replace")
     return str(s)
 
-is_url = lambda url: "://" in url and url.split("://", 1)[0].removesuffix("s") in ("http", "hxxp", "ftp", "fxp")
+is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
 shash = lambda s: as_str(base64.b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
 
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
@@ -563,8 +563,8 @@ def oscilloscope(buffer):
                         stderr_lock = concurrent.futures.Future()
                         bsend(b"o" + "~".join(map(str, size)).encode("utf-8") + b"\n")
                         bsend(b)
-                        stderr_lock.set_result(None)
-                        stderr_lock = None
+                        lock, stderr_lock = stderr_lock, None
+                        lock.set_result(None)
     except:
         print_exc()
 
@@ -738,8 +738,8 @@ def spectrogram_render():
             stderr_lock = concurrent.futures.Future()
             bsend(b"s" + "~".join(map(str, ssize2)).encode("utf-8") + b"\n")
             bsend(spectrobytes)
-            stderr_lock.set_result(None)
-            stderr_lock = None
+            lock, stderr_lock = stderr_lock, None
+            lock.set_result(None)
     except:
         print_exc()
 
@@ -1025,7 +1025,7 @@ while not sys.stdin.closed and failed < 16:
                 pos, duration = map(float, (pos, duration))
                 stream = command
             shuffling = False
-            if not settings.get("low") or aout.done():
+            if aout.done():
                 channel2 = aout.result()
             if proc:
                 temp, proc = proc, None

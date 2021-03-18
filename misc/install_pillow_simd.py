@@ -5,7 +5,9 @@ print("Loading and checking modules...")
 modlist = """
 numpy>=1.20.1
 psutil>=5.8.0
+pyperclip>=1.8.2
 pygame>=2.0.1
+easygui>=0.98.2
 youtube-dlc>=2020.11.11.post3
 requests>=2.25.1
 """.split("\n")

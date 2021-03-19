@@ -27,6 +27,10 @@ try:
 except:
     google_api_key = None
     print("WARNING: google_api_key not found. Unable to use API to search youtube playlists.")
+    with open("auth.json", "w") as f:
+        f.write("""{
+	"google_api_key": ""
+}""")
 
 
 class cdict(dict):

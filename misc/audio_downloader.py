@@ -847,7 +847,7 @@ class AudioDownloader:
                 dur /= 1000
             temp = cdict(
                 name=name,
-                url="ytsearch:" + f"{name} ~ {artists}".replace(":", "-"),
+                url="ytsearch:" + "".join(c if c.isascii() and c != ":" else "_" for c in f"{name} ~ {artists}"),
                 id=track["id"],
                 duration=dur,
                 research=True,

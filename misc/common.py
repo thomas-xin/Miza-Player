@@ -2207,5 +2207,5 @@ def time_disp(s, rounded=True):
         output = "0:" + output
     return output
 
-is_youtube_stream = lambda url: re.findall("^https?:\\/\\/r[0-9]+---.{2}-\\w+-\\w{4,}\\.googlevideo\\.com", url)
+is_youtube_stream = lambda url: url and re.findall("^https?:\\/\\/r[0-9]+---.{2}-\\w+-\\w{4,}\\.googlevideo\\.com", url)
 # Regex moment - Smudge

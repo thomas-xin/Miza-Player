@@ -692,7 +692,10 @@ class Bar(Particle):
     def render2(self, sfx, **void):
         size = min(2 * barheight, round(self.height))
         if size:
-            self.colour = tuple(min(255, round(i * 255 * size / barheight)) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, 1, 1))
+            amp = size / barheight
+            val = min(1, amp)
+            sat = 1 - min(1, max(0, amp - 1))
+            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, sat, val))
             x = barcount - self.x
             DRAW.rectangle(
                 (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),

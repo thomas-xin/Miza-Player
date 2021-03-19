@@ -695,7 +695,7 @@ class Bar(Particle):
             self.colour = tuple(min(255, round(i * 255 * size / barheight)) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, 1, 1))
             x = self.x - 1
             DRAW.rectangle(
-                (x, x, barcount - x, barcount - x),
+                (x, x, barcount * 2 - x - 1, barcount * 2 - x - 1),
                 None,
                 self.colour,
                 width=1,
@@ -737,7 +737,7 @@ def spectrogram_render():
             for bar in bars:
                 bar.render(sfx=sfx)
         else:
-            sfx = Image.new("RGB", (barcount - 2,) * 2, (0,) * 3)
+            sfx = Image.new("RGB", (barcount * 2 - 2,) * 2, (0,) * 3)
             globals()["DRAW"] = ImageDraw.Draw(sfx)
             for bar in bars:
                 bar.render2(sfx=sfx)

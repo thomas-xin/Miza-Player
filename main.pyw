@@ -344,12 +344,15 @@ def prepare(entry, force=False):
         ytdl = downloader.result()
         try:
             data = ytdl.search(entry.url)[0]
+            stream = ytdl.get_stream(entry, force=True, download=False)
         except:
             print_exc()
             return
         else:
             entry.update(data)
-    return entry.stream.strip()
+    else:
+        stream = entry.stream
+    return stream.strip()
 
 def start_player(entry, pos=None):
     player.last = 0

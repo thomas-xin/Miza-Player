@@ -2,6 +2,7 @@
 
 import youtube_dlc, contextlib, requests, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures
 from math import *
+from traceback import print_exc
 
 np = numpy
 youtube_dl = youtube_dlc
@@ -1390,7 +1391,7 @@ class AudioDownloader:
             data = self.search(entry["url"])
             stream = data[0].setdefault("stream", data[0].url)
             icon = data[0].setdefault("icon", data[0].url)
-        elif not searched and (stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 3)[3]) < utc() + 60 or is_youtube_stream(stream) and int(stream.split("expire=", 1)[1].split("&", 1)[0]) < utc() + 60):
+        elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 3)[3]) < utc() + 60 or is_youtube_stream(stream) and int(stream.split("expire=", 1)[1].split("&", 1)[0]) < utc() + 60):
             data = self.extract(entry["url"])
             stream = data[0].setdefault("stream", data[0].url)
             icon = data[0].setdefault("icon", data[0].url)
@@ -1402,7 +1403,7 @@ class AudioDownloader:
     def extract_single(self, i, force=False):
         item = i.url
         if not force:
-            if item in self.searched:
+            if item in self.searched and not item.startswith("ytsearch:"):
                 if utc() - self.searched[item].t < 18000:
                     it = self.searched[item].data[0]
                     i.update(it)
@@ -1419,8 +1420,8 @@ class AudioDownloader:
             data = data[0]
         obj = cdict(t=utc())
         obj.data = out = [cdict(
-            name=data["name"],
-            url=data["url"],
+            name=data["title"],
+            url=data.get("webpage_url") or data.get("url"),
             stream=get_best_audio(data),
             icon=get_best_icon(data),
         )]

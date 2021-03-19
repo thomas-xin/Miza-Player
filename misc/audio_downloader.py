@@ -1108,7 +1108,7 @@ class AudioDownloader:
                         if curr >= maxitems:
                             break
                         search = f"{url}&offset={curr}&limit={page}"
-                        fut = create_future_ex(self.get_spotify_part, search, timeout=90)
+                        fut = create_future_ex(self.get_spotify_part, search)
                         print("Sent 1 spotify search.")
                         futs.append(fut)
                         if not (i < 1 or math.log2(i + 1) % 1) or not i & 7:

@@ -688,6 +688,18 @@ class Bar(Particle):
             self.surf.putpixel((0, 0), 0)
             surf = self.surf.resize((1, size), resample=Image.BILINEAR)
             sfx.paste(surf, (barcount - 2 - self.x, barheight - size))
+    
+    def render2(self, sfx, **void):
+        size = min(2 * barheight, round(self.height))
+        if size:
+            self.colour = tuple(min(255, round(i * 255 * size / barheight)) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, 1, 1))
+            x = self.x - 1
+            DRAW.rectangle(
+                (x, x, barcount - x, barcount - x),
+                None,
+                self.colour,
+                width=1,
+            )
 
     def post_render(self, sfx, scale, **void):
         size = round(self.height2)
@@ -718,19 +730,26 @@ def spectrogram_render():
         lastspec2 = t
 
         ssize2 = ssize
-        sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
-        time.sleep(0.01)
-        globals()["DRAW"] = ImageDraw.Draw(sfx)
-        for bar in bars:
-            bar.render(sfx=sfx)
-
+        specs = settings.spectrogram
+        if specs != 2:
+            sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
+            time.sleep(0.01)
+            for bar in bars:
+                bar.render(sfx=sfx)
+        else:
+            sfx = Image.new("RGB", (barcount - 2,) * 2, (0,) * 3)
+            globals()["DRAW"] = ImageDraw.Draw(sfx)
+            for bar in bars:
+                bar.render2(sfx=sfx)
         sfx = sfx.resize(ssize2, resample=Image.NEAREST)
-        globals()["DRAW"] = ImageDraw.Draw(sfx)
-        time.sleep(0.01)
-        highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:24]
-        high = highbars[0]
-        for bar in reversed(highbars):
-            bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
+
+        if specs != 2:
+            globals()["DRAW"] = ImageDraw.Draw(sfx)
+            time.sleep(0.01)
+            highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:24]
+            high = highbars[0]
+            for bar in reversed(highbars):
+                bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
         time.sleep(0.01)
         spectrobytes = sfx.tobytes()
         
@@ -816,7 +835,7 @@ def render():
                 if is_minimised():
                     point(f"~y {p_amp}")
                 else:
-                    if osize[0] and osize[1] and (not osci_fut or osci_fut.done()):
+                    if settings.oscilloscope and osize[0] and osize[1] and (not osci_fut or osci_fut.done()):
                         osci_fut = submit(oscilloscope, buffer)
                     out = []
                     out.append(round(max(np.max(buffer), -np.min(buffer)) / 32767 * 100, 3))
@@ -841,10 +860,10 @@ def render():
                             if packet:
                                 point("~x " + " ".join(map(str, out)))
 
-                    if ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
+                    if settings.spectrogram and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
                         spec2_fut = submit(spectrogram_update)
             elif packet_advanced:
-                if ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
+                if settings.spectrogram and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
                     spec2_fut = submit(spectrogram_update)
             packet_advanced = False
             time.sleep(0.01)
@@ -963,7 +982,7 @@ def play(pos):
                     point_fut = submit(point, f"~{frame} {duration}")
                 if not channel2:
                     channel.queue(sound)
-                if ssize[0] and ssize[1] and not is_minimised():
+                if settings.spectrogram and ssize[0] and ssize[1] and not is_minimised():
                     if spec_fut:
                         spec_fut.result()
                     spec_fut = submit(spectrogram, sbuffer)
@@ -1051,7 +1070,7 @@ while not sys.stdin.closed and failed < 16:
             if command.startswith("~setting"):
                 setting, value = command[9:].split()
                 settings[setting] = float(value)
-                if setting in ("volume", "shuffle") or not stream:
+                if setting in ("volume", "shuffle", "spectrogram", "oscilloscope") or not stream:
                     continue
                 pos = frame / 30
             elif command.startswith("~drop"):

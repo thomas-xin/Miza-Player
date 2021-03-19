@@ -1143,7 +1143,7 @@ class AudioDownloader:
                 url = verify_url(item)
                 if url[-5:] == ".json" or url[-4:] in (".txt", ".bin", ".zip"):
                     s = requests.get(url).content
-                    d = select_and_loads(s, size=268435456)
+                    d = eval_json(s)
                     q = d["queue"][:262144]
                     return [cdict(name=e["name"], url=e["url"], duration=e.get("duration")) for e in q]
             elif mode in (None, "yt"):

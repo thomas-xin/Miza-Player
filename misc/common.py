@@ -185,6 +185,8 @@ else:
             shuffle=1,
             loop=1
         ),
+        spectrogram=1,
+        oscilloscope=1,
     )
 options.audio = cdict(options.audio)
 options.control = cdict(options.control)
@@ -260,7 +262,9 @@ if hasmisc:
     s.write(("%" + str(hwnd) + "\n"))
     for k, v in audio.items():
         s.write(f"~setting {k} {v}\n")
-    s.write(f"~setting shuffle {control.shuffle}\n")
+    s.write(f"~setting shuffle {control.setdefault('shuffle', 0)}\n")
+    s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
+    s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
     s.seek(0)
     mixer.stdin.write(s.read().encode("utf-8"))
     try:
@@ -653,7 +657,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
     if min(alpha, rect[2], rect[3]) > 0:
         br_surf = globals().setdefault("br_surf", {})
         colour = list(map(lambda i: min(i, 255), colour))
-        if alpha == 255 and angle == 0 and not (colour[0] == colour[1] == colour[2]):
+        if alpha == 255 and angle == 0 and not (colour[0] == colour[1] == colour[2]) or not filled:
             if dest is None:
                 dest = pygame.Surface(rect[2:], SRCALPHA)
                 rect[:2] = (0, 0)

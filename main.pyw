@@ -551,6 +551,9 @@ def update_menu():
     ts = toolbar.pause.setdefault("timestamp", 0)
     t = pc()
     player.lastframe = duration = max(0.001, min(t - ts, 0.125))
+    player.flash_s = max(0, player.get("flash_s", 0) - duration * 60)
+    player.flash_i = max(0, player.get("flash_i", 0) - duration * 60)
+    player.flash_o = max(0, player.get("flash_o", 0) - duration * 60)
     toolbar.pause.timestamp = pc()
     ratio = 1 / (duration * 8)
     progress.vis = (progress.vis * (ratio - 1) + player.pos) / ratio
@@ -1062,6 +1065,7 @@ def draw_menu():
             sidebar.particles.clear()
     highlighted = progress.seeking or in_rect(mpos, progress.rect)
     crosshair |= highlighted
+    osci_rect = (screensize[0] - 8 - progress.box, screensize[1] - toolbar_height, progress.box, toolbar_height * 2 // 3 - 3)
     if (toolbar.updated or not tick & 7) and toolbar.colour:
         bevel_rectangle(
             DISP,
@@ -1241,22 +1245,41 @@ def draw_menu():
                 (pos[0] + (rad + 3) // 5, pos[1] - rad, rad * 4 // 5, rad << 1),
                 3,
             )
-        if is_active() and player.get("osci"):
-            rect = (screensize[0] - 8 - progress.box, screensize[1] - toolbar_height, progress.box, toolbar_height * 2 // 3 - 3)
+        if options.get("oscilloscope") and is_active() and player.get("osci"):
             surf = player.osci
-            if tuple(rect[2:]) != surf.get_size():
-                player.osci = surf = pygame.transform.scale(surf, rect[2:])
+            if tuple(osci_rect[2:]) != surf.get_size():
+                player.osci = surf = pygame.transform.scale(surf, osci_rect[2:])
             DISP.blit(
                 surf,
-                rect[:2],
+                osci_rect[:2],
             )
         else:
+            if options.get("oscilloscope"):
+                c = (255, 0, 0)
+            else:
+                c = (127, 0, 127)
             y = screensize[1] - toolbar_height * 2 // 3 - 2
             pygame.draw.line(
                 DISP,
-                (255, 0, 0),
+                c,
                 (screensize[0] - 8 - progress.box, y),
-                (screensize[0] - 8, y)
+                (screensize[0] - 8 - 1, y)
+            )
+        if player.flash_o > 0:
+            bevel_rectangle(
+                DISP,
+                (191,) * 3,
+                osci_rect,
+                4,
+                alpha=player.flash_o * 8 - 1,
+            )
+        if not toolbar.resizer and in_rect(mpos, osci_rect):
+            bevel_rectangle(
+                DISP,
+                (191,) * 3,
+                osci_rect,
+                4,
+                filled=False,
             )
         s = f"{time_disp(player.pos)}/{time_disp(player.end)}"
         message_display(
@@ -1365,6 +1388,19 @@ def draw_menu():
         elif sidebar.resizer:
             pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
             sidebar.resizer = False
+    if mclick[0]:
+        text_rect = (0, 0, 128, 64)
+        if in_rect(mpos, text_rect):
+            player.flash_i = 32
+            options.insights = (options.get("insights", 0) + 1) % 2
+        elif in_rect(mpos, player.rect):
+            player.flash_s = 32
+            options.spectrogram = (options.get("spectrogram", 0) + 1) % 3
+            mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
+        elif in_rect(mpos, osci_rect) and not toolbar.resizer:
+            player.flash_o = 32
+            options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
+            mixer.submit(f"~setting oscilloscope {options.oscilloscope}", force=True)
     if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified):
         pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
         pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
@@ -1465,16 +1501,50 @@ try:
                         surf,
                         rect[:2],
                     )
-            if not tick + 6 & 7 or tuple(screensize) in modified:
-                for i, k in enumerate(("peak", "amplitude", "velocity", "energy")):
-                    v = player.stats.get(k, 0) if is_active() else 0
-                    message_display(
-                        f"{k.capitalize()}: {v}%",
-                        13,
-                        (2, 14 * i),
-                        align=0,
-                        surface=DISP,
+                if player.flash_s > 0:
+                    bevel_rectangle(
+                        DISP,
+                        (191,) * 3,
+                        player.rect,
+                        4,
+                        alpha=player.flash_s * 8 - 1,
                     )
+                text_rect = (0, 0, 128, 64)
+                if player.flash_i > 0:
+                    bevel_rectangle(
+                        DISP,
+                        (191,) * 3,
+                        text_rect,
+                        4,
+                        alpha=player.flash_i * 8 - 1,
+                    )
+                if in_rect(mpos, text_rect):
+                    bevel_rectangle(
+                        DISP,
+                        (191,) * 3,
+                        text_rect,
+                        4,
+                        filled=False,
+                    )
+                elif in_rect(mpos, player.rect):
+                    bevel_rectangle(
+                        DISP,
+                        (191,) * 3,
+                        player.rect,
+                        4,
+                        filled=False,
+                    )
+            if not tick + 6 & 7 or tuple(screensize) in modified:
+                if options.get("insights"):
+                    for i, k in enumerate(("peak", "amplitude", "velocity", "energy")):
+                        v = player.stats.get(k, 0) if is_active() else 0
+                        message_display(
+                            f"{k.capitalize()}: {v}%",
+                            13,
+                            (4, 14 * i),
+                            align=0,
+                            surface=DISP,
+                        )
                 if modified:
                     modified.add(tuple(screensize))
                 else:

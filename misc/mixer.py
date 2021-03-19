@@ -658,11 +658,11 @@ class Bar(Particle):
 
     def update(self, dur=1):
         if self.height:
-            self.height = self.height * 0.25 ** dur - 1
+            self.height = self.height * 0.2 ** dur - 1
             if self.height < 0:
                 self.height = 0
         if self.height2:
-            self.height2 = self.height2 * 0.5 ** dur - 1
+            self.height2 = self.height2 * 0.4 ** dur - 1
             if self.height2 < 0:
                 self.height2 = 0
 

@@ -716,7 +716,10 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
                 gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
             if cache:
                 br_surf[data] = s
-        colour = tuple(round(i * 255 / ctr) for i in colour)
+        if ctr > 0:
+            colour = tuple(round(i * 255 / ctr) for i in colour)
+        else:
+            colour = (0,) * 3
         return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
 
 def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4, alpha=255, thickness=0, repetition=1, filled=False, rotation=0, soft=False, attempts=128):

@@ -696,7 +696,7 @@ class Bar(Particle):
             val = min(1, amp)
             sat = 1 - min(1, max(0, amp - 1))
             self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, sat, val))
-            x = barcount - self.x - 1
+            x = barcount - self.x - 2
             DRAW.rectangle(
                 (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),
                 None,

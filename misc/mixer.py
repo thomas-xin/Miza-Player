@@ -692,7 +692,7 @@ class Bar(Particle):
     def render2(self, sfx, **void):
         size = min(2 * barheight, round(self.height))
         if size:
-            amp = size / barheight
+            amp = size / barheight * 2
             val = min(1, amp)
             sat = 1 - min(1, max(0, amp - 1))
             self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, sat, val))

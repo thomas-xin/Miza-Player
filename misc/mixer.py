@@ -103,9 +103,10 @@ def point(s):
     sys.__stdout__.buffer.write(b)
     sys.__stdout__.flush()
 
-def bsend(s):
-    b = str(s).encode("utf-8") if type(s) is not bytes else s
-    sys.__stderr__.buffer.write(b)
+def bsend(*args):
+    for s in args:
+        b = str(s).encode("utf-8") if type(s) is not bytes else s
+        sys.__stderr__.buffer.write(b)
     sys.__stderr__.flush()
 
 print = lambda *args, sep=" ", end="\n": point(repr(str(sep).join(map(str, args)) + end))
@@ -569,8 +570,7 @@ def oscilloscope(buffer):
                         while stderr_lock:
                             stderr_lock.result()
                         stderr_lock = concurrent.futures.Future()
-                        bsend(b"o" + "~".join(map(str, size)).encode("utf-8") + b"\n")
-                        bsend(b)
+                        bsend(b"o" + "~".join(map(str, size)).encode("utf-8") + b"\n", b)
                         lock, stderr_lock = stderr_lock, None
                         lock.set_result(None)
     except:
@@ -766,8 +766,7 @@ def spectrogram_render():
             while stderr_lock:
                 stderr_lock.result()
             stderr_lock = concurrent.futures.Future()
-            bsend(b"s" + "~".join(map(str, ssize2)).encode("utf-8") + b"\n")
-            bsend(spectrobytes)
+            bsend(b"s" + "~".join(map(str, ssize2)).encode("utf-8") + b"\n", spectrobytes)
             lock, stderr_lock = stderr_lock, None
             lock.set_result(None)
         if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):

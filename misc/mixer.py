@@ -693,9 +693,9 @@ class Bar(Particle):
         size = min(2 * barheight, round(self.height))
         if size:
             self.colour = tuple(min(255, round(i * 255 * size / barheight)) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, 1, 1))
-            x = self.x - 1
+            x = barcount - self.x
             DRAW.rectangle(
-                (x, x, barcount * 2 - x - 1, barcount * 2 - x - 1),
+                (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),
                 None,
                 self.colour,
                 width=1,

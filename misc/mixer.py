@@ -572,7 +572,8 @@ def oscilloscope(buffer):
                         stderr_lock = concurrent.futures.Future()
                         bsend(b"o" + "~".join(map(str, size)).encode("utf-8") + b"\n", b)
                         lock, stderr_lock = stderr_lock, None
-                        lock.set_result(None)
+                        if lock:
+                            lock.set_result(None)
     except:
         print_exc()
 
@@ -768,7 +769,8 @@ def spectrogram_render():
             stderr_lock = concurrent.futures.Future()
             bsend(b"s" + "~".join(map(str, ssize2)).encode("utf-8") + b"\n", spectrobytes)
             lock, stderr_lock = stderr_lock, None
-            lock.set_result(None)
+            if lock:
+                lock.set_result(None)
         if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
             spec_update_fut = submit(spectrogram_render)
             packet_advanced2 = False
@@ -791,7 +793,7 @@ def spectrogram_update():
         arr[0] = 0
         amp = np.abs(arr, dtype=np.float32)
         for i, pwr in enumerate(amp):
-            bars[i].ensure(pwr / dfts / 8)
+            bars[i].ensure(pwr / 4)
         if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
             spec2_fut = submit(spectrogram_update)
             packet_advanced3 = False
@@ -804,7 +806,7 @@ def spectrogram(buffer):
     global spec_buffer, spec2_fut, packet_advanced3
     try:
         if packet:
-            buffer = sample.astype(np.float32)
+            buffer = np.clip(sample.astype(np.float32) / 32767, -1, None)
             spec_buffer = np.concatenate((spec_buffer[-res_scale + len(buffer):], buffer))
             if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
                 spec2_fut = submit(spectrogram_update)

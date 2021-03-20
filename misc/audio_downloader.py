@@ -1391,7 +1391,7 @@ class AudioDownloader:
             data = self.search(entry["url"])
             stream = data[0].setdefault("stream", data[0].url)
             icon = data[0].setdefault("icon", data[0].url)
-        elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 3)[3]) < utc() + 60 or is_youtube_stream(stream) and int(stream.split("expire=", 1)[1].split("&", 1)[0]) < utc() + 60):
+        elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 3)[3]) < utc() + 60 or is_youtube_stream(stream) and int(stream.split("expire=", 1)[-1].split("&", 1)[0]) < utc() + 60):
             data = self.extract(entry["url"])
             stream = data[0].setdefault("stream", data[0].url)
             icon = data[0].setdefault("icon", data[0].url)

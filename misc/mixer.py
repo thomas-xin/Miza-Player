@@ -793,7 +793,7 @@ def spectrogram_update():
         arr[0] = 0
         amp = np.abs(arr, dtype=np.float32)
         for i, pwr in enumerate(amp):
-            bars[i].ensure(pwr / 4)
+            bars[i].ensure(pwr / 8)
         if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
             spec2_fut = submit(spectrogram_update)
             packet_advanced3 = False

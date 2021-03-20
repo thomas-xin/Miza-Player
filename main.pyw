@@ -170,11 +170,24 @@ def _enqueue_local(*files):
                     if "/" not in fn:
                         fn = "/" + fn
                     options.path, name = fn.rsplit("/", 1)
+                    name = name.rsplit(".", 1)[0]
                     dur, cdc = get_duration_2(fn)
+                    # if dur is None and cdc == "N/A":
+                    #     fi = fn
+                    #     fn = "cache/~" + shash(fi) + ".pcm"
+                    #     if not os.path.exists(fn):
+                    #         args = ["py", f"-3.{sys.version_info[1]}", "misc/png2wav.py", fi, fn]
+                    #         proc = psutil.Popen(args, stderr=subprocess.PIPE)
+                    #         while True:
+                    #             if os.path.exists(fn) and os.path.getsize(fn) >= 96000:
+                    #                 break
+                    #             if not proc.is_running():
+                    #                 raise RuntimeError(as_str(proc.stderr.read()))
+                    #     dur, cdc = get_duration_2(fn)
                     entry = cdict(
                         url=fn,
                         stream=fn,
-                        name=name.rsplit(".", 1)[0],
+                        name=name,
                         duration=dur,
                         cdc=cdc,
                     )
@@ -362,7 +375,24 @@ def start_player(entry, pos=None):
     if not stream:
         player.fut = None
         return None, inf
-    duration = entry.duration or get_duration_2(stream)[0]
+    duration = entry.duration
+    if not duration:
+        info = get_duration_2(stream)
+        duration = info[0]
+        if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
+            fi = stream
+            fn = "cache/~" + shash(fi) + ".pcm"
+            if not os.path.exists(fn):
+                args = ["py", f"-3.{sys.version_info[1]}", "png2wav.py", fi, "../" + fn]
+                print(args)
+                proc = psutil.Popen(args, cwd="misc", stderr=subprocess.PIPE)
+                while True:
+                    if os.path.exists(fn) and os.path.getsize(fn) >= 96000:
+                        break
+                    if not proc.is_running():
+                        raise RuntimeError(as_str(proc.stderr.read()))
+            duration = get_duration_2(fn)[0]
+            stream = entry.stream = fn
     entry.duration = duration
     if duration is None:
         player.fut = None
@@ -387,7 +417,7 @@ def start_player(entry, pos=None):
     mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")))
     player.pos = pos
     player.index = player.pos * 30
-    player.end = duration
+    player.end = duration or inf
     return stream, duration
 
 def start():
@@ -528,7 +558,7 @@ def pos():
                 player.index = i
                 player.pos = round(player.index / 30, 4)
             if dur >= 0:
-                player.end = dur
+                player.end = dur or inf
     except:
         if not mixer.is_running():
             print(mixer.stderr.read().decode("utf-8", "replace"))
@@ -1292,7 +1322,7 @@ def draw_menu():
             surface=DISP,
             align=2,
         )
-        x = progress.pos[0] + int(progress.length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
+        x = progress.pos[0] + round(progress.length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
         x = min(progress.pos[0] - width // 2 + progress.length, max(progress.pos[0] - width // 2, x))
         r = ceil(progress.spread * toolbar_height) >> 1
         if r:

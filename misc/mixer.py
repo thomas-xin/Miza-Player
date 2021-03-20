@@ -152,13 +152,13 @@ def get_duration(filename):
     if filename:
         dur, bps = _get_duration(filename, 4)
         if not dur and is_url(filename):
-            with requests.get(filename, headers=Request.header(), stream=True) as resp:
-                head = fcdict(resp.headers)
-                if "Content-Length" not in head:
+            with requests.get(filename, stream=True) as resp:
+                head = {k.casefold(): v for k, v in resp.headers.items()}
+                if "content-length" not in head:
                     return _get_duration(filename, 20)[0]
                 if bps:
-                    return (int(head["Content-Length"]) << 3) / bps
-                ctype = [e.strip() for e in head.get("Content-Type", "").split(";") if "/" in e][0]
+                    return (int(head["content-length"]) << 3) / bps
+                ctype = [e.strip() for e in head.get("content-type", "").split(";") if "/" in e][0]
                 if ctype.split("/", 1)[0] not in ("audio", "video"):
                     return nan
                 if ctype == "audio/midi":
@@ -178,7 +178,7 @@ def get_duration(filename):
                 bps *= 1e6
             elif key.startswith("g"):
                 bps *= 1e9
-            return (int(head["Content-Length"]) << 3) / bps
+            return (int(head["content-length"]) << 3) / bps
         return dur
 
 probe_cache = {}
@@ -600,7 +600,7 @@ freqmul = 1 / (1 - log(minfreq, maxfreq))
 
 barheight = 720
 res_scale = 65536
-dfts = (res_scale >> 1) + 1
+dfts = res_scale // 2 + 1
 fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
 fftrans = np.zeros(dfts, dtype=int)
 

@@ -398,7 +398,7 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import PIL, easygui, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio
+import PIL, easygui, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, hashlib, base64
 from PIL import Image, ImageChops
 from math import *
 np = numpy
@@ -407,6 +407,7 @@ suppress = contextlib.suppress
 d2r = pi / 180
 utc = time.time
 
+shash = lambda s: as_str(base64.b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
 afut = submit(pyaudio.PyAudio)
 
 pt = None
@@ -2159,14 +2160,14 @@ def get_duration_2(filename):
     if filename:
         dur, bps, cdc = _get_duration_2(filename, 4)
         if not dur and is_url(filename):
-            with requests.get(filename, headers=Request.header(), stream=True) as resp:
-                head = fcdict(resp.headers)
-                if "Content-Length" not in head:
+            with requests.get(filename, stream=True) as resp:
+                head = {k.casefold(): v for k, v in resp.headers.items()}
+                if "content-length" not in head:
                     dur, bps, cdc = _get_duration_2(filename, 20)
                     return dur, cdc
                 if bps:
-                    return (int(head["Content-Length"]) << 3) / bps, cdc
-                ctype = [e.strip() for e in head.get("Content-Type", "").split(";") if "/" in e][0]
+                    return (int(head["content-length"]) << 3) / bps, cdc
+                ctype = [e.strip() for e in head.get("content-type", "").split(";") if "/" in e][0]
                 if ctype.split("/", 1)[0] not in ("audio", "video"):
                     return nan, cdc
                 if ctype == "audio/midi":
@@ -2187,7 +2188,7 @@ def get_duration_2(filename):
                 bps *= 1e6
             elif key.startswith("g"):
                 bps *= 1e9
-            return (int(head["Content-Length"]) << 3) / bps, cdc
+            return (int(head["content-length"]) << 3) / bps, cdc
         return dur, cdc
 
 def time_disp(s, rounded=True):

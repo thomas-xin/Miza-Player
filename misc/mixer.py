@@ -263,8 +263,8 @@ def remove(file):
 def stdclose(p):
     try:
         if not p.stdin.closed:
-            fut = submit(p.stdin.write, emptymem[:BSIZE])
-            fut.result(timeout=1)
+            # fut = submit(p.stdin.write, emptymem[:BSIZE])
+            # fut.result(timeout=1)
             fut = submit(p.stdin.close)
             fut.result(timeout=1)
         time.sleep(2)
@@ -282,7 +282,6 @@ RSIZE = BSIZE << 1
 TSIZE = BSIZE >> 2
 def reader(f, pos=None, reverse=False, shuffling=False):
     global proc, transfer
-    print(f, pos, reverse, shuffling)
     try:
         if f.closed:
             raise StopIteration
@@ -292,7 +291,6 @@ def reader(f, pos=None, reverse=False, shuffling=False):
             pos -= RSIZE
         if pos:
             f.seek(pos)
-        shuffling = True
         opos = pos
         while True:
             lpos = pos
@@ -1171,7 +1169,7 @@ while not sys.stdin.closed and failed < 16:
                     reading = submit(reader, f, pos=0)
             else:
                 f = None
-                if not fn and (settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
+                if not fn and (cdc == "mp3" and pos >= 960 or settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
                     if (fn or not stream.endswith(".pcm")) and (settings.speed < 0 or cdc != "mp3"):
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"

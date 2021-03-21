@@ -1526,14 +1526,15 @@ try:
                 progress.alpha = 0
             if not tick + 2 & 7:
                 if player.get("spec"):
-                    rect = player.rect
-                    surf = player.spec
-                    if tuple(rect[2:]) != surf.get_size():
-                        player.spec = surf = pygame.transform.scale(surf, rect[2:])
-                    DISP.blit(
-                        surf,
-                        rect[:2],
-                    )
+                    if options.get("spectrogram"):
+                        rect = player.rect
+                        surf = player.spec
+                        if tuple(rect[2:]) != surf.get_size():
+                            player.spec = surf = pygame.transform.scale(surf, rect[2:])
+                        DISP.blit(
+                            surf,
+                            rect[:2],
+                        )
                 if player.flash_s > 0:
                     bevel_rectangle(
                         DISP,

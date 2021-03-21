@@ -35,7 +35,7 @@ if is_url(fn):
         pass
 
 if not pcm:
-    cmd = ffmpeg_start + ("-f", "f32le", "-ac", "2", "-ar", "48k", "-i", "-", fo)
+    cmd = ffmpeg_start + ("-f", "f32le", "-ac", "2", "-ar", "48k", "-i", "-", "-b:a", "192k", fo)
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 else:
     f = open(fo, "wb")
@@ -56,7 +56,7 @@ for img in columns.swapaxes(0, 1):
     np.subtract(255, sat, out=sat)
     np.power(1.03125, sat, out=sat)
     val *= sat
-    val *= ffts / 255 / 4096
+    val *= ffts * 2 / 255 / 4096
     amplitude = val
     cpl = np.multiply(phase, 1j)
     np.exp(cpl, out=cpl)

@@ -743,13 +743,10 @@ def draw_menu():
             etarget = round((mpos[1] - 68) / 32) if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52, sidebar_width - 16, screensize[1] - toolbar_height - 52)) else nan
             target = min(max(0, round((mpos[1] - 68) / 32)), len(queue) - 1)
             if in_rect(mpos, sidebar.rect) and mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT]:
-                if etarget not in range(len(queue)):
+                if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                     for entry in queue:
                         entry.pop("selected", None)
                         sidebar.pop("last_selected", None)
-            if mclick[0] and etarget in range(len(queue)) and in_rect(mpos, sidebar.rect):
-                if queue[etarget].get("selected"):
-                    sidebar.last_selected = queue[etarget]
             for i, entry in enumerate(queue):
                 if entry.get("selected"):
                     if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
@@ -761,7 +758,7 @@ def draw_menu():
                         copies.append(entry.url)
                 elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a]:
                     entry.selected = True
-                    sidebar.last_selected = queue[-1]
+                    sidebar.last_selected = entry
                 if i >= maxitems:
                     entry.pop("flash", None)
                     continue
@@ -783,14 +780,14 @@ def draw_menu():
                     )
                     y = mpos2[1] - 16
                     if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and sidebar.get("last_selected") is entry:
-                        target = min(max(0, round((mpos[1] - 68) / 32)), len(queue) - 1)
                         if target != i:
                             swap = target - i
+                            print(swap, i, target, len(queue))
                 else:
                     y = round(52 + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 16, 32)
                 t = 255
-                selectable = in_rect((mpos[0] + sidebar_width - screensize[0], mpos[1]), rect)
+                selectable = i == etarget
                 if not selectable and sidebar.get("last_selected") and (kheld[K_LSHIFT] or kheld[K_RSHIFT]):
                     b = lq
                     if b >= 0:
@@ -802,6 +799,7 @@ def draw_menu():
                     if mclick[0] and selectable:
                         entry.selected = True
                         sidebar.dragging = True
+                        sidebar.last_selected = entry
                     sat = 0.875
                     val = 1
                     secondary = True
@@ -929,7 +927,6 @@ def draw_menu():
                     (0, 0, sidebar_width - 32, 24),
                 )
             if swap:
-                # moved = queue[0].get("selected")
                 dest = deque()
                 targets = {}
                 for i, entry in enumerate(queue):
@@ -938,11 +935,12 @@ def draw_menu():
                     if entry.get("selected"):
                         targets[i + swap] = entry
                         entry.moved = True
+                print(targets)
                 i = 0
                 for entry in queue:
                     j = 0
                     if i in targets:
-                        dest.append(targets[i])
+                        dest.append(targets.pop(i))
                         j = 1
                     if not entry.get("moved"):
                         dest.append(entry)
@@ -950,6 +948,8 @@ def draw_menu():
                     else:
                         entry.pop("moved", None)
                     i += j
+                if targets:
+                    dest.extend(targets[i] for i in sorted(targets))
                 queue[:] = dest
                 if 0 in targets:
                     submit(start_player, queue[0])

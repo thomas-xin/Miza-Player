@@ -279,7 +279,7 @@ shuffling = False
 transfer = False
 BSIZE = 1600
 RSIZE = BSIZE << 1
-TSIZE = BSIZE >> 2
+TSIZE = BSIZE // 3
 def reader(f, pos=None, reverse=False, shuffling=False):
     global proc, transfer
     try:
@@ -1031,6 +1031,7 @@ submit(render)
 submit(remover)
 submit(duration_est)
 submit(ensure_parent)
+pc()
 while not sys.stdin.closed and failed < 16:
     try:
         command = sys.stdin.readline().rstrip().rstrip("\x00")

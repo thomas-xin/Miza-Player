@@ -742,11 +742,12 @@ def draw_menu():
             maxitems = int(screensize[1] - toolbar_height - 20 >> 5)
             etarget = round((mpos[1] - 68) / 32) if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52, sidebar_width - 16, screensize[1] - toolbar_height - 52)) else nan
             target = min(max(0, round((mpos[1] - 68) / 32)), len(queue) - 1)
-            if in_rect(mpos, sidebar.rect) and mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT]:
+            if in_rect(mpos, sidebar.rect) and mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
                 if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                     for entry in queue:
                         entry.pop("selected", None)
-                        sidebar.pop("last_selected", None)
+                    sidebar.pop("last_selected", None)
+                    lq = nan
             for i, entry in enumerate(queue):
                 if entry.get("selected"):
                     if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
@@ -759,6 +760,7 @@ def draw_menu():
                 elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a]:
                     entry.selected = True
                     sidebar.last_selected = entry
+                    lq = i
                 if i >= maxitems:
                     entry.pop("flash", None)
                     continue
@@ -779,10 +781,11 @@ def draw_menu():
                         filled=False,
                     )
                     y = mpos2[1] - 16
-                    if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and sidebar.get("last_selected") is entry:
+                    if isfinite(lq):
+                        y += (i - lq) * 32
+                    if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL] and sidebar.get("last_selected") is entry:
                         if target != i:
                             swap = target - i
-                            print(swap, i, target, len(queue))
                 else:
                     y = round(52 + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 16, 32)
@@ -795,18 +798,6 @@ def draw_menu():
                         a, b = sorted((a, b))
                         if a <= i <= b:
                             selectable = True
-                if selectable or entry.get("selected"):
-                    if mclick[0] and selectable:
-                        entry.selected = True
-                        sidebar.dragging = True
-                        sidebar.last_selected = entry
-                    sat = 0.875
-                    val = 1
-                    secondary = True
-                else:
-                    sat = 1
-                    val = 0.75
-                    secondary = False
                 if entry.get("flash"):
                     if entry.flash < 0:
                         entry.pop("flash", None)
@@ -814,6 +805,21 @@ def draw_menu():
                         sat = max(0, sat - entry.flash / 16)
                         val = min(1, val + entry.flash / 16)
                     entry.flash -= 1
+                if selectable or entry.get("selected"):
+                    if mclick[0] and selectable:
+                        entry.selected = True
+                        sidebar.dragging = True
+                        sidebar.last_selected = entry
+                        lq = i
+                    if entry.get("selected"):
+                        continue
+                    sat = 0.875
+                    val = 1
+                    secondary = True
+                else:
+                    sat = 1
+                    val = 0.75
+                    secondary = False
                 entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
                 bevel_rectangle(
                     DISP2,
@@ -877,12 +883,64 @@ def draw_menu():
                 if not entry.get("selected"):
                     continue
                 x = 8 + offs
-                if sidebar.get("dragging"):
-                    # x = mpos2[0] - sidebar_width // 2 + 8
-                    y = mpos2[1] - 16
-                else:
-                    y = round(52 + entry.get("pos", 0) * 32)
+                y = round(52 + entry.get("pos", 0) * 32)
+                sat = 0.875
+                val = 1
                 rect = (x, y, sidebar_width - 16, 32)
+                entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                secondary = sidebar.get("dragging")
+                if secondary:
+                    y = mpos2[1] - 16
+                    if isfinite(lq):
+                        y += (i - lq) * 32
+                    rect = (x, y, sidebar_width - 16, 32)
+                sat = 0.875
+                val = 0.4375
+                if entry.get("flash"):
+                    sat = max(0, sat - entry.flash / 16)
+                    val = min(1, val + entry.flash / 16)
+                pygame.draw.rect(
+                    DISP2,
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
+                )
+                bevel_rectangle(
+                    DISP2,
+                    col,
+                    rect,
+                    4,
+                    alpha=255,
+                    filled=False,
+                )
+                if not entry.get("surf"):
+                    entry.surf = message_display(
+                        "".join(c if ord(c) < 65536 else "\x7f" for c in entry.name[:128]),
+                        12,
+                        (0,) * 2,
+                        align=0,
+                    )
+                if not t:
+                    blit_complex(
+                        DISP2,
+                        entry.surf,
+                        (x + 6, y + 4),
+                        area=(0, 0, sidebar_width - 32, 24),
+                        colour=(t,) * 3,
+                    )
+                else:
+                    DISP2.blit(
+                        entry.surf,
+                        (x + 6, y + 4),
+                        (0, 0, sidebar_width - 32, 24),
+                    )
+                message_display(
+                    time_disp(entry.duration or inf),
+                    10,
+                    [x + sidebar_width - 20, y + 28],
+                    (t,) * 3,
+                    surface=DISP2,
+                    align=2,
+                )
                 anima_rectangle(
                     DISP2,
                     [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
@@ -927,6 +985,7 @@ def draw_menu():
                     (0, 0, sidebar_width - 32, 24),
                 )
             if swap:
+                orig = queue[0]
                 dest = deque()
                 targets = {}
                 for i, entry in enumerate(queue):
@@ -935,23 +994,24 @@ def draw_menu():
                     if entry.get("selected"):
                         targets[i + swap] = entry
                         entry.moved = True
-                print(targets)
+                # print([i for i, entry in enumerate(queue) if entry.get("moved")])
+                # print(list(targets))
                 i = 0
                 for entry in queue:
-                    j = 0
-                    if i in targets:
+                    while i in targets:
                         dest.append(targets.pop(i))
-                        j = 1
+                        i += 1
                     if not entry.get("moved"):
                         dest.append(entry)
-                        j = 1
+                        i += 1
                     else:
                         entry.pop("moved", None)
-                    i += j
                 if targets:
                     dest.extend(targets[i] for i in sorted(targets))
+                    for entry in targets.values():
+                        entry.pop("moved", None)
                 queue[:] = dest
-                if 0 in targets:
+                if queue[0] is not orig:
                     submit(start_player, queue[0])
             DISP.blit(
                 DISP2,

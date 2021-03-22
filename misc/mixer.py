@@ -823,7 +823,7 @@ def render():
     global lastpacket, osci_fut, spec_fut, spec2_fut, packet_advanced, sbuffer
     try:
         while True:
-            if lastpacket != packet:
+            if lastpacket != packet and sbuffer is not None:
                 lastpacket = packet
                 buffer = sbuffer
 
@@ -1013,6 +1013,7 @@ ssize = (0, 0)
 lastpacket = None
 packet = None
 sample = None
+sbuffer = None
 cdc = "auto"
 duration = inf
 stream = ""

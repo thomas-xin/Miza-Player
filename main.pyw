@@ -798,13 +798,6 @@ def draw_menu():
                         a, b = sorted((a, b))
                         if a <= i <= b:
                             selectable = True
-                if entry.get("flash"):
-                    if entry.flash < 0:
-                        entry.pop("flash", None)
-                    else:
-                        sat = max(0, sat - entry.flash / 16)
-                        val = min(1, val + entry.flash / 16)
-                    entry.flash -= 1
                 if selectable or entry.get("selected"):
                     if mclick[0] and selectable:
                         entry.selected = True
@@ -812,6 +805,8 @@ def draw_menu():
                         sidebar.last_selected = entry
                         lq = i
                     if entry.get("selected"):
+                        if entry.get("flash"):
+                            entry.flash -= 1
                         continue
                     sat = 0.875
                     val = 1
@@ -820,6 +815,13 @@ def draw_menu():
                     sat = 1
                     val = 0.75
                     secondary = False
+                if entry.get("flash"):
+                    if entry.flash < 0:
+                        entry.pop("flash", None)
+                    else:
+                        sat = max(0, sat - entry.flash / 16)
+                        val = min(1, val + entry.flash / 16)
+                    entry.flash -= 1
                 entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
                 bevel_rectangle(
                     DISP2,

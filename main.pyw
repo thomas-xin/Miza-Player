@@ -738,6 +738,7 @@ def draw_menu():
             except (AttributeError, ValueError, IndexError):
                 sidebar.pop("last_selected", None)
                 lq = nan
+            lq2 = lq
             swap = None
             maxitems = int(screensize[1] - toolbar_height - 20 >> 5)
             etarget = round((mpos[1] - 68) / 32) if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52, sidebar_width - 16, screensize[1] - toolbar_height - 52)) else nan
@@ -764,6 +765,8 @@ def draw_menu():
                 if i >= maxitems:
                     entry.pop("flash", None)
                     continue
+                if not isfinite(lq):
+                    lq2 = nan
                 x = 8 + offs
                 if entry.get("selected") and sidebar.get("dragging"):
                     y = round(52 + entry.get("pos", 0) * 32)
@@ -781,8 +784,8 @@ def draw_menu():
                         filled=False,
                     )
                     y = mpos2[1] - 16
-                    if isfinite(lq):
-                        y += (i - lq) * 32
+                    if isfinite(lq2):
+                        y += (i - lq2) * 32
                     if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL] and sidebar.get("last_selected") is entry:
                         if target != i:
                             swap = target - i
@@ -800,10 +803,17 @@ def draw_menu():
                             selectable = True
                 if selectable or entry.get("selected"):
                     if mclick[0] and selectable:
-                        entry.selected = True
-                        sidebar.dragging = True
-                        sidebar.last_selected = entry
-                        lq = i
+                        if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
+                            entry.selected = False
+                            sidebar.dragging = False
+                            sidebar.pop("last_selected", None)
+                            lq = nan
+                        else:
+                            entry.selected = True
+                            sidebar.dragging = True
+                            if i == target:
+                                sidebar.last_selected = entry
+                                lq2 = i
                     if entry.get("selected"):
                         if entry.get("flash"):
                             entry.flash -= 1
@@ -893,8 +903,8 @@ def draw_menu():
                 secondary = sidebar.get("dragging")
                 if secondary:
                     y = mpos2[1] - 16
-                    if isfinite(lq):
-                        y += (i - lq) * 32
+                    if isfinite(lq2):
+                        y += (i - lq2) * 32
                     rect = (x, y, sidebar_width - 16, 32)
                 sat = 0.875
                 val = 0.4375
@@ -996,8 +1006,6 @@ def draw_menu():
                     if entry.get("selected"):
                         targets[i + swap] = entry
                         entry.moved = True
-                # print([i for i, entry in enumerate(queue) if entry.get("moved")])
-                # print(list(targets))
                 i = 0
                 for entry in queue:
                     while i in targets:

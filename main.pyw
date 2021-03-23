@@ -720,11 +720,21 @@ def draw_menu():
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
         modified.add(sidebar.rect)
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
-        if queue and offs > -sidebar_width + 4:
+        if offs > -sidebar_width + 4:
+            Z = 52 + 16
             DISP2 = pygame.Surface(sidebar.rect2[2:])
             DISP2.fill(sidebar.colour)
             if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
                 enqueue_auto(*pyperclip.paste().splitlines())
+            n = len(queue)
+            t = sum(e.get("duration") or 300 for e in queue) - (player.pos or 0)
+            message_display(
+                f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
+                12,
+                (6, 48),
+                surface=DISP2,
+                align=0,
+            )
             if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
                 sidebar.pop("dragging", None)
             if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue):
@@ -741,20 +751,23 @@ def draw_menu():
             lq2 = lq
             swap = None
             maxitems = int(screensize[1] - toolbar_height - 20 >> 5)
-            etarget = round((mpos[1] - 68) / 32) if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52, sidebar_width - 16, screensize[1] - toolbar_height - 52)) else nan
-            target = min(max(0, round((mpos[1] - 68) / 32)), len(queue) - 1)
+            etarget = round((mpos[1] - Z - 16) / 32) if in_rect(mpos, (screensize[0] - sidebar_width + 8, Z, sidebar_width - 16, screensize[1] - toolbar_height - Z)) else nan
+            target = min(max(0, round((mpos[1] - Z - 16) / 32)), len(queue) - 1)
             if in_rect(mpos, sidebar.rect) and mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
                 if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                     for entry in queue:
                         entry.pop("selected", None)
                     sidebar.pop("last_selected", None)
                     lq = nan
+            noparticles = set()
             for i, entry in enumerate(queue):
                 if entry.get("selected"):
                     if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
                         pops.add(i)
                         if sidebar.get("last_selected") == entry:
                             sidebar.pop("last_selected", None)
+                        if i >= maxitems:
+                            noparticles.add(i)
                     if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
                         entry.flash = 16
                         copies.append(entry.url)
@@ -769,7 +782,7 @@ def draw_menu():
                     lq2 = nan
                 x = 8 + offs
                 if entry.get("selected") and sidebar.get("dragging"):
-                    y = round(52 + entry.get("pos", 0) * 32)
+                    y = round(Z + entry.get("pos", 0) * 32)
                     rect = (x, y, sidebar_width - 16, 32)
                     sat = 0.875
                     val = 1
@@ -790,7 +803,7 @@ def draw_menu():
                         if target != i:
                             swap = target - i
                 else:
-                    y = round(52 + entry.get("pos", 0) * 32)
+                    y = round(Z + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 16, 32)
                 t = 255
                 selectable = i == etarget
@@ -883,19 +896,20 @@ def draw_menu():
                 )
             if copies:
                 pyperclip.copy("\n".join(copies))
-            sidebar.particles.extend(queue[i] for i in pops)
-            skipping = 0 in pops
-            queue.pops(pops)
-            if skipping:
-                mixer.clear()
-                submit(start)
+            if pops:
+                sidebar.particles.extend(queue[i] for i in pops if i not in noparticles)
+                skipping = 0 in pops
+                queue.pops(pops)
+                if skipping:
+                    mixer.clear()
+                    submit(start)
             for i, entry in enumerate(queue):
                 if i >= maxitems:
                     break
                 if not entry.get("selected"):
                     continue
                 x = 8 + offs
-                y = round(52 + entry.get("pos", 0) * 32)
+                y = round(Z + entry.get("pos", 0) * 32)
                 sat = 0.875
                 val = 1
                 rect = (x, y, sidebar_width - 16, 32)
@@ -965,7 +979,7 @@ def draw_menu():
                 )
             if sidebar.get("loading"):
                 x = 8 + offs
-                y = round(52 + len(queue) * 32)
+                y = round(Z + len(queue) * 32)
                 rect = (x, y, sidebar_width - 16, 32)
                 bevel_rectangle(
                     DISP2,
@@ -1029,10 +1043,10 @@ def draw_menu():
             )
         bevel_rectangle(
             DISP,
-            sidebar.colour,
+            sidebar.colour or (64, 0, 96),
             sidebar.rect2,
             4,
-            filled=not queue or offs <= -sidebar_width + 4
+            filled=offs <= -sidebar_width + 4
         )
         if offs <= -4:
             offs2 = offs + sidebar_width

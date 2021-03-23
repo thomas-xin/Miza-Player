@@ -243,7 +243,7 @@ removing = set()
 def remover():
     try:
         while True:
-            for fn in removing:
+            for fn in deque(removing):
                 try:
                     os.remove(fn)
                 except PermissionError:

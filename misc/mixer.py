@@ -283,7 +283,7 @@ TSIZE = BSIZE // 3
 def reader(f, pos=None, reverse=False, shuffling=False):
     global proc, transfer
     try:
-        if f.closed:
+        if getattr(f, "closed", None):
             raise StopIteration
         if pos is None:
             pos = f.tell()
@@ -1006,7 +1006,7 @@ def ensure_parent():
             proc.kill()
 
 
-ffmpeg_start = ("ffmpeg", "-y", "-nostdin", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+fastseek+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+fastseek+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 settings = cdict()
 osize = (0, 0)
 ssize = (0, 0)
@@ -1176,7 +1176,7 @@ while not sys.stdin.closed and failed < 16:
                         ostream = stream
                         stream = "cache/~" + shash(ostream) + ".pcm"
                         if not os.path.exists(stream):
-                            cmd = ffmpeg_start + ("-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
+                            cmd = ffmpeg_start + ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
                             print(cmd)
                             resp = subprocess.run(cmd)
                     fn = None
@@ -1187,7 +1187,7 @@ while not sys.stdin.closed and failed < 16:
                         cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
                     elif cdc == "mp3":
                         cmd.extend(("-c:a", "mp3"))
-                cmd.extend(("-i", "-" if f else stream))
+                cmd.extend(("-nostdin", "-i", "-" if f else stream))
                 cmd.extend(ext)
                 cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
                 if pos and not f:

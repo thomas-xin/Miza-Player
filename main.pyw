@@ -1017,7 +1017,7 @@ def draw_menu():
                     else:
                         entry.pop("moved", None)
                 if targets:
-                    dest.extend(targets[i] for i in sorted(targets))
+                    dest.extend(targets.values())
                     for entry in targets.values():
                         entry.pop("moved", None)
                 queue[:] = dest

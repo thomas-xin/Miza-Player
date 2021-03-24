@@ -151,6 +151,7 @@ def setup_buttons():
     except:
         print_exc()
 
+cached_fns = {}
 def _enqueue_local(*files):
     try:
         if files:
@@ -171,7 +172,14 @@ def _enqueue_local(*files):
                         fn = "/" + fn
                     options.path, name = fn.rsplit("/", 1)
                     name = name.rsplit(".", 1)[0]
-                    dur, cdc = get_duration_2(fn)
+                    try:
+                        try:
+                            dur, cdc = cached_fns[fn]
+                        except KeyError:
+                            dur, cdc = cached_fns[fn] = get_duration_2(fn)
+                    except:
+                        print_exc()
+                        dur, cdc = (None, "N/A")
                     # if dur is None and cdc == "N/A":
                     #     fi = fn
                     #     fn = "cache/~" + shash(fi) + ".pcm"
@@ -211,13 +219,22 @@ def enqueue_local():
     if files:
         submit(_enqueue_local, *files)
 
+eparticle = dict(colour=(255,) * 3)
 def _enqueue_search(query):
     try:
         if query:
             sidebar.loading = True
             ytdl = downloader.result()
-            entries = ytdl.search(query)
-            queue.extend(cdict(e) for e in entries)
+            try:
+                entries = ytdl.search(query)
+            except:
+                print_exc()
+                sidebar.particles.append(cdict(eparticle))
+            else:
+                if entries:
+                    queue.extend(cdict(e) for e in entries)
+                else:
+                    sidebar.particles.append(cdict(eparticle))
             sidebar.loading = False
     except:
         sidebar.loading = False
@@ -435,21 +452,19 @@ def skip():
         elif control.loop == 1:
             e = queue.popleft()
             if control.shuffle:
-                maxitems = int(screensize[1] - options.toolbar_height - 20 >> 5)
                 for i, entry in enumerate(queue):
-                    if i >= maxitems:
+                    if i >= sidebar.maxitems:
                         break
-                    entry.pos = maxitems
+                    entry.pos = sidebar.maxitems
                 queue[:] = queue.shuffle()
             queue.append(e)
         else:
             sidebar.particles.append(queue.popleft())
             if control.shuffle:
-                maxitems = int(screensize[1] - options.toolbar_height - 20 >> 5)
                 for i, entry in enumerate(queue):
-                    if i >= maxitems:
+                    if i >= sidebar.maxitems:
                         break
-                    entry.pos = maxitems
+                    entry.pos = sidebar.maxitems
                 queue[:] = queue.shuffle()
         if queue:
             return enqueue(queue[0])
@@ -602,9 +617,9 @@ def update_menu():
     progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
     toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * 2) % tau
     toolbar.pause.speed *= 0.995 ** (duration * 480)
-    maxitems = int(screensize[1] - options.toolbar_height - 20 >> 5)
+    sidebar.maxitems = int(screensize[1] - options.toolbar_height - 36 >> 5)
     for i, entry in enumerate(queue):
-        if i >= maxitems:
+        if i >= sidebar.maxitems:
             break
         entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
     if kspam[K_SPACE]:
@@ -750,7 +765,7 @@ def draw_menu():
                 lq = nan
             lq2 = lq
             swap = None
-            maxitems = int(screensize[1] - toolbar_height - 20 >> 5)
+            maxitems = sidebar.maxitems
             etarget = round((mpos[1] - Z - 16) / 32) if in_rect(mpos, (screensize[0] - sidebar_width + 8, Z, sidebar_width - 16, screensize[1] - toolbar_height - Z)) else nan
             target = min(max(0, round((mpos[1] - Z - 16) / 32)), len(queue) - 1)
             if in_rect(mpos, sidebar.rect) and mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
@@ -787,7 +802,10 @@ def draw_menu():
                     sat = 0.875
                     val = 1
                     secondary = True
-                    entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                    if pc() % 0.25 < 0.125:
+                        entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                    else:
+                        col = (255,) * 3
                     bevel_rectangle(
                         DISP2,
                         col,
@@ -838,13 +856,14 @@ def draw_menu():
                     sat = 1
                     val = 0.75
                     secondary = False
-                if entry.get("flash"):
-                    if entry.flash < 0:
-                        entry.pop("flash", None)
+                flash = entry.get("flash", 16)
+                if flash:
+                    if flash < 0:
+                        entry.flash = 0
                     else:
-                        sat = max(0, sat - entry.flash / 16)
-                        val = min(1, val + entry.flash / 16)
-                    entry.flash -= 1
+                        sat = max(0, sat - flash / 16)
+                        val = min(1, val + flash / 16)
+                        entry.flash = flash - 1
                 entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
                 bevel_rectangle(
                     DISP2,
@@ -857,9 +876,9 @@ def draw_menu():
                 if secondary:
                     sat = 0.875
                     val = 0.4375
-                    if entry.get("flash"):
-                        sat = max(0, sat - entry.flash / 16)
-                        val = min(1, val + entry.flash / 16)
+                    if flash:
+                        sat = max(0, sat - flash / 16)
+                        val = min(1, val + flash / 16)
                     pygame.draw.rect(
                         DISP2,
                         [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
@@ -887,7 +906,7 @@ def draw_menu():
                         (0, 0, sidebar_width - 32, 24),
                     )
                 message_display(
-                    time_disp(entry.duration or inf),
+                    time_disp(entry.duration) if entry.duration else "N/A",
                     10,
                     [x + sidebar_width - 20, y + 28],
                     (t,) * 3,
@@ -922,9 +941,10 @@ def draw_menu():
                     rect = (x, y, sidebar_width - 16, 32)
                 sat = 0.875
                 val = 0.4375
-                if entry.get("flash"):
-                    sat = max(0, sat - entry.flash / 16)
-                    val = min(1, val + entry.flash / 16)
+                flash = entry.get("flash", 16)
+                if flash:
+                    sat = max(0, sat - flash / 16)
+                    val = min(1, val + flash / 16)
                 pygame.draw.rect(
                     DISP2,
                     [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
@@ -960,7 +980,7 @@ def draw_menu():
                         (0, 0, sidebar_width - 32, 24),
                     )
                 message_display(
-                    time_disp(entry.duration or inf),
+                    time_disp(entry.duration) if entry.duration else "N/A",
                     10,
                     [x + sidebar_width - 20, y + 28],
                     (t,) * 3,
@@ -970,7 +990,7 @@ def draw_menu():
                 anima_rectangle(
                     DISP2,
                     [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
-                    [rect[0] + 1, rect[1] + 1, rect[2] - 3, rect[3] - 3],
+                    [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
                     frame=4,
                     count=2,
                     flash=1,
@@ -991,7 +1011,7 @@ def draw_menu():
                 anima_rectangle(
                     DISP2,
                     (255,) * 3,
-                    [rect[0] + 1, rect[1] + 1, rect[2] - 3, rect[3] - 3],
+                    [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
                     frame=4,
                     count=2,
                     flash=1,
@@ -1167,7 +1187,7 @@ def draw_menu():
                     if entry.life <= 0:
                         pops.add(i)
                 col = [round(i * entry.life) for i in entry.get("colour", (223, 0, 0))]
-                y = round(52 + entry.get("pos", 0) * 32)
+                y = round(Z + entry.get("pos", 0) * 32)
                 ext = round(32 - 32 * entry.life)
                 rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 + ext * 2, 32 + ext * 2)
                 bevel_rectangle(

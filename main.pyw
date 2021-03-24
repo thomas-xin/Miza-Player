@@ -51,6 +51,7 @@ sidebar = cdict(
     entries=alist(),
     buttons=alist(),
     particles=alist(),
+    ripples=alist(),
 )
 toolbar = cdict(
     pause=cdict(
@@ -67,6 +68,7 @@ toolbar = cdict(
         particles=alist(),
     ),
     buttons=alist(),
+    ripples=alist(),
 )
 queue = sidebar.queue
 entries = sidebar.entries
@@ -622,7 +624,7 @@ def update_menu():
         if i >= sidebar.maxitems:
             break
         entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
-    # sidebar.scroll = max(0, min(len(sidebar.queue) - sidebar.maxitems // 2, sidebar.get("scroll", 0)))
+    sidebar.scroll = max(0, min(len(sidebar.queue) - sidebar.maxitems // 2, sidebar.get("scroll", 0)))
     if kspam[K_SPACE]:
         player.paused ^= True
         mixer.state(player.paused)
@@ -731,15 +733,47 @@ def draw_menu():
     dur = max(0.001, min(t - ts, 0.125))
     if not tick & 7:
         toolbar.progress.timestamp = pc()
+        pops = set()
+        for i, ripple in enumerate(toolbar.ripples):
+            ripple.radius += dur * 128
+            ripple.alpha -= dur * 128
+            if ripple.alpha <= 2:
+                pops.add(i)
+        if pops:
+            toolbar.ripples.pops(pops)
+        pops = set()
+        for i, ripple in enumerate(sidebar.ripples):
+            ripple.radius += dur * 128
+            ripple.alpha -= dur * 128
+            if ripple.alpha <= 2:
+                pops.add(i)
+        if pops:
+            sidebar.ripples.pops(pops)
     crosshair = False
     hovertext = None
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
+        if mclick[0] and in_rect(mpos, sidebar.rect):
+            sidebar.ripples.append(cdict(
+                pos=mpos,
+                radius=0,
+                colour=(191, 127, 255),
+                alpha=255,
+            ))
         modified.add(sidebar.rect)
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
         if offs > -sidebar_width + 4:
             Z = 52 + 16
             DISP2 = pygame.Surface(sidebar.rect2[2:])
             DISP2.fill(sidebar.colour)
+            for ripple in sidebar.ripples:
+                concentric_circle(
+                    DISP2,
+                    ripple.colour,
+                    (ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
+                    ripple.radius,
+                    fill_ratio=1 / 3,
+                    alpha=sqrt(max(0, ripple.alpha)) * 16,
+                )
             if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
                 enqueue_auto(*pyperclip.paste().splitlines())
             n = len(queue)
@@ -1203,6 +1237,13 @@ def draw_menu():
             sidebar.particles.pops(pops)
         else:
             sidebar.particles.clear()
+    if mclick[0] and in_rect(mpos, toolbar.rect):
+        toolbar.ripples.append(cdict(
+            pos=mpos,
+            radius=0,
+            colour=(191, 127, 255),
+            alpha=255,
+        ))
     highlighted = progress.seeking or in_rect(mpos, progress.rect)
     crosshair |= highlighted
     osci_rect = (screensize[0] - 8 - progress.box, screensize[1] - toolbar_height, progress.box, toolbar_height * 2 // 3 - 3)
@@ -1214,6 +1255,21 @@ def draw_menu():
             4,
         )
         modified.add(toolbar.rect)
+        if toolbar.ripples:
+            DISP2 = pygame.Surface(toolbar.rect[2:], SRCALPHA)
+            for ripple in toolbar.ripples:
+                concentric_circle(
+                    DISP2,
+                    ripple.colour,
+                    (ripple.pos[0], ripple.pos[1] - screensize[1] + toolbar_height),
+                    ripple.radius,
+                    fill_ratio=1 / 3,
+                    alpha=sqrt(max(0, ripple.alpha)) * 16,
+                )
+            DISP.blit(
+                DISP2,
+                toolbar.rect[:2],
+            )
         pos = progress.pos
         length = progress.length
         width = progress.width

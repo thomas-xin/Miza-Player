@@ -541,7 +541,10 @@ def oscilloscope(buffer):
             for i in range(len(osci)):
                 x = round(i * r)
                 y = round(i * r + r)
-                osci[i] = np.mean(arr[x:y])
+                v = arr[x:y]
+                a = np.max(v)
+                b = np.min(v)
+                osci[i] = a if a >= -b else b
             osci = np.clip(osci * (1 / 65536), -1, 1, out=osci)
             if packet:
                 size = osize

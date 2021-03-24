@@ -622,6 +622,7 @@ def update_menu():
         if i >= sidebar.maxitems:
             break
         entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
+    # sidebar.scroll = max(0, min(len(sidebar.queue) - sidebar.maxitems // 2, sidebar.get("scroll", 0)))
     if kspam[K_SPACE]:
         player.paused ^= True
         mixer.state(player.paused)
@@ -792,6 +793,7 @@ def draw_menu():
                     lq = i
                 if i >= maxitems:
                     entry.pop("flash", None)
+                    entry.pos = i
                     continue
                 if not isfinite(lq):
                     lq2 = nan
@@ -846,8 +848,9 @@ def draw_menu():
                                 sidebar.last_selected = entry
                                 lq2 = i
                     if entry.get("selected"):
-                        if entry.get("flash"):
-                            entry.flash -= 1
+                        flash = entry.get("flash", 16)
+                        if flash:
+                            entry.flash = flash - 1
                         continue
                     sat = 0.875
                     val = 1

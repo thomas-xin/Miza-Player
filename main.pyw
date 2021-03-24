@@ -752,7 +752,7 @@ def draw_menu():
     crosshair = False
     hovertext = None
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
-        if mclick[0] and in_rect(mpos, sidebar.rect):
+        if any(mclick) and in_rect(mpos, sidebar.rect):
             sidebar.ripples.append(cdict(
                 pos=mpos,
                 radius=0,
@@ -1237,7 +1237,7 @@ def draw_menu():
             sidebar.particles.pops(pops)
         else:
             sidebar.particles.clear()
-    if mclick[0] and in_rect(mpos, toolbar.rect):
+    if any(mclick) and in_rect(mpos, toolbar.rect):
         toolbar.ripples.append(cdict(
             pos=mpos,
             radius=0,

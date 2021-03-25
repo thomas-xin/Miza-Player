@@ -727,6 +727,14 @@ def update_menu():
     sidebar.colour = c
     sidebar.relpos = min(1, (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.abspos) / ratio)
 
+ripple_colours = (
+    (191, 127, 255),
+    (255, 0, 127),
+    (0, 255, 255),
+    (0, 0, 0),
+    (255, 255, 255),
+)
+
 def draw_menu():
     ts = toolbar.progress.setdefault("timestamp", 0)
     t = pc()
@@ -756,7 +764,7 @@ def draw_menu():
             sidebar.ripples.append(cdict(
                 pos=mpos,
                 radius=0,
-                colour=(191, 127, 255),
+                colour=ripple_colours[mclick.index(1)],
                 alpha=255,
             ))
         modified.add(sidebar.rect)
@@ -1106,6 +1114,21 @@ def draw_menu():
             filled=offs <= -sidebar_width + 4
         )
         if offs <= -4:
+            if sidebar.ripples:
+                DISP2 = pygame.Surface(sidebar.rect[2:], SRCALPHA)
+                for ripple in sidebar.ripples:
+                    concentric_circle(
+                        DISP2,
+                        ripple.colour,
+                        (ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
+                        ripple.radius,
+                        fill_ratio=1 / 3,
+                        alpha=sqrt(max(0, ripple.alpha)) * 16,
+                    )
+                DISP.blit(
+                    DISP2,
+                    sidebar.rect[:2],
+                )
             offs2 = offs + sidebar_width
             for i, opt in enumerate(asettings):
                 message_display(
@@ -1241,7 +1264,7 @@ def draw_menu():
         toolbar.ripples.append(cdict(
             pos=mpos,
             radius=0,
-            colour=(191, 127, 255),
+            colour=ripple_colours[mclick.index(1)],
             alpha=255,
         ))
     highlighted = progress.seeking or in_rect(mpos, progress.rect)
@@ -1624,7 +1647,7 @@ def draw_menu():
 K_a = 4
 K_c = 6
 K_v = 25
-K_x = 120
+K_x = 27
 K_SPACE = 44
 K_DELETE = 76
 reset_menu(True)
@@ -1666,8 +1689,8 @@ try:
             kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
             kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
             kspam = kclick
-            # if any(kspam):
-            #     print(" ".join(map(str, (i for i, v in enumerate(kspam) if v))), K_a)
+            if any(kspam):
+                print(" ".join(map(str, (i for i, v in enumerate(kspam) if v))))
             if not tick & 15:
                 kspam = KeyList(x or y >= 240 for x, y in zip(kclick, kheld))
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):

@@ -1644,10 +1644,8 @@ def draw_menu():
             )
 
 
-K_a = 4
-K_c = 6
-K_v = 25
-K_x = 27
+for i in range(26):
+    globals()[f"K_{chr(i + 97)}"] = i + 4
 K_SPACE = 44
 K_DELETE = 76
 reset_menu(True)
@@ -1689,8 +1687,8 @@ try:
             kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
             kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
             kspam = kclick
-            if any(kspam):
-                print(" ".join(map(str, (i for i, v in enumerate(kspam) if v))))
+            # if any(kspam):
+            #     print(" ".join(map(str, (i for i, v in enumerate(kspam) if v))))
             if not tick & 15:
                 kspam = KeyList(x or y >= 240 for x, y in zip(kclick, kheld))
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):

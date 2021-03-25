@@ -954,7 +954,7 @@ def play(pos):
                 smp = np.frombuffer(b, dtype=np.int16)
                 if settings.volume != 1:
                     s = smp * settings.volume
-                    if abs(settings.volume) > 1:
+                    if abs(settings.volume) > 1 or settings.volume < -32767 / 32768:
                         s = np.clip(s, -32767, 32767)
                     sample = s.astype(np.int16)
                     b = sample.tobytes()

@@ -764,7 +764,7 @@ def update_menu():
 
 ripple_colours = (
     (191, 127, 255),
-    (255, 0, 127),
+    (255, 127, 191),
     (0, 255, 255),
     (0, 0, 0),
     (255, 255, 255),
@@ -1268,9 +1268,10 @@ def draw_menu():
                 if not i:
                     lum -= 32
                     lum += button.get("flash", 0)
+                col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 1)]
                 bevel_rectangle(
                     DISP,
-                    (lum,) * 3,
+                    col,
                     button.rect,
                     4,
                 )
@@ -1392,9 +1393,10 @@ def draw_menu():
             if button.get("rect"):
                 lum = 191 if in_rect(mpos, button.rect) else 127
                 lum += button.get("flash", 0)
+                col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 0.25)]
                 bevel_rectangle(
                     DISP,
-                    (lum,) * 3,
+                    col,
                     button.rect,
                     3,
                 )

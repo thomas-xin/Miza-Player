@@ -154,6 +154,17 @@ asettings = cdict(
     chorus=(0, 5),
     nightcore=(-6, 18, 0.5),
 )
+audio_default = dict(
+    volume=1,
+    speed=1,
+    pitch=0,
+    pan=1,
+    bassboost=0,
+    reverb=0,
+    compressor=0,
+    chorus=0,
+    nightcore=0,
+)
 aediting = dict.fromkeys(asettings)
 config = "config.json"
 options = None
@@ -170,17 +181,7 @@ else:
         screensize=[1280, 720],
         sidebar_width=256,
         toolbar_height=64,
-        audio=cdict(
-            volume=1,
-            speed=1,
-            pitch=0,
-            pan=1,
-            bassboost=0,
-            reverb=0,
-            compressor=0,
-            chorus=0,
-            nightcore=0,
-        ),
+        audio=cdict(audio_default),
         control=cdict(
             shuffle=1,
             loop=1
@@ -261,8 +262,8 @@ if hasmisc:
     s = io.StringIO()
     s.write(("%" + str(hwnd) + "\n"))
     for k, v in audio.items():
-        s.write(f"~setting {k} {v}\n")
-    s.write(f"~setting shuffle {control.setdefault('shuffle', 0)}\n")
+        s.write(f"~setting #{k} {v}\n")
+    s.write(f"~setting #shuffle {control.setdefault('shuffle', 0)}\n")
     s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
     s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
     s.seek(0)
@@ -2214,6 +2215,13 @@ def time_disp(s, rounded=True):
     else:
         output = "0:" + output
     return output
+
+def time_parse(ts):
+    data = ts.split(":")
+    if len(data) >= 5: 
+        raise TypeError("Too many time arguments.")
+    mults = (1, 60, 3600, 86400)
+    return round_min(sum(float(count) * mult for count, mult in zip(data, reversed(mults[:len(data)]))))
 
 is_youtube_stream = lambda url: url and re.findall("^https?:\\/\\/r[0-9]+---.{2}-\\w+-\\w{4,}\\.googlevideo\\.com", url)
 # Regex moment - Smudge

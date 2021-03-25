@@ -86,10 +86,20 @@ def setup_buttons():
         inv = pygame.image.frombuffer(Image.merge("RGBA", (R, I, I, A)).tobytes(), I.size, "RGBA")
         def settings_toggle():
             sidebar.abspos ^= 1
+        def settings_reset():
+            sidebar.abspos = 1
+            options.audio.update(audio_default)
+            s = io.StringIO()
+            for k, v in options.audio.items():
+                s.write(f"~setting #{k} {v}\n")
+            s.write(f"~replay\n")
+            s.seek(0)
+            mixer.stdin.write(s.read().encode("utf-8"))
+            mixer.stdin.flush()
         sidebar.buttons.append(cdict(
             sprite=gears,
             invert=inv,
-            click=settings_toggle,
+            click=(settings_toggle, settings_reset),
         ))
         reset_menu(full=False)
         folder = pygame.image.load("misc/folder.bmp").convert_alpha()
@@ -629,6 +639,16 @@ def update_menu():
         player.paused ^= True
         mixer.state(player.paused)
         toolbar.pause.speed = toolbar.pause.maxspeed
+        if player.paused:
+            c = (255, 0, 0)
+        else:
+            c = (0, 255, 0)
+        toolbar.ripples.append(cdict(
+            pos=toolbar.pause.pos,
+            radius=0,
+            colour=c,
+            alpha=255,
+        ))
     if toolbar.resizing:
         toolbar_height = min(96, max(48, screensize[1] - mpos2[1] + 2))
         if options.toolbar_height != toolbar_height:
@@ -673,7 +693,7 @@ def update_menu():
         else:
             toolbar.resizer = True
     if in_circ(mpos, toolbar.pause.pos, max(4, toolbar.pause.radius - 2)):
-        if mclick[0]:
+        if any(mclick):
             player.paused ^= True
             mixer.state(player.paused)
             toolbar.pause.speed = toolbar.pause.maxspeed
@@ -689,27 +709,41 @@ def update_menu():
             progress.seeking = True
             if queue and isfinite(e_dur(queue[0].duration)):
                 mixer.clear()
+        elif mclick[1]:
+            enter = easygui.enterbox(
+                "Seek to position",
+                "Miza Player",
+                time_disp(player.pos),
+            )
+            pos = time_parse(enter)
+            submit(seek_abs, pos)
     if toolbar.resizing or in_rect(mpos, toolbar.rect):
         c = (64, 32, 96)
     else:
         c = (64, 0, 96)
     toolbar.updated = toolbar.colour != c
     toolbar.colour = c
-    if mclick[0]:
+    if any(mclick):
         for button in toolbar.buttons:
             if in_rect(mpos, button.rect):
                 button.flash = 64
-                button.click()
+                if callable(button.click):
+                    button.click()
+                else:
+                    button.click[min(mclick.index(1), len(button.click) - 1)]()
     else:
         for button in toolbar.buttons:
             if "flash" in button:
                 button.flash = max(0, button.flash - duration * 64)
     maxb = (options.sidebar_width - 12) // 44
-    if mclick[0]:
+    if any(mclick):
         for button in sidebar.buttons[:maxb]:
             if in_rect(mpos, button.rect):
                 button.flash = 32
-                button.click()
+                if callable(button.click):
+                    button.click()
+                else:
+                    button.click[min(mclick.index(1), len(button.click) - 1)]()
     else:
         for button in sidebar.buttons:
             if "flash" in button:
@@ -789,7 +823,7 @@ def draw_menu():
             message_display(
                 f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
                 12,
-                (6, 48),
+                (6 + offs, 48),
                 surface=DISP2,
                 align=0,
             )
@@ -1129,6 +1163,7 @@ def draw_menu():
                     DISP2,
                     sidebar.rect[:2],
                 )
+            in_sidebar = in_rect(mpos, sidebar.rect)
             offs2 = offs + sidebar_width
             for i, opt in enumerate(asettings):
                 message_display(
@@ -1156,7 +1191,7 @@ def draw_menu():
                     x = min(1, abs(x))
                 x = round(x * w)
                 brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
-                hovered = in_rect(mpos, brect) or aediting[opt]
+                hovered = in_sidebar and in_rect(mpos, brect) or aediting[opt]
                 crosshair |= bool(hovered) << 1
                 v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
                 if len(srange) > 2:
@@ -1171,6 +1206,14 @@ def draw_menu():
                         if not mheld[0]:
                             aediting[opt] = False
                     elif mclick[0]:
+                        aediting[opt] = True
+                    elif mclick[1]:
+                        enter = easygui.enterbox(
+                            opt.capitalize(),
+                            "Miza Player",
+                            round_min(options.audio[opt] * 100),
+                        )
+                        v = round_min(float(eval(enter, {}, {})) / 100)
                         aediting[opt] = True
                     if aediting[opt]:
                         orig, options.audio[opt] = options.audio[opt], v
@@ -1835,4 +1878,6 @@ except Exception as ex:
             fut.result()
         except:
             pass
+    if type(ex) is not StopIteration:
+        easygui.exceptionbox()
     PROC.kill()

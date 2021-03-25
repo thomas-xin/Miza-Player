@@ -1041,6 +1041,7 @@ while not sys.stdin.closed and failed < 16:
         command = sys.stdin.readline().rstrip().rstrip("\x00")
         if command:
             failed = 0
+            pos = frame / 30
             if command == "~clear":
                 if proc:
                     temp, proc = proc, None
@@ -1076,16 +1077,21 @@ while not sys.stdin.closed and failed < 16:
                 continue
             if command.startswith("~setting"):
                 setting, value = command[9:].split()
+                if setting.startswith("#"):
+                    setting = setting[1:]
+                    nostart = True
+                else:
+                    nostart = False
                 settings[setting] = float(value)
-                if setting in ("volume", "shuffle", "spectrogram", "oscilloscope") or not stream:
+                if nostart or setting in ("volume", "shuffle", "spectrogram", "oscilloscope") or not stream:
                     continue
-                pos = frame / 30
             elif command.startswith("~drop"):
                 drop += float(command[5:]) * 30
                 if drop <= 60 * 30:
                     continue
                 pos = (frame + drop) / 30
-            else:
+            elif command != "~replay":
+                print(command)
                 pos, duration, cdc = sys.stdin.readline().rstrip().split(" ", 2)
                 pos, duration = map(float, (pos, duration))
                 stream = command

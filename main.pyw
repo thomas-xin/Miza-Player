@@ -715,8 +715,9 @@ def update_menu():
                 "Miza Player",
                 time_disp(player.pos),
             )
-            pos = time_parse(enter)
-            submit(seek_abs, pos)
+            if enter:
+                pos = time_parse(enter)
+                submit(seek_abs, pos)
     if toolbar.resizing or in_rect(mpos, toolbar.rect):
         c = (64, 32, 96)
     else:
@@ -1213,8 +1214,9 @@ def draw_menu():
                             "Miza Player",
                             round_min(options.audio[opt] * 100),
                         )
-                        v = round_min(float(eval(enter, {}, {})) / 100)
-                        aediting[opt] = True
+                        if enter:
+                            v = round_min(float(eval(enter, {}, {})) / 100)
+                            aediting[opt] = True
                     if aediting[opt]:
                         orig, options.audio[opt] = options.audio[opt], v
                         if orig != v:

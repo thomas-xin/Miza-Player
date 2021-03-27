@@ -739,7 +739,7 @@ def rounded_bevrect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
     if min(alpha, rect[2], rect[3]) > 0:
         rb_surf = globals().setdefault("rb_surf", {})
         colour = list(map(lambda i: min(i, 255), colour))
-        if alpha == 255 and angle == 0 and not (colour[0] == colour[1] == colour[2]) or not filled:
+        if alpha == 255 and angle == 0 and not (colour[0] == colour[1] == colour[2]):
             if dest is None:
                 dest = pygame.Surface(rect[2:], SRCALPHA)
                 rect[:2] = (0, 0)
@@ -776,7 +776,7 @@ def rounded_bevrect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
             return dest if surf else rect
         ctr = max(colour)
         contrast = min(round(ctr) + 2 >> 2 << 2, 255)
-        data = tuple(rect[2:]) + (grad_col, grad_angle, contrast)
+        data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
         s = rb_surf.get(data)
         if s is None:
             colour2 = (contrast,) * 3
@@ -804,10 +804,11 @@ def rounded_bevrect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
                     draw_arc(s, colour, [q[0] - b, p[1] + b], b, 270, 360)
                     draw_arc(s, colour, [p[0] + b, q[1] - b], b, 90, 180)
                     draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
-            if grad_col is None:
-                draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
-            else:
-                gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+            if filled:
+                if grad_col is None:
+                    draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+                else:
+                    gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
             if cache:
                 rb_surf[data] = s
         if ctr > 0:

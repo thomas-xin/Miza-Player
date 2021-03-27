@@ -776,22 +776,26 @@ def draw_menu():
     dur = max(0.001, min(t - ts, 0.125))
     if not tick & 7:
         toolbar.progress.timestamp = pc()
-        pops = set()
-        for i, ripple in enumerate(toolbar.ripples):
-            ripple.radius += dur * 128
-            ripple.alpha -= dur * 128
-            if ripple.alpha <= 2:
-                pops.add(i)
-        if pops:
-            toolbar.ripples.pops(pops)
-        pops = set()
-        for i, ripple in enumerate(sidebar.ripples):
-            ripple.radius += dur * 128
-            ripple.alpha -= dur * 128
-            if ripple.alpha <= 2:
-                pops.add(i)
-        if pops:
-            sidebar.ripples.pops(pops)
+        if is_minimised():
+            toolbar.ripples.clear()
+            sidebar.ripples.clear()
+        else:
+            pops = set()
+            for i, ripple in enumerate(toolbar.ripples):
+                ripple.radius += dur * 128
+                ripple.alpha -= dur * 128
+                if ripple.alpha <= 2:
+                    pops.add(i)
+            if pops:
+                toolbar.ripples.pops(pops)
+            pops = set()
+            for i, ripple in enumerate(sidebar.ripples):
+                ripple.radius += dur * 128
+                ripple.alpha -= dur * 128
+                if ripple.alpha <= 2:
+                    pops.add(i)
+            if pops:
+                sidebar.ripples.pops(pops)
     crosshair = False
     hovertext = None
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
@@ -1150,19 +1154,19 @@ def draw_menu():
         )
         if offs <= -4:
             if sidebar.ripples:
-                DISP2 = pygame.Surface(sidebar.rect[2:], SRCALPHA)
+                DISP2 = pygame.Surface((sidebar.rect[2] - 8, sidebar.rect[3] - 4), SRCALPHA)
                 for ripple in sidebar.ripples:
                     concentric_circle(
                         DISP2,
                         ripple.colour,
-                        (ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
+                        (ripple.pos[0] - screensize[0] + sidebar_width - 4, ripple.pos[1] - 4),
                         ripple.radius,
                         fill_ratio=1 / 3,
                         alpha=sqrt(max(0, ripple.alpha)) * 16,
                     )
                 DISP.blit(
                     DISP2,
-                    sidebar.rect[:2],
+                    (sidebar.rect[0] + 4, sidebar.rect[1] + 4),
                 )
             in_sidebar = in_rect(mpos, sidebar.rect)
             offs2 = offs + sidebar_width

@@ -801,8 +801,8 @@ def rounded_bevrect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
                 draw_vline(s, q[0], p[1] + b - n, q[1] - b, col2)
                 if b > 1:
                     draw_arc(s, col1, [p[0] + b, p[1] + b], b, 180, 270)
-                    draw_arc(s, colour, [q[0] - b, p[1] + b], b, 270, 360)
-                    draw_arc(s, colour, [p[0] + b, q[1] - b], b, 90, 180)
+                    draw_arc(s, colour2, [q[0] - b, p[1] + b], b, 270, 360)
+                    draw_arc(s, colour2, [p[0] + b, q[1] - b], b, 90, 180)
                     draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
             if filled:
                 if grad_col is None:

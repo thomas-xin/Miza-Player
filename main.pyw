@@ -776,26 +776,22 @@ def draw_menu():
     dur = max(0.001, min(t - ts, 0.125))
     if not tick & 7:
         toolbar.progress.timestamp = pc()
-        if is_minimised():
-            toolbar.ripples.clear()
-            sidebar.ripples.clear()
-        else:
-            pops = set()
-            for i, ripple in enumerate(toolbar.ripples):
-                ripple.radius += dur * 128
-                ripple.alpha -= dur * 128
-                if ripple.alpha <= 2:
-                    pops.add(i)
-            if pops:
-                toolbar.ripples.pops(pops)
-            pops = set()
-            for i, ripple in enumerate(sidebar.ripples):
-                ripple.radius += dur * 128
-                ripple.alpha -= dur * 128
-                if ripple.alpha <= 2:
-                    pops.add(i)
-            if pops:
-                sidebar.ripples.pops(pops)
+        pops = set()
+        for i, ripple in enumerate(toolbar.ripples):
+            ripple.radius += dur * 128
+            ripple.alpha -= dur * 128
+            if ripple.alpha <= 2:
+                pops.add(i)
+        if pops:
+            toolbar.ripples.pops(pops)
+        pops = set()
+        for i, ripple in enumerate(sidebar.ripples):
+            ripple.radius += dur * 128
+            ripple.alpha -= dur * 128
+            if ripple.alpha <= 2:
+                pops.add(i)
+        if pops:
+            sidebar.ripples.pops(pops)
     crosshair = False
     hovertext = None
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
@@ -889,7 +885,7 @@ def draw_menu():
                         entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
                     else:
                         col = (255,) * 3
-                    bevel_rectangle(
+                    rounded_bevrect(
                         DISP2,
                         col,
                         rect,
@@ -949,7 +945,7 @@ def draw_menu():
                         val = min(1, val + flash / 16)
                         entry.flash = flash - 1
                 entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
-                bevel_rectangle(
+                rounded_bevrect(
                     DISP2,
                     col,
                     rect,
@@ -1034,7 +1030,7 @@ def draw_menu():
                     [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
                     [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
                 )
-                bevel_rectangle(
+                rounded_bevrect(
                     DISP2,
                     col,
                     rect,
@@ -1085,7 +1081,7 @@ def draw_menu():
                 x = 8 + offs
                 y = round(Z + len(queue) * 32)
                 rect = (x, y, sidebar_width - 16, 32)
-                bevel_rectangle(
+                rounded_bevrect(
                     DISP2,
                     (191,) * 3,
                     rect,
@@ -1398,7 +1394,7 @@ def draw_menu():
                 lum = 191 if in_rect(mpos, button.rect) else 127
                 lum += button.get("flash", 0)
                 col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 0.25)]
-                bevel_rectangle(
+                rounded_bevrect(
                     DISP,
                     col,
                     button.rect,
@@ -1725,6 +1721,9 @@ try:
             else:
                 colour = 8
             submit(taskbar_progress_bar, player.pos / player.end, colour | (player.end >= inf))
+            if minimised:
+                toolbar.ripples.clear()
+                sidebar.ripples.clear()
         if not minimised:
             mclick = [x and not y for x, y in zip(mheld, mprev)]
             mrelease = [not x and y for x, y in zip(mheld, mprev)]

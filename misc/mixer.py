@@ -278,7 +278,7 @@ def stdclose(p):
 shuffling = False
 transfer = False
 BSIZE = 1600
-RSIZE = BSIZE << 1
+RSIZE = BSIZE << 2
 TSIZE = BSIZE // 3
 def reader(f, pos=None, reverse=False, shuffling=False):
     global proc, transfer
@@ -343,6 +343,8 @@ def reader(f, pos=None, reverse=False, shuffling=False):
                     submit(stdclose, p)
                     opos = pos
                     transfer = True
+                    if aout.done():
+                        globals()["channel2"] = aout.result()
             try:
                 b = f.read(RSIZE)
             except ValueError:
@@ -355,7 +357,7 @@ def reader(f, pos=None, reverse=False, shuffling=False):
                     u, c = np.unique(a, return_counts=True)
                     s = np.sort(c)
                     x = np.sum(s[-3:])
-                    if x >= TSIZE << 1:
+                    if x >= RSIZE // 3:
                         if pos != 0:
                             print(x, TSIZE << 1)
                         shuffling = True

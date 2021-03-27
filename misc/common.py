@@ -570,6 +570,16 @@ draw_vline = gfxdraw.vline
 draw_polygon = pygame.draw.polygon
 draw_tpolygon = gfxdraw.textured_polygon
 
+def draw_arc(surf, colour, pos, radius, start_angle=0, stop_angle=0):
+    start_angle = int(start_angle % 360)
+    stop_angle = int(stop_angle % 360)
+    if radius <= 1:
+        gfxdraw.filled_circle(surf, *pos, 1, colour)
+    if start_angle == stop_angle:
+        gfxdraw.circle(surf, *pos, radius, colour)
+    else:
+        gfxdraw.arc(surf, *pos, radius, start_angle, stop_angle, colour)
+
 def custom_scale(source, size, dest=None, antialias=False):
     dsize = list(map(round, size))
     ssize = source.get_size()
@@ -718,6 +728,88 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
                 gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
             if cache:
                 br_surf[data] = s
+        if ctr > 0:
+            colour = tuple(round(i * 255 / ctr) for i in colour)
+        else:
+            colour = (0,) * 3
+        return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
+
+def rounded_bevrect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True):
+    rect = list(map(round, rect))
+    if min(alpha, rect[2], rect[3]) > 0:
+        rb_surf = globals().setdefault("rb_surf", {})
+        colour = list(map(lambda i: min(i, 255), colour))
+        if alpha == 255 and angle == 0 and not (colour[0] == colour[1] == colour[2]) or not filled:
+            if dest is None:
+                dest = pygame.Surface(rect[2:], SRCALPHA)
+                rect[:2] = (0, 0)
+                surf = True
+            else:
+                surf = False
+            s = dest
+            for c in range(bevel):
+                p = [rect[0] + c, rect[1] + c]
+                q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
+                b = bevel - c
+                v1 = 128 - c / bevel * 128
+                v2 = c / bevel * 96 - 96
+                col1 = col2 = colour
+                if v1:
+                    col1 = [min(i + v1, 255) for i in col1]
+                if v2:
+                    col2 = [max(i + v2, 0) for i in col1]
+                n = b <= 1
+                draw_hline(s, p[0] + b - n, q[0] - b, p[1], col1)
+                draw_vline(s, p[0], p[1] + b, q[1] - b + n, col1)
+                draw_hline(s, p[0] + b, q[0] - b + n, q[1], col2)
+                draw_vline(s, q[0], p[1] + b - n, q[1] - b, col2)
+                if b > 1:
+                    draw_arc(s, col1, [p[0] + b, p[1] + b], b, 180, 270)
+                    draw_arc(s, colour, [q[0] - b, p[1] + b], b, 270, 360)
+                    draw_arc(s, colour, [p[0] + b, q[1] - b], b, 90, 180)
+                    draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
+            if filled:
+                if grad_col is None:
+                    draw_rect(dest, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+                else:
+                    gradient_rectangle(dest, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+            return dest if surf else rect
+        ctr = max(colour)
+        contrast = min(round(ctr) + 2 >> 2 << 2, 255)
+        data = tuple(rect[2:]) + (grad_col, grad_angle, contrast)
+        s = rb_surf.get(data)
+        if s is None:
+            colour2 = (contrast,) * 3
+            s = pygame.Surface(rect[2:], SRCALPHA)
+            s.fill((1, 2, 3))
+            s.set_colorkey((1, 2, 3))
+            for c in range(bevel):
+                p = [c, c]
+                q = [i - c - 1 for i in rect[2:]]
+                b = bevel - c
+                v1 = 128 - c / bevel * 128
+                v2 = c / bevel * 96 - 96
+                col1 = col2 = colour2
+                if v1:
+                    col1 = [min(i + v1, 255) for i in col1]
+                if v2:
+                    col2 = [max(i + v2, 0) for i in col1]
+                n = b <= 1
+                draw_hline(s, p[0] + b - n, q[0] - b, p[1], col1)
+                draw_vline(s, p[0], p[1] + b, q[1] - b + n, col1)
+                draw_hline(s, p[0] + b, q[0] - b + n, q[1], col2)
+                draw_vline(s, q[0], p[1] + b - n, q[1] - b, col2)
+                if b > 1:
+                    draw_arc(s, col1, [p[0] + b, p[1] + b], b, 180, 270)
+                    draw_arc(s, colour, [q[0] - b, p[1] + b], b, 270, 360)
+                    draw_arc(s, colour, [p[0] + b, q[1] - b], b, 90, 180)
+                    draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
+            if grad_col is None:
+                draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+            else:
+                gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+            if cache:
+                rb_surf[data] = s
         if ctr > 0:
             colour = tuple(round(i * 255 / ctr) for i in colour)
         else:

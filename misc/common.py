@@ -666,42 +666,57 @@ def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
 
 def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True):
     rect = list(map(round, rect))
+    if len(colour) > 3:
+        colour, alpha = colour[:-1], colour[-1]
     if min(alpha, rect[2], rect[3]) > 0:
         br_surf = globals().setdefault("br_surf", {})
         colour = list(map(lambda i: min(i, 255), colour))
-        if alpha == 255 and angle == 0 and not (colour[0] == colour[1] == colour[2]) or not filled:
-            if dest is None:
-                dest = pygame.Surface(rect[2:], SRCALPHA)
-                rect[:2] = (0, 0)
-                surf = True
+        if alpha == 255 and angle == 0 and all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour):
+            if cache:
+                data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)
             else:
-                surf = False
-            for c in range(bevel):
-                p = [rect[0] + c, rect[1] + c]
-                q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
-                v1 = 128 - c / bevel * 128
-                v2 = c / bevel * 96 - 96
-                col1 = col2 = colour
-                if v1:
-                    col1 = [min(i + v1, 255) for i in col1]
-                if v2:
-                    col2 = [max(i + v2, 0) for i in col1]
-                try:
-                    draw_hline(dest, p[0], q[0], p[1], col1)
-                    draw_vline(dest, p[0], p[1], q[1], col1)
-                    draw_hline(dest, p[0], q[0], q[1], col2)
-                    draw_vline(dest, q[0], p[1], q[1], col2)
-                except:
-                    print_exc()
-            if filled:
-                if grad_col is None:
-                    draw_rect(dest, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
-                else:
-                    gradient_rectangle(dest, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
-            return dest if surf else rect
+                data = None
+            try:
+                surf = br_surf[data]
+            except KeyError:
+                surf = pygame.Surface(rect[2:]).convert()
+                if not filled:
+                    surf.fill((1, 2, 3))
+                    surf.set_colorkey((1, 2, 3))
+                r = rect
+                rect = [0] * 2 + rect[2:]
+                for c in range(bevel):
+                    p = [rect[0] + c, rect[1] + c]
+                    q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
+                    v1 = 128 - c / bevel * 128
+                    v2 = c / bevel * 96 - 96
+                    col1 = col2 = colour
+                    if v1:
+                        col1 = [min(i + v1, 255) for i in col1]
+                    if v2:
+                        col2 = [max(i + v2, 0) for i in col1]
+                    try:
+                        draw_hline(surf, p[0], q[0], p[1], col1)
+                        draw_vline(surf, p[0], p[1], q[1], col1)
+                        draw_hline(surf, p[0], q[0], q[1], col2)
+                        draw_vline(surf, q[0], p[1], q[1], col2)
+                    except:
+                        print_exc()
+                if filled:
+                    if grad_col is None:
+                        draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+                    else:
+                        gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+                rect = r
+                if data:
+                    br_surf[data] = surf
+            if dest:
+                dest.blit(surf, rect[:2])
+                return rect
+            return surf.convert()
         ctr = max(colour)
         contrast = min(round(ctr) + 2 >> 2 << 2, 255)
-        data = tuple(rect[2:]) + (grad_col, grad_angle, contrast)
+        data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
         s = br_surf.get(data)
         if s is None:
             colour2 = (contrast,) * 3
@@ -722,10 +737,11 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
                 draw_vline(s, p[0], p[1], q[1], col1)
                 draw_hline(s, p[0], q[0], q[1], col2)
                 draw_vline(s, q[0], p[1], q[1], col2)
-            if grad_col is None:
-                draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
-            else:
-                gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+            if filled:
+                if grad_col is None:
+                    draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+                else:
+                    gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
             if cache:
                 br_surf[data] = s
         if ctr > 0:
@@ -734,46 +750,60 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
             colour = (0,) * 3
         return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
 
-def rounded_bevrect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True):
+def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True):
     rect = list(map(round, rect))
+    if len(colour) > 3:
+        colour, alpha = colour[:-1], colour[-1]
     if min(alpha, rect[2], rect[3]) > 0:
         rb_surf = globals().setdefault("rb_surf", {})
         colour = list(map(lambda i: min(i, 255), colour))
-        if alpha == 255 and angle == 0 and not (colour[0] == colour[1] == colour[2]):
-            if dest is None:
-                dest = pygame.Surface(rect[2:], SRCALPHA)
-                rect[:2] = (0, 0)
-                surf = True
+        if alpha == 255 and angle == 0 and all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour):
+            if cache:
+                data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)
             else:
-                surf = False
-            s = dest
-            for c in range(bevel):
-                p = [rect[0] + c, rect[1] + c]
-                q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
-                b = bevel - c
-                v1 = 128 - c / bevel * 128
-                v2 = c / bevel * 96 - 96
-                col1 = col2 = colour
-                if v1:
-                    col1 = [min(i + v1, 255) for i in col1]
-                if v2:
-                    col2 = [max(i + v2, 0) for i in col1]
-                n = b <= 1
-                draw_hline(s, p[0] + b - n, q[0] - b, p[1], col1)
-                draw_vline(s, p[0], p[1] + b, q[1] - b + n, col1)
-                draw_hline(s, p[0] + b, q[0] - b + n, q[1], col2)
-                draw_vline(s, q[0], p[1] + b - n, q[1] - b, col2)
-                if b > 1:
-                    draw_arc(s, col1, [p[0] + b, p[1] + b], b, 180, 270)
-                    draw_arc(s, colour, [q[0] - b, p[1] + b], b, 270, 360)
-                    draw_arc(s, colour, [p[0] + b, q[1] - b], b, 90, 180)
-                    draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
-            if filled:
-                if grad_col is None:
-                    draw_rect(dest, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
-                else:
-                    gradient_rectangle(dest, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
-            return dest if surf else rect
+                data = None
+            try:
+                surf = rb_surf[data]
+            except KeyError:
+                surf = pygame.Surface(rect[2:]).convert()
+                surf.fill((1, 2, 3))
+                surf.set_colorkey((1, 2, 3))
+                r = rect
+                rect = [0] * 2 + rect[2:]
+                s = surf
+                for c in range(bevel):
+                    p = [rect[0] + c, rect[1] + c]
+                    q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
+                    b = bevel - c
+                    v1 = 128 - c / bevel * 128
+                    v2 = c / bevel * 96 - 96
+                    col1 = col2 = colour
+                    if v1:
+                        col1 = [min(i + v1, 255) for i in col1]
+                    if v2:
+                        col2 = [max(i + v2, 0) for i in col1]
+                    n = b <= 1
+                    draw_hline(s, p[0] + b - n, q[0] - b, p[1], col1)
+                    draw_vline(s, p[0], p[1] + b, q[1] - b + n, col1)
+                    draw_hline(s, p[0] + b, q[0] - b + n, q[1], col2)
+                    draw_vline(s, q[0], p[1] + b - n, q[1] - b, col2)
+                    if b > 1:
+                        draw_arc(s, col1, [p[0] + b, p[1] + b], b, 180, 270)
+                        draw_arc(s, colour, [q[0] - b, p[1] + b], b, 270, 360)
+                        draw_arc(s, colour, [p[0] + b, q[1] - b], b, 90, 180)
+                        draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
+                if filled:
+                    if grad_col is None:
+                        draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+                    else:
+                        gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+                rect = r
+                if data:
+                    rb_surf[data] = surf
+            if dest:
+                dest.blit(surf, rect[:2])
+                return rect
+            return surf.convert()
         ctr = max(colour)
         contrast = min(round(ctr) + 2 >> 2 << 2, 255)
         data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)

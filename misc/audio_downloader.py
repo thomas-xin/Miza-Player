@@ -1563,7 +1563,7 @@ def get_lyrics(search):
         item = item[:-len(" lyrics")]
     elif ic.endswith(" acoustic"):
         item = item[:-len(" acoustic")]
-    item = item.strip()
+    item = item.rsplit(" ft ", 1)[0].strip()
     if not item:
         item = verify_search(to_alphanumeric(search))
         if not item:

@@ -33,6 +33,9 @@ if not os.path.exists("cache"):
     os.mkdir("cache")
 
 
+teapot_fut = submit(load_surface, "teapot.png")
+
+
 player = cdict(
     paused=False,
     index=0,
@@ -78,7 +81,7 @@ modified = set()
 
 def setup_buttons():
     try:
-        gears = pygame.image.load("misc/gears.bmp").convert_alpha()
+        gears = load_surface("misc/gears.bmp").convert_alpha()
         img = Image.frombuffer("RGBA", gears.get_size(), pygame.image.tostring(gears, "RGBA"))
         B, A = img.getchannel("B"), img.getchannel("A")
         I = ImageChops.invert(B)
@@ -102,19 +105,19 @@ def setup_buttons():
             click=(settings_toggle, settings_reset),
         ))
         reset_menu(full=False)
-        folder = pygame.image.load("misc/folder.bmp").convert_alpha()
+        folder = load_surface("misc/folder.bmp").convert_alpha()
         sidebar.buttons.append(cdict(
             sprite=folder,
             click=enqueue_local,
         ))
         reset_menu(full=False)
-        hyperlink = pygame.image.load("misc/hyperlink.bmp").convert_alpha()
+        hyperlink = load_surface("misc/hyperlink.bmp").convert_alpha()
         sidebar.buttons.append(cdict(
             sprite=hyperlink,
             click=enqueue_search,
         ))
         reset_menu(full=False)
-        repeat = pygame.image.load("misc/repeat.bmp").convert_alpha()
+        repeat = load_surface("misc/repeat.bmp").convert_alpha()
         def repeat_1():
             control.loop = (control.loop + 1) % 3
         toolbar.buttons.append(cdict(
@@ -122,7 +125,7 @@ def setup_buttons():
             click=repeat_1,
         ))
         reset_menu(full=False)
-        shuffle = pygame.image.load("misc/shuffle.bmp").convert_alpha()
+        shuffle = load_surface("misc/shuffle.bmp").convert_alpha()
         def shuffle_1():
             control.shuffle = (control.shuffle + 1) % 3
             if control.shuffle in (0, 2):
@@ -134,7 +137,7 @@ def setup_buttons():
             click=shuffle_1,
         ))
         reset_menu(full=False)
-        back = pygame.image.load("misc/back.bmp").convert_alpha()
+        back = load_surface("misc/back.bmp").convert_alpha()
         def rleft():
             mixer.clear()
             queue.rotate(1)
@@ -153,7 +156,7 @@ def setup_buttons():
             click=rright,
         ))
         reset_menu(full=False)
-        microphone = pygame.image.load("misc/microphone.bmp").convert_alpha()
+        microphone = load_surface("misc/microphone.bmp").convert_alpha()
         globals()["pya"] = afut.result()
         sidebar.buttons.append(cdict(
             sprite=microphone,
@@ -434,8 +437,8 @@ def render_lyrics(entry):
                     line = line.strip()
                     if not line:
                         continue
-                    if line[0] == "[" and line[-1] == "]":
-                        name = line[1:-1].casefold().strip()
+                    if line[0] == "[" and line[-1] in "])":
+                        name = line.split("(", 1)[0].rstrip()[1:-1].casefold().strip()
                         if name.startswith("pre-"):
                             pre = True
                             name = name[4:]
@@ -573,7 +576,7 @@ def skip():
                     if i >= sidebar.maxitems:
                         break
                     entry.pos = sidebar.maxitems
-                queue[:] = queue.shuffle()
+                random.shuffle(queue.view[1:])
             queue.append(e)
         else:
             sidebar.particles.append(queue.popleft())
@@ -582,7 +585,7 @@ def skip():
                     if i >= sidebar.maxitems:
                         break
                     entry.pos = sidebar.maxitems
-                queue[:] = queue.shuffle()
+                random.shuffle(queue.view[1:])
         if queue:
             return enqueue(queue[0])
         mixer.clear()
@@ -1087,7 +1090,7 @@ def draw_menu():
                     )
                 if not entry.get("surf"):
                     entry.surf = message_display(
-                        "".join(c if ord(c) < 65536 else "\x7f" for c in entry.name[:128]),
+                        entry.name[:128],
                         12,
                         (0,) * 2,
                         align=0,
@@ -1158,7 +1161,7 @@ def draw_menu():
                     )
                     if not entry.get("surf"):
                         entry.surf = message_display(
-                            "".join(c if ord(c) < 65536 else "\x7f" for c in entry.name[:128]),
+                            entry.name[:128],
                             12,
                             (0,) * 2,
                             align=0,
@@ -1815,7 +1818,7 @@ def draw_menu():
             )
             if not entry.get("surf"):
                 entry.surf = message_display(
-                    "".join(c if ord(c) < 65536 else "\x7f" for c in entry.name[:128]),
+                    entry.name[:128],
                     12,
                     (0,) * 2,
                     align=0,
@@ -2048,6 +2051,15 @@ try:
                             cache=True,
                         )
                     else:
+                        teapot_source = teapot_fut.result()
+                        teapot_size = limit_size()
+                        teapot = globals().get("teapot")
+                        if not teapot or teapot.get_size() != teapot_size:
+                            teapot = globals()["teapot"] = pygame.transform.scale(teapot_source, teapot_size)
+                        DISP.blit(
+                            teapot,
+                            (screensize[0] - teapot.get_width() >> 1, screensize[1] - teapot.get_height() >> 1),
+                        )
                         message_display(
                             f"No lyrics found for {queue[0].name}...",
                             size,

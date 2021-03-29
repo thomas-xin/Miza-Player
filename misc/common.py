@@ -503,8 +503,23 @@ def shuffle(it):
     random.shuffle(it)
     return it
 
+def limit_size(w, h, wm, hm):
+    r = h / w
+    w2 = min(wm, hm / r)
+    h2 = w2 * r
+    return map(round, (w2, h2))
+
 from pygame.locals import *
 from pygame import gfxdraw
+
+def load_surface(fn):
+    im = image = Image.open(fn)
+    if im.mode == "P":
+        im = im.convert("RGBA")
+    b = im.tobytes()
+    surf = pygame.image.frombuffer(b, im.size, im.mode)
+    image.close()
+    return surf
 
 verify_colour = lambda c: [max(0, min(255, abs(i))) for i in c]
 
@@ -1053,6 +1068,7 @@ def surface_font(text, colour, size, font):
 
 md_font = {}
 def message_display(text, size, pos, colour=(255,) * 3, surface=None, font="Comic Sans MS", alpha=255, align=1, cache=False):
+    text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
     data = (text, colour, size, font)
     try:
         resp = md_font[data]

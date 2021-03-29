@@ -33,7 +33,7 @@ if not os.path.exists("cache"):
     os.mkdir("cache")
 
 
-teapot_fut = submit(load_surface, "teapot.png")
+teapot_fut = submit(load_surface, "misc/teapot.png")
 
 
 player = cdict(
@@ -79,9 +79,21 @@ progress = toolbar.progress
 modified = set()
 
 
+button_sources = (
+    "gears",
+    "folder",
+    "hyperlink",
+    "repeat",
+    "shuffle",
+    "back",
+    "microphone",
+)
+button_images = [submit(load_surface, "misc/" + i + ".png") for i in button_sources]
+
+
 def setup_buttons():
     try:
-        gears = load_surface("misc/gears.bmp").convert_alpha()
+        gears = button_images[0].result()
         img = Image.frombuffer("RGBA", gears.get_size(), pygame.image.tostring(gears, "RGBA"))
         B, A = img.getchannel("B"), img.getchannel("A")
         I = ImageChops.invert(B)
@@ -105,19 +117,19 @@ def setup_buttons():
             click=(settings_toggle, settings_reset),
         ))
         reset_menu(full=False)
-        folder = load_surface("misc/folder.bmp").convert_alpha()
+        folder = button_images[1].result()
         sidebar.buttons.append(cdict(
             sprite=folder,
             click=enqueue_local,
         ))
         reset_menu(full=False)
-        hyperlink = load_surface("misc/hyperlink.bmp").convert_alpha()
+        hyperlink = button_images[2].result()
         sidebar.buttons.append(cdict(
             sprite=hyperlink,
             click=enqueue_search,
         ))
         reset_menu(full=False)
-        repeat = load_surface("misc/repeat.bmp").convert_alpha()
+        repeat = button_images[3].result()
         def repeat_1():
             control.loop = (control.loop + 1) % 3
         toolbar.buttons.append(cdict(
@@ -125,7 +137,7 @@ def setup_buttons():
             click=repeat_1,
         ))
         reset_menu(full=False)
-        shuffle = load_surface("misc/shuffle.bmp").convert_alpha()
+        shuffle = button_images[4].result()
         def shuffle_1():
             control.shuffle = (control.shuffle + 1) % 3
             if control.shuffle in (0, 2):
@@ -137,7 +149,7 @@ def setup_buttons():
             click=shuffle_1,
         ))
         reset_menu(full=False)
-        back = load_surface("misc/back.bmp").convert_alpha()
+        back = button_images[5].result()
         def rleft():
             mixer.clear()
             queue.rotate(1)
@@ -156,7 +168,7 @@ def setup_buttons():
             click=rright,
         ))
         reset_menu(full=False)
-        microphone = load_surface("misc/microphone.bmp").convert_alpha()
+        microphone = button_images[6].result()
         globals()["pya"] = afut.result()
         sidebar.buttons.append(cdict(
             sprite=microphone,
@@ -429,7 +441,7 @@ def render_lyrics(entry):
             y = 0
             for para in lyrics[1].split("\n\n"):
                 lines = para.splitlines()
-                if mx and y + len(lines) * 14 + 14 > render[1].get_height():
+                if mx and y + 42 > render[1].get_height():
                     y = 0
                     x += mx
                     mx = 0
@@ -437,6 +449,10 @@ def render_lyrics(entry):
                     line = line.strip()
                     if not line:
                         continue
+                    if mx and y + 28 > render[1].get_height():
+                        y = 0
+                        x += mx
+                        mx = 0
                     if line[0] == "[" and line[-1] in "])":
                         name = line.split("(", 1)[0].rstrip()[1:-1].casefold().strip()
                         if name.startswith("pre-"):
@@ -479,7 +495,8 @@ def render_lyrics(entry):
                     )
                     mx = max(mx, rect[2] + 8)
                     y += 14
-                y += 7
+                if y:
+                    y += 7
         entry.lyrics = render
         entry.pop("lyrics_loading", None)
     except:
@@ -2052,13 +2069,13 @@ try:
                         )
                     else:
                         teapot_source = teapot_fut.result()
-                        teapot_size = limit_size()
+                        teapot_size = limit_size(*teapot_source.get_size(), *player.rect[2:])
                         teapot = globals().get("teapot")
                         if not teapot or teapot.get_size() != teapot_size:
                             teapot = globals()["teapot"] = pygame.transform.scale(teapot_source, teapot_size)
                         DISP.blit(
                             teapot,
-                            (screensize[0] - teapot.get_width() >> 1, screensize[1] - teapot.get_height() >> 1),
+                            (player.rect[2] - teapot.get_width() >> 1, player.rect[3] - teapot.get_height() >> 1),
                         )
                         message_display(
                             f"No lyrics found for {queue[0].name}...",

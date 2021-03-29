@@ -2,7 +2,7 @@ import os, sys, json, traceback, subprocess, copy, concurrent.futures
 
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=12)
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 submit = exc.submit
 print_exc = traceback.print_exc
 
@@ -507,7 +507,7 @@ def limit_size(w, h, wm, hm):
     r = h / w
     w2 = min(wm, hm / r)
     h2 = w2 * r
-    return map(round, (w2, h2))
+    return tuple(map(round, (w2, h2)))
 
 from pygame.locals import *
 from pygame import gfxdraw
@@ -519,7 +519,7 @@ def load_surface(fn):
     b = im.tobytes()
     surf = pygame.image.frombuffer(b, im.size, im.mode)
     image.close()
-    return surf
+    return surf.convert_alpha() if "A" in im.mode else surf.convert()
 
 verify_colour = lambda c: [max(0, min(255, abs(i))) for i in c]
 

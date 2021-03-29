@@ -9,15 +9,18 @@ print_exc = traceback.print_exc
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
 
 downloader = concurrent.futures.Future()
+lyrics_scraper = concurrent.futures.Future()
 def import_audio_downloader():
     try:
         audio_downloader = __import__("audio_downloader")
         globals().update(audio_downloader.__dict__)
         globals()["ytdl"] = ytdl = audio_downloader.AudioDownloader()
         downloader.set_result(ytdl)
+        lyrics_scraper.set_result(audio_downloader.get_lyrics)
     except Exception as ex:
         print_exc()
         downloader.set_exception(ex)
+        lyrics_scraper.set_exception(ex)
 
 
 class cdict(dict):
@@ -1048,8 +1051,21 @@ def surface_font(text, colour, size, font):
                 raise
             f = ct_font[data] = pygame.font.SysFont(font, size)
 
-def message_display(text, size, pos, colour=(255,) * 3, surface=None, font="Comic Sans MS", alpha=255, align=1):
-    TextSurf, TextRect = surface_font(text, colour, size, font)
+md_font = {}
+def message_display(text, size, pos, colour=(255,) * 3, surface=None, font="Comic Sans MS", alpha=255, align=1, cache=False):
+    data = (text, colour, size, font)
+    try:
+        resp = md_font[data]
+    except KeyError:
+        resp = surface_font(*data)
+    TextSurf, TextRect = resp
+    if cache:
+        md_font[data] = resp
+        while len(md_font) > 4096:
+            try:
+                md_font.pop(next(iter(md_font)))
+            except (KeyError, RuntimeError):
+                pass
     if align == 1:
         TextRect.center = pos
     elif align == 0:

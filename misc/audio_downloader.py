@@ -21,16 +21,24 @@ try:
 except FileNotFoundError:
     AUTH = {}
 
+google_api_key = AUTH.get("google_api_key")
 try:
-    google_api_key = AUTH["google_api_key"]
-    if not google_api_key:
+    genius_key = AUTH["genius_key"]
+    if not genius_key:
         raise
 except:
-    google_api_key = None
-    print("WARNING: google_api_key not found. Unable to use API to search youtube playlists.")
+    genius_key = None
+    print("WARNING: genius_key not found. Unable to use API to search song lyrics.")
     with open("auth.json", "w") as f:
-        f.write("""{
-	"google_api_key": ""
+        if google_api_key:
+            f.write("{\n"
++ f'    "google_api_key": "{google_api_key}",\n' + """
+    "genius_key": ""
+}""")
+        else:
+            f.write("""{
+	"google_api_key": "",
+    "genius_key": ""
 }""")
 
 
@@ -1321,7 +1329,7 @@ class AudioDownloader:
                 entries = [resp]
             out = alist()
             for entry in entries:
-                with tracebacksuppressor:
+                try:
                     found = True
                     if "title" in entry:
                         title = entry["title"]
@@ -1343,6 +1351,8 @@ class AudioDownloader:
                             temp["url"] = f"https://www.youtube.com/watch?v={url}"
                     temp["research"] = True
                     out.append(temp)
+                except:
+                    print_exc()
         return out
 
     # Performs a search, storing and using cached search results for efficiency.
@@ -1433,3 +1443,170 @@ class AudioDownloader:
         it = out[0]
         i.update(it)
         return True
+
+mmap = {
+    "“": '"',
+    "”": '"',
+    "„": '"',
+    "‘": "'",
+    "’": "'",
+    "‚": "'",
+    "〝": '"',
+    "〞": '"',
+    "⸌": "'",
+    "⸍": "'",
+    "⸢": "'",
+    "⸣": "'",
+    "⸤": "'",
+    "⸥": "'",
+    "⸨": "((",
+    "⸩": "))",
+    "⟦": "[",
+    "⟧": "]",
+    "〚": "[",
+    "〛": "]",
+    "「": "[",
+    "」": "]",
+    "『": "[",
+    "』": "]",
+    "【": "[",
+    "】": "]",
+    "〖": "[",
+    "〗": "]",
+    "（": "(",
+    "）": ")",
+    "［": "[",
+    "］": "]",
+    "｛": "{",
+    "｝": "}",
+    "⌈": "[",
+    "⌉": "]",
+    "⌊": "[",
+    "⌋": "]",
+    "⦋": "[",
+    "⦌": "]",
+    "⦍": "[",
+    "⦐": "]",
+    "⦏": "[",
+    "⦎": "]",
+    "⁅": "[",
+    "⁆": "]",
+    "〔": "[",
+    "〕": "]",
+    "«": "<<",
+    "»": ">>",
+    "❮": "<",
+    "❯": ">",
+    "❰": "<",
+    "❱": ">",
+    "❬": "<",
+    "❭": ">",
+    "＜": "<",
+    "＞": ">",
+    "⟨": "<",
+    "⟩": ">",
+}
+mtrans = "".maketrans(mmap)
+
+lyric_trans = re.compile(
+    (
+        "[([]+"
+        "(((official|full|demo|original|extended) *)?"
+        "((version|ver.?) *)?"
+        "((w\\/)?"
+        "(lyrics?|vocals?|music|ost|instrumental|acoustic|studio|hd|hq|english) *)?"
+        "((album|video|audio|cover|remix) *)?"
+        "(upload|reupload|version|ver.?)?"
+        "|(feat|ft)"
+        ".+)"
+        "[)\\]]+"
+    ),
+    flags=re.I,
+)
+
+def extract_lyrics(s):
+    s = s[s.index("JSON.parse(") + len("JSON.parse("):]
+    s = s[:s.index("</script>")]
+    if "window.__" in s:
+        s = s[:s.index("window.__")]
+    s = s[:s.rindex(");")]
+    data = eval(s, {}, {})
+    d = eval_json(data)
+    lyrics = d["songPage"]["lyricsData"]["body"]["children"][0]["children"]
+    newline = True
+    output = ""
+    while lyrics:
+        line = lyrics.pop(0)
+        if type(line) is str:
+            if line:
+                if line.startswith("["):
+                    output += "\n"
+                    newline = False
+                if "]" in line:
+                    if line == "]":
+                        if output.endswith(" ") or output.endswith("\n"):
+                            output = output[:-1]
+                    newline = True
+                output += line + ("\n" if newline else (" " if not line.endswith(" ") else ""))
+        elif type(line) is dict:
+            if "children" in line:
+                lyrics = line["children"] + lyrics
+    return output
+
+def get_lyrics(search):
+    search = search.translate(mtrans)
+    item = verify_search(to_alphanumeric(lyric_trans.sub("", search)))
+    ic = item.casefold()
+    if ic.endswith(" with lyrics"):
+        item = item[:-len(" with lyrics")]
+    elif ic.endswith(" lyrics"):
+        item = item[:-len(" lyrics")]
+    elif ic.endswith(" acoustic"):
+        item = item[:-len(" acoustic")]
+    item = item.strip()
+    if not item:
+        item = verify_search(to_alphanumeric(search))
+        if not item:
+            item = search
+    print(item)
+    url = "https://api.genius.com/search"
+    for i in range(2):
+        header = {"Authorization": f"Bearer {genius_key}"}
+        # if i == 0:
+        #     search = item
+        # else:
+        #     search = "".join(reversed(item.split()))
+        data = {"q": item}
+        rdata = requests.get(url, data=data, headers=header, timeout=18).json()
+        hits = rdata["response"]["hits"]
+        name = None
+        path = None
+        for h in hits:
+            try:
+                name = h["result"]["title"]
+                path = h["result"]["api_path"]
+                break
+            except KeyError:
+                pass
+        if path and name:
+            s = "https://genius.com" + path
+            page = requests.get(s, headers=header)
+            text = page.text
+            if "BeautifulSoup" not in globals():
+                bs4 = __import__("bs4")
+                globals()["BeautifulSoup"] = bs4.BeautifulSoup
+            html = BeautifulSoup(text, "html.parser")
+            lyricobj = html.find('div', class_='lyrics')
+            if lyricobj is not None:
+                lyrics = lyricobj.get_text().strip().replace("\r", "")
+                return name, lyrics
+            try:
+                lyrics = extract_lyrics(text).strip().replace("\r", "")
+                return name, lyrics
+            except:
+                if i:
+                    raise
+                print_exc()
+                print(s)
+                print(text)
+    raise LookupError(f"No results for {item}.")

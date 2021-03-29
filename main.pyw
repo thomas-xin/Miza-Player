@@ -168,6 +168,7 @@ def _enqueue_local(*files):
     try:
         if files:
             sidebar.loading = True
+            start = bool(queue)
             for fn in files:
                 if fn[0] == "<" and fn[-1] == ">":
                     pya = afut.result()
@@ -213,6 +214,9 @@ def _enqueue_local(*files):
                     )
                 queue.append(entry)
             sidebar.loading = False
+            ensure_next()
+            if control.shuffle and len(queue) > 1:
+                random.shuffle(queue.view[start:])
     except:
         sidebar.loading = False
         print_exc()
@@ -236,6 +240,7 @@ def _enqueue_search(query):
     try:
         if query:
             sidebar.loading = True
+            start = bool(queue)
             ytdl = downloader.result()
             try:
                 entries = ytdl.search(query)
@@ -248,6 +253,9 @@ def _enqueue_search(query):
                 else:
                     sidebar.particles.append(cdict(eparticle))
             sidebar.loading = False
+            ensure_next()
+            if control.shuffle and len(queue) > 1:
+                random.shuffle(queue.view[start:])
     except:
         sidebar.loading = False
         print_exc()
@@ -381,6 +389,97 @@ is_active = lambda: pc() - player.get("last", 0) <= max(player.get("lastframe", 
 
 e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else nan)
 
+lyrics_surf = None
+lyrics_cache = {}
+lyrics_renders = {}
+def render_lyrics(entry):
+    global lyrics_surf
+    try:
+        name = entry.name
+        try:
+            lyrics = lyrics_cache[name]
+        except KeyError:
+            try:
+                lyrics = lyrics_scraper.result()(name)
+            except LookupError:
+                lyrics = None
+            if lyrics:
+                lyrics_cache[name] = lyrics
+            else:
+                entry.lyrics = None
+                return
+        if options.spectrogram:
+            return
+        rect = (player.rect[2] - 8, player.rect[3] - 64)
+        try:
+            render = lyrics_renders[name]
+            if render[1].get_size() != rect:
+                raise KeyError
+        except KeyError:
+            if not lyrics_surf or lyrics_surf.get_size() != rect:
+                lyrics_surf = pygame.Surface(rect)
+            render = [lyrics[0], lyrics_surf.convert()]
+            mx = 0
+            x = 0
+            y = 0
+            for para in lyrics[1].split("\n\n"):
+                lines = para.splitlines()
+                if mx and y + len(lines) * 14 + 14 > render[1].get_height():
+                    y = 0
+                    x += mx
+                    mx = 0
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line[0] == "[" and line[-1] == "]":
+                        name = line[1:-1].casefold().strip()
+                        if name.startswith("pre-"):
+                            pre = True
+                            name = name[4:]
+                        elif name.startswith("post-"):
+                            pre = True
+                            name = name[5:]
+                        else:
+                            pre = False
+                        if name.startswith("intro") or name.startswith("outro"):
+                            col = (255, 0, 0)
+                        elif name.startswith("verse"):
+                            col = (191, 127, 255)
+                        elif name.startswith("chorus"):
+                            col = (0, 255, 255)
+                        elif name.startswith("bridge"):
+                            col = (255, 127, 191)
+                        elif name.startswith("breakdown"):
+                            col = (255, 0, 255)
+                        elif name.startswith("refrain"):
+                            col = (255, 255, 0)
+                        elif name.startswith("interlude"):
+                            col = (0, 255, 0)
+                        elif name.startswith("instrumental"):
+                            col = (255, 127, 0)
+                        else:
+                            col = (0, 0, 255)
+                        if pre:
+                            col = tuple(i >> 1 for i in col)
+                    else:
+                        col = (255,) * 3
+                    rect = message_display(
+                        line,
+                        12,
+                        (x, y),
+                        col,
+                        align=0,
+                        surface=render[1],
+                    )
+                    mx = max(mx, rect[2] + 8)
+                    y += 14
+                y += 7
+        entry.lyrics = render
+        entry.pop("lyrics_loading", None)
+    except:
+        print_exc()
+
 def prepare(entry, force=False):
     stream = entry.get("stream")
     if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60) or is_youtube_stream(stream) and int(stream.split("expire=", 1)[-1].split("&", 1)[0]) < utc() + 60:
@@ -389,6 +488,7 @@ def prepare(entry, force=False):
             data = ytdl.search(entry.url)[0]
             stream = ytdl.get_stream(entry, force=True, download=False)
         except:
+            entry.url = ""
             print_exc()
             return
         else:
@@ -402,6 +502,8 @@ def start_player(entry, pos=None):
     player.amp = 0
     player.pop("osci", None)
     stream = prepare(entry, force=True)
+    if not entry.url:
+        return skip()
     if not stream:
         player.fut = None
         return None, inf
@@ -595,10 +697,18 @@ def pos():
 submit(play)
 submit(pos)
 
+def ensure_next():
+    if len(queue) > 1:
+        submit(prepare, queue[1])
+        if not queue[1].get("lyrics_loading") and not queue[1].get("lyrics"):
+            queue[1].lyrics_loading = True
+            submit(render_lyrics, queue[1])
+
 def enqueue(entry, start=True):
     try:
-        if len(queue) > 1:
-            submit(prepare, queue[1])
+        ensure_next()
+        queue[0].lyrics_loading = True
+        submit(render_lyrics, queue[0])
         flash_window()
         stream, duration = start_player(entry)
         progress.num = 0
@@ -886,7 +996,7 @@ def draw_menu():
             noparticles = set()
             for i, entry in enumerate(queue):
                 if entry.get("selected"):
-                    if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
+                    if not entry.url or kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
                         pops.add(i)
                         if sidebar.get("last_selected") == entry:
                             sidebar.pop("last_selected", None)
@@ -979,6 +1089,7 @@ def draw_menu():
                         12,
                         (0,) * 2,
                         align=0,
+                        cache=True,
                     )
                 if not t:
                     blit_complex(
@@ -1001,6 +1112,7 @@ def draw_menu():
                     (t,) * 3,
                     surface=DISP2,
                     align=2,
+                    cache=True,
                 )
             if copies:
                 pyperclip.copy("\n".join(copies))
@@ -1048,6 +1160,7 @@ def draw_menu():
                             12,
                             (0,) * 2,
                             align=0,
+                            cache=True,
                         )
                     if not t:
                         blit_complex(
@@ -1070,6 +1183,7 @@ def draw_menu():
                         (t,) * 3,
                         surface=DISP2,
                         align=2,
+                        cache=True,
                     )
                     anima_rectangle(
                         DISP2,
@@ -1108,6 +1222,7 @@ def draw_menu():
                         12,
                         [0] * 2,
                         align=0,
+                        cache=True,
                     )
                 DISP2.blit(
                     sidebar.loading_text,
@@ -1140,7 +1255,7 @@ def draw_menu():
                         entry.pop("moved", None)
                 queue[:] = dest
                 if queue[0] is not orig:
-                    submit(start_player, queue[0])
+                    submit(enqueue, queue[0])
                 try:
                     if not sidebar.last_selected.selected:
                         raise ValueError
@@ -1191,6 +1306,7 @@ def draw_menu():
                     (screensize[0] + offs + 8, 52 + i * 32),
                     surface=DISP,
                     align=0,
+                    cache=True,
                 )
                 # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
                 s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
@@ -1200,6 +1316,7 @@ def draw_menu():
                     (screensize[0] + offs + sidebar_width - 8, 68 + i * 32),
                     surface=DISP,
                     align=2,
+                    cache=True,
                 )
                 srange = asettings[opt]
                 w = (sidebar_width - 16)
@@ -1452,6 +1569,7 @@ def draw_menu():
                         (button.rect[0] + button.rect[2] - 4, button.rect[1] + button.rect[3] - 8),
                         colour=(0,) * 3,
                         surface=DISP,
+                        cache=True,
                     )
         pos = toolbar.pause.pos
         radius = toolbar.pause.radius
@@ -1699,6 +1817,7 @@ def draw_menu():
                     12,
                     (0,) * 2,
                     align=0,
+                    cache=True,
                 )
             if not t:
                 blit_complex(
@@ -1721,6 +1840,7 @@ def draw_menu():
                 (t,) * 3,
                 surface=DISP,
                 align=2,
+                cache=True,
             )
             anima_rectangle(
                 DISP,
@@ -1787,7 +1907,9 @@ def draw_menu():
 
 for i in range(26):
     globals()[f"K_{chr(i + 97)}"] = i + 4
+code = ""
 K_SPACE = 44
+K_BACKQUOTE = 53
 K_DELETE = 76
 reset_menu(True)
 foc = True
@@ -1832,7 +1954,33 @@ try:
             kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
             kspam = kclick
             # if any(kspam):
-            #     print(" ".join(map(str, (i for i, v in enumerate(kspam) if v))))
+            #     print(" ".join(map(str, (i for i, v in enumerate(kspam) if v))), K_BACKQUOTE)
+            if kclick[K_BACKQUOTE]:
+                output = easygui.textbox(
+                    "Debug mode",
+                    "Miza Player",
+                    code or "",
+                )
+                while output:
+                    orig = output
+                    try:
+                        c = None
+                        try:
+                            c = compile(output, "<debug>", "eval")
+                        except SyntaxError:
+                            pass
+                        if not c:
+                            c = compile(output, "<debug>", "exec")
+                        output = str(eval(c))
+                    except:
+                        output = traceback.format_exc()
+                    output = output.strip()
+                    code = output
+                    output = easygui.textbox(
+                        orig,
+                        "Miza Player",
+                        code or "",
+                    )
             if not tick & 15:
                 kspam = KeyList(x or y >= 240 for x, y in zip(kclick, kheld))
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
@@ -1862,6 +2010,38 @@ try:
                         DISP.blit(
                             surf,
                             rect[:2],
+                        )
+                if queue and not options.spectrogram:
+                    size = max(16, min(32, (screensize[0] - sidebar_width) // 48))
+                    if "lyrics" not in queue[0]:
+                        if pc() % 0.25 < 0.125:
+                            col = (255,) * 3
+                        else:
+                            col = (255, 0, 0)
+                        message_display(
+                            f"Loading lyrics for {queue[0].name}...",
+                            size,
+                            (player.rect[2] >> 1, size),
+                            col,
+                            surface=DISP,
+                            cache=True,
+                        )
+                    elif queue[0].lyrics:
+                        rect = (player.rect[2] - 8, player.rect[3] - 64)
+                        if not queue[0].get("lyrics_loading") and rect != queue[0].lyrics[1].get_size():
+                            queue[0].lyrics_loading = True
+                            submit(render_lyrics, queue[0])
+                        DISP.blit(
+                            queue[0].lyrics[1],
+                            (8, 64),
+                        )
+                        message_display(
+                            queue[0].lyrics[0],
+                            size,
+                            (player.rect[2] >> 1, size),
+                            (255,) * 3,
+                            surface=DISP,
+                            cache=True,
                         )
                 if player.flash_s > 0:
                     bevel_rectangle(
@@ -1916,7 +2096,7 @@ try:
                     pygame.display.flip()
                 else:
                     pygame.display.update(tuple(modified))
-                if not tick + 6 & 7 and (tuple(screensize) in modified or player.rect in modified):
+                if not tick + 6 & 7 and (tuple(screensize) in modified or player.rect in modified) and (not options.spectrogram or not player.get("spec")):
                     DISP.fill(
                         (0,) * 3,
                         player.rect,

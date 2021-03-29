@@ -3,6 +3,7 @@ import sys, subprocess, traceback
 print("Loading and checking modules...")
 
 modlist = """
+bs4>=0.0.1
 numpy>=1.20.1
 psutil>=5.8.0
 pyperclip>=1.8.2

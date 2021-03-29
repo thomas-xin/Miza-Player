@@ -411,6 +411,8 @@ def render_lyrics(entry):
         if options.spectrogram:
             return
         rect = (player.rect[2] - 8, player.rect[3] - 64)
+        if entry.get("lyrics") and entry.lyrics[1].get_size() == rect:
+            return entry.pop("lyrics_loading", None)
         try:
             render = lyrics_renders[name]
             if render[1].get_size() != rect:
@@ -1877,6 +1879,8 @@ def draw_menu():
             player.flash_s = 32
             options.spectrogram = (options.get("spectrogram", 0) + 1) % 3
             mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
+            if not options.spectrogram and queue:
+                submit(render_lyrics, queue[0])
         elif in_rect(mpos, osci_rect) and not toolbar.resizer:
             player.flash_o = 32
             options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
@@ -2040,6 +2044,15 @@ try:
                             size,
                             (player.rect[2] >> 1, size),
                             (255,) * 3,
+                            surface=DISP,
+                            cache=True,
+                        )
+                    else:
+                        message_display(
+                            f"No lyrics found for {queue[0].name}...",
+                            size,
+                            (player.rect[2] >> 1, size),
+                            (255, 0, 0),
                             surface=DISP,
                             cache=True,
                         )

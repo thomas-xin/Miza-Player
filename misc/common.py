@@ -260,7 +260,6 @@ screensize2 = list(screensize)
 
 hwnd = pygame.display.get_wm_info()["window"]
 pygame.display.set_allow_screensaver(True)
-# pygame.font.init()
 if hasmisc:
     s = io.StringIO()
     s.write(("%" + str(hwnd) + "\n"))
@@ -511,12 +510,10 @@ def limit_size(w, h, wm, hm):
 
 from pygame.locals import *
 import pygame.ftfont, pygame.gfxdraw
-ftfont = pygame.ftfont
-font = pygame.font
 gfxdraw = pygame.gfxdraw
 
-a = submit(font.init)
-b = submit(ftfont.init)
+a = submit(pygame.ftfont.init)
+b = submit(pygame.font.init)
 a.result()
 b.result()
 
@@ -1064,45 +1061,50 @@ def text_objects(text, font, colour, background):
             pass
     return text_surface, text_surface.get_rect()
 
+def sysfont(font, size, unicode=False):
+    if not unicode:
+        return pygame.font.SysFont(font, size)
+    # if font == "Comic Sans MS":
+    #     return pygame.ftfont.Font("misc/Comic.ttf", size)
+    return pygame.ftfont.SysFont(font, size)
+
 def surface_font(text, colour, background, size, font):
     size = round(size)
-    if text.isascii():
+    asc = text.isascii()
+    if asc:
         ct_font = globals().setdefault("ct_font", {})
-        ft = pygame.font
     else:
         ct_font = globals().setdefault("ft_font", {})
-        ft = pygame.ftfont
     data = (size, font)
     f = ct_font.get(data, None)
     if not f:
-        f = ct_font[data] = ft.SysFont(font, size)
+        f = ct_font[data] = sysfont(font, size, unicode=not asc)
     for i in range(4):
         try:
             return text_objects(text, f, colour, background)
         except:
             if i >= 3:
                 raise
-            f = ct_font[data] = ft.SysFont(font, size)
+            f = ct_font[data] = sysfont(font, size, unicode=not asc)
 
 def text_size(text, size, font="Comic Sans MS"):
     size = round(size)
-    if text.isascii():
+    asc = text.isascii()
+    if asc:
         ct_font = globals().setdefault("ct_font", {})
-        ft = pygame.font
     else:
         ct_font = globals().setdefault("ft_font", {})
-        ft = pygame.ftfont
     data = (size, font)
     f = ct_font.get(data, None)
     if not f:
-        f = ct_font[data] = ft.SysFont(font, size)
+        f = ct_font[data] = sysfont(font, size, unicode=not asc)
     for i in range(4):
         try:
             return f.size(text)
         except:
             if i >= 3:
                 raise
-            f = ct_font[data] = ft.SysFont(font, size)
+            f = ct_font[data] = sysfont(font, size, unicode=not asc)
 
 md_font = {}
 def message_display(text, size, pos, colour=(255,) * 3, background=None, surface=None, font="Comic Sans MS", alpha=255, align=1, cache=False):

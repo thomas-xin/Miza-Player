@@ -485,16 +485,52 @@ def render_lyrics(entry):
                             col = tuple(i >> 1 for i in col)
                     else:
                         col = (255,) * 3
-                    rect = message_display(
-                        line,
-                        12,
-                        (x, y),
-                        col,
-                        align=0,
-                        surface=render[1],
-                    )
-                    mx = max(mx, rect[2] + 8)
-                    y += 14
+                    s = text_size(line, 12)
+                    if s[0] <= render[1].get_width() >> 1:
+                        rect = message_display(
+                            line,
+                            12,
+                            (x, y),
+                            col,
+                            align=0,
+                            surface=render[1],
+                        )
+                        mx = max(mx, rect[2] + 8)
+                        y += 14
+                    else:
+                        p = 0
+                        words = line.split()
+                        curr = ""
+                        while words:
+                            w = words.pop(0)
+                            orig = curr
+                            curr = curr + " " + w if curr else w
+                            if orig:
+                                s = text_size(curr, 12)
+                                if s[0] > render[1].get_width() // 2 - p:
+                                    rect = message_display(
+                                        orig,
+                                        12,
+                                        (x + p, y),
+                                        col,
+                                        align=0,
+                                        surface=render[1],
+                                    )
+                                    mx = max(mx, rect[2] + 8 + p)
+                                    y += 14
+                                    p = 8
+                                    curr = w
+                        if curr:
+                            rect = message_display(
+                                curr,
+                                12,
+                                (x + p, y),
+                                col,
+                                align=0,
+                                surface=render[1],
+                            )
+                            mx = max(mx, rect[2] + 8 + p)
+                            y += 14
                 if y:
                     y += 7
         entry.lyrics = render
@@ -2049,6 +2085,7 @@ try:
                             col,
                             surface=DISP,
                             cache=True,
+                            background=(0,) * 3,
                         )
                     elif queue[0].lyrics:
                         rect = (player.rect[2] - 8, player.rect[3] - 64)
@@ -2066,6 +2103,7 @@ try:
                             (255,) * 3,
                             surface=DISP,
                             cache=True,
+                            background=(0,) * 3,
                         )
                     else:
                         teapot_source = teapot_fut.result()
@@ -2084,6 +2122,7 @@ try:
                             (255, 0, 0),
                             surface=DISP,
                             cache=True,
+                            background=(0,) * 3,
                         )
                 if player.flash_s > 0:
                     bevel_rectangle(

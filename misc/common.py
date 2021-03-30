@@ -511,8 +511,14 @@ def limit_size(w, h, wm, hm):
 
 from pygame.locals import *
 import pygame.ftfont, pygame.gfxdraw
+ftfont = pygame.ftfont
+font = pygame.font
 gfxdraw = pygame.gfxdraw
-pygame.ftfont.init()
+
+a = submit(font.init)
+b = submit(ftfont.init)
+a.result()
+b.result()
 
 def load_surface(fn):
     im = image = Image.open(fn)
@@ -1044,34 +1050,64 @@ def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, rat
         r_rect = [r[0] - round(frame) - 1, r[1] - round(frame) - 1, round(frame) + 1 << 1, round(frame) + 1 << 1]
         bevel_rectangle(surface, colour, r_rect, 3)
 
-def text_objects(text, font, colour):
-    text_surface = font.render(text, True, colour)
-    if not text_surface.get_flags() & SRCALPHA:
+def text_objects(text, font, colour, background):
+    text_surface = font.render(text, True, colour, background)
+    if text_surface.get_flags() & SRCALPHA:
         try:
             text_surface = text_surface.convert_alpha()
         except:
             pass
+    else:
+        try:
+            text_surface = text_surface.convert()
+        except:
+            pass
     return text_surface, text_surface.get_rect()
 
-def surface_font(text, colour, size, font):
+def surface_font(text, colour, background, size, font):
     size = round(size)
-    ct_font = globals().setdefault("ct_font", {})
+    if text.isascii():
+        ct_font = globals().setdefault("ct_font", {})
+        ft = pygame.font
+    else:
+        ct_font = globals().setdefault("ft_font", {})
+        ft = pygame.ftfont
     data = (size, font)
     f = ct_font.get(data, None)
     if not f:
-        f = ct_font[data] = pygame.ftfont.SysFont(font, size)
+        f = ct_font[data] = ft.SysFont(font, size)
     for i in range(4):
         try:
-            return text_objects(text, f, colour)
+            return text_objects(text, f, colour, background)
         except:
             if i >= 3:
                 raise
-            f = ct_font[data] = pygame.font.SysFont(font, size)
+            f = ct_font[data] = ft.SysFont(font, size)
+
+def text_size(text, size, font="Comic Sans MS"):
+    size = round(size)
+    if text.isascii():
+        ct_font = globals().setdefault("ct_font", {})
+        ft = pygame.font
+    else:
+        ct_font = globals().setdefault("ft_font", {})
+        ft = pygame.ftfont
+    data = (size, font)
+    f = ct_font.get(data, None)
+    if not f:
+        f = ct_font[data] = ft.SysFont(font, size)
+    for i in range(4):
+        try:
+            return f.size(text)
+        except:
+            if i >= 3:
+                raise
+            f = ct_font[data] = ft.SysFont(font, size)
 
 md_font = {}
-def message_display(text, size, pos, colour=(255,) * 3, surface=None, font="Comic Sans MS", alpha=255, align=1, cache=False):
+def message_display(text, size, pos, colour=(255,) * 3, background=None, surface=None, font="Comic Sans MS", alpha=255, align=1, cache=False):
     # text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
-    data = (text, colour, size, font)
+    data = (text, colour, background, size, font)
     try:
         resp = md_font[data]
     except KeyError:

@@ -260,7 +260,7 @@ screensize2 = list(screensize)
 
 hwnd = pygame.display.get_wm_info()["window"]
 pygame.display.set_allow_screensaver(True)
-pygame.font.init()
+# pygame.font.init()
 if hasmisc:
     s = io.StringIO()
     s.write(("%" + str(hwnd) + "\n"))
@@ -510,7 +510,9 @@ def limit_size(w, h, wm, hm):
     return tuple(map(round, (w2, h2)))
 
 from pygame.locals import *
-from pygame import gfxdraw
+import pygame.ftfont, pygame.gfxdraw
+gfxdraw = pygame.gfxdraw
+pygame.ftfont.init()
 
 def load_surface(fn):
     im = image = Image.open(fn)
@@ -1057,7 +1059,7 @@ def surface_font(text, colour, size, font):
     data = (size, font)
     f = ct_font.get(data, None)
     if not f:
-        f = ct_font[data] = pygame.font.SysFont(font, size)
+        f = ct_font[data] = pygame.ftfont.SysFont(font, size)
     for i in range(4):
         try:
             return text_objects(text, f, colour)
@@ -1068,7 +1070,7 @@ def surface_font(text, colour, size, font):
 
 md_font = {}
 def message_display(text, size, pos, colour=(255,) * 3, surface=None, font="Comic Sans MS", alpha=255, align=1, cache=False):
-    text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
+    # text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
     data = (text, colour, size, font)
     try:
         resp = md_font[data]

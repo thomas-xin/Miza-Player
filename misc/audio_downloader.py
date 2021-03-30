@@ -32,7 +32,7 @@ except:
     with open("auth.json", "w") as f:
         if google_api_key:
             f.write("{\n"
-+ f'    "google_api_key": "{google_api_key}",\n' + """
++ f'    "google_api_key": "{google_api_key}",' + """
     "genius_key": ""
 }""")
         else:

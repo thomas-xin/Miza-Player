@@ -948,7 +948,7 @@ class AudioDownloader:
             url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&key={google_api_key}&playlistId={p_id}"
             page = 50
             futs = deque()
-            self.pages.result()
+            self.paging.result()
             for curr in range(100, page * ceil(count / page), page):
                 search = f"{url}&pageToken={self.yt_pages[curr]}"
                 futs.append(create_future_ex(self.get_youtube_part, search))

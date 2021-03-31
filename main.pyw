@@ -118,16 +118,14 @@ def setup_buttons():
             items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
             if not items:
                 return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
-            choices = easygui.get_list_of_choices("Select a locally saved playlist here!", items)
+            choice = easygui.get_choice("Select a locally saved playlist here!", "Miza Player", items)
             sidebar.loading = True
             start = len(queue)
-            for item in items:
-                start = len(queue)
-                fn = "playlists/" + quote(item)[:245] + ".json"
-                if os.path.exists(fn) and os.path.getsize(fn):
-                    with open(fn, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    queue.extend(ensure_duration(cdict(**e, pos=start)) for e in data.get("queue", ()))
+            fn = "playlists/" + quote(choice)[:245] + ".json"
+            if os.path.exists(fn) and os.path.getsize(fn):
+                with open(fn, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                queue.extend(ensure_duration(cdict(**e, pos=start)) for e in data.get("queue", ()))
             if control.shuffle and len(queue) > 1:
                 random.shuffle(queue.view[bool(start):])
             sidebar.loading = False
@@ -154,6 +152,7 @@ def setup_buttons():
                         playlists = os.listdir("playlists")
                         text = (easygui.get_string(
                             "Enter a name for your new playlist!",
+                            "Miza Player",
                             f"Playlist {len(playlists)}",
                         ) or "").strip()
                         if text:
@@ -162,7 +161,56 @@ def setup_buttons():
                             easygui.show_message(
                                 f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
                             )
-            # elif method == "edit":
+            elif method == "edit":
+                items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
+                if not items:
+                    return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
+                choice = easygui.get_choice("Select a playlist to edit", "Miza Player", items)
+                if choice:
+                    fn = "playlists/" + quote(choice)[:245] + ".json"
+                    if os.path.exists(fn) and os.path.getsize(fn):
+                        with open(fn, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        s = "\n".join(e["url"] for e in data.get("queue", ()) if e.get("url"))
+                    else:
+                        print(fn)
+                        s = ""
+                    text = easygui.textbox(
+                        "Enter a list of URLs or file paths to include in the playlist!",
+                        "Miza Player",
+                        s,
+                    )
+                    if text is not None:
+                        if not text:
+                            os.remove(fn)
+                            easygui.show_message(
+                                f"Success! Playlist {repr(choice)} has been removed!",
+                            )
+                        else:
+                            urls = text.splitlines()
+                            entries = deque()
+                            for url in urls:
+                                if url:
+                                    name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+                                    entries.append(dict(name=name, url=url))
+                            if entries:
+                                entries = list(entries)
+                                with open(fn, "w", encoding="utf-8") as f:
+                                    json.dump(dict(queue=entries, stats={}), f)
+                                easygui.show_message(
+                                    f"Success! Playlist {repr(choice)} has been updated!",
+                                )
+            elif method == "delete":
+                items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
+                if not items:
+                    return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
+                choice = easygui.get_choice("Select a playlist to delete", "Miza Player", items)
+                if choice:
+                    fn = "playlists/" + quote(choice)[:245] + ".json"
+                    os.remove(fn)
+                    easygui.show_message(
+                        f"Success! Playlist {repr(choice)} has been removed!",
+                    )
         sidebar.buttons.append(cdict(
             sprite=playlist,
             click=(get_playlist, edit_playlist),
@@ -1150,6 +1198,20 @@ def draw_menu():
                                 sidebar.last_selected = entry
                                 lq2 = i
                                 sidebar.selection_offset = np.array(mpos2) - rect[:2]
+                    elif mclick[1] and i == etarget:
+                        entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
+                        playlists = os.listdir("playlists")
+                        text = (easygui.get_string(
+                            "Enter a name for your new playlist!",
+                            "Miza Player",
+                            f"Custom List {len(entries)}",
+                        ) or "").strip()
+                        if text:
+                            with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
+                                json.dump(dict(queue=entries, stats={}), f)
+                            easygui.show_message(
+                                f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+                            )
                     if entry.get("selected"):
                         flash = entry.get("flash", 16)
                         if flash:

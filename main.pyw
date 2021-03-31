@@ -183,7 +183,7 @@ def _enqueue_local(*files):
     try:
         if files:
             sidebar.loading = True
-            start = bool(queue)
+            start = len(queue)
             for fn in files:
                 if fn[0] == "<" and fn[-1] == ">":
                     pya = afut.result()
@@ -226,12 +226,13 @@ def _enqueue_local(*files):
                         name=name,
                         duration=dur,
                         cdc=cdc,
+                        pos=start,
                     )
                 queue.append(entry)
             sidebar.loading = False
             ensure_next()
             if control.shuffle and len(queue) > 1:
-                random.shuffle(queue.view[start:])
+                random.shuffle(queue.view[bool(start):])
     except:
         sidebar.loading = False
         print_exc()
@@ -255,7 +256,7 @@ def _enqueue_search(query):
     try:
         if query:
             sidebar.loading = True
-            start = bool(queue)
+            start = len(queue)
             ytdl = downloader.result()
             try:
                 entries = ytdl.search(query)
@@ -263,14 +264,15 @@ def _enqueue_search(query):
                 print_exc()
                 sidebar.particles.append(cdict(eparticle))
             else:
+                entries = [cdict(**e, pos=start) for e in entries]
                 if entries:
-                    queue.extend(cdict(e) for e in entries)
+                    queue.extend(entries)
                 else:
                     sidebar.particles.append(cdict(eparticle))
             sidebar.loading = False
             ensure_next()
             if control.shuffle and len(queue) > 1:
-                random.shuffle(queue.view[start:])
+                random.shuffle(queue.view[bool(start):])
     except:
         sidebar.loading = False
         print_exc()
@@ -625,18 +627,14 @@ def skip():
         elif control.loop == 1:
             e = queue.popleft()
             if control.shuffle:
-                for i, entry in enumerate(queue):
-                    if i >= sidebar.maxitems:
-                        break
+                for entry in queue[1:sidebar.maxitems]:
                     entry.pos = sidebar.maxitems
                 random.shuffle(queue.view[1:])
             queue.append(e)
         else:
             sidebar.particles.append(queue.popleft())
             if control.shuffle:
-                for i, entry in enumerate(queue):
-                    if i >= sidebar.maxitems:
-                        break
+                for entry in queue[1:sidebar.maxitems]:
                     entry.pos = sidebar.maxitems
                 random.shuffle(queue.view[1:])
         if queue:

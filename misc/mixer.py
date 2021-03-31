@@ -280,15 +280,19 @@ transfer = False
 BSIZE = 1600
 RSIZE = BSIZE << 2
 TSIZE = BSIZE // 3
-def reader(f, pos=None, reverse=False, shuffling=False):
+def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
     global proc, transfer
     try:
+        if pcm:
+            rsize = RSIZE << 3
+        else:
+            rsize = RSIZE
         if getattr(f, "closed", None):
             raise StopIteration
         if pos is None:
             pos = f.tell()
         if reverse:
-            pos -= RSIZE
+            pos -= rsize
         if pos:
             f.seek(pos)
         opos = pos
@@ -346,7 +350,7 @@ def reader(f, pos=None, reverse=False, shuffling=False):
                     if aout.done():
                         globals()["channel2"] = aout.result()
             try:
-                b = f.read(RSIZE)
+                b = f.read(rsize)
             except ValueError:
                 b = b""
             if settings.shuffle == 2 and abs(pos - opos) / fsize * duration >= 60:
@@ -357,9 +361,9 @@ def reader(f, pos=None, reverse=False, shuffling=False):
                     u, c = np.unique(a, return_counts=True)
                     s = np.sort(c)
                     x = np.sum(s[-3:])
-                    if x >= RSIZE // 3:
+                    if x >= rsize // 3:
                         if pos != 0:
-                            print(x, TSIZE << 1)
+                            print(x, rsize // 3)
                         shuffling = True
                         continue
             if not b:
@@ -368,7 +372,7 @@ def reader(f, pos=None, reverse=False, shuffling=False):
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
                 b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
-                pos -= RSIZE
+                pos -= rsize
                 if pos <= 0:
                     proc.stdin.write(b)
                     size = -pos
@@ -382,7 +386,7 @@ def reader(f, pos=None, reverse=False, shuffling=False):
                     break
                 f.seek(pos)
             else:
-                pos += RSIZE
+                pos += rsize
             p = proc
             try:
                 fut = submit(proc.stdin.write, b)
@@ -1011,7 +1015,6 @@ def ensure_parent():
             proc.kill()
 
 
-ffmpeg_seek = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+fastseek+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 settings = cdict()
 osize = (0, 0)
@@ -1180,7 +1183,7 @@ while not sys.stdin.closed and failed < 16:
                     cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", "-"))
                     print(cmd)
                     proc = psutil.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                    reading = submit(reader, f, pos=0)
+                    reading = submit(reader, f, pos=0, pcm=True)
             else:
                 f = None
                 if not fn and (cdc == "mp3" and pos >= 960 or settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
@@ -1194,9 +1197,11 @@ while not sys.stdin.closed and failed < 16:
                     fn = None
                     f = open(stream, "rb")
                 cmd = list(ffmpeg_start)
+                pcm = False
                 if not fn:
                     if stream.endswith(".pcm"):
                         cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
+                        pcm = True
                     elif cdc == "mp3":
                         cmd.extend(("-c:a", "mp3"))
                 cmd.extend(("-nostdin", "-i", "-" if f else stream))
@@ -1237,7 +1242,7 @@ while not sys.stdin.closed and failed < 16:
                             fp = fsize - 2
                     else:
                         fp = 0 if settings.speed >= 0 else fsize - 2
-                    reading = submit(reader, f, pos=fp, reverse=settings.speed < 0, shuffling=pos == 0 and settings.shuffle == 2)
+                    reading = submit(reader, f, pos=fp, reverse=settings.speed < 0, shuffling=pos == 0 and settings.shuffle == 2, pcm=pcm)
             if point_fut and not point_fut.done():
                 point_fut.result()
             point(f"~{pos * 30} {duration}")

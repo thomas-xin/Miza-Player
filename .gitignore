@@ -1,6 +1,5 @@
 __pycache__
+*json
 cache
 playlists
 assoc.bat
-auth.json
-config.json

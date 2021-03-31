@@ -1,14 +1,7 @@
 __pycache__
-<<<<<<< HEAD
 .vscode
 cache
 playlists
 assoc.bat
 *.json
 *.tmp
-=======
-*json
-cache
-playlists
-assoc.bat
->>>>>>> bdad0d8d4878bfbdcdad35355d0cc7e43ec79a30

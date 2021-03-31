@@ -682,8 +682,9 @@ class AudioDownloader:
         self.downloading = cdict()
         self.cache = cdict()
         self.searched = cdict()
-        self.update_dl()
-        self.setup_pages()
+        self.paging = create_future_ex(self.setup_pages)
+        self.waiting = create_future_ex(self.update_dl)
+        self.downloader = youtube_dl.YoutubeDL(self.ydl_opts)
 
     # Fetches youtube playlist page codes, split into pages of 50 items
     def setup_pages(self):
@@ -695,12 +696,14 @@ class AudioDownloader:
 
     # Initializes youtube_dl object as well as spotify tokens, every 720 seconds.
     def update_dl(self):
-        self.youtube_dl_x += 1
-        self.downloader = youtube_dl.YoutubeDL(self.ydl_opts)
-        self.spotify_x += 1
-        token = requests.get("https://open.spotify.com/get_access_token").content
-        self.spotify_header = {"authorization": f"Bearer {eval_json(token[:512])['accessToken']}"}
-        self.other_x += 1
+        try:
+            self.youtube_dl_x += 1
+            self.spotify_x += 1
+            token = requests.get("https://open.spotify.com/get_access_token").content
+            self.spotify_header = {"authorization": f"Bearer {eval_json(token[:512])['accessToken']}"}
+            self.other_x += 1
+        except:
+            pass
         # resp = requests.get("https://keepv.id/").content
         # search = b"<script>apikey='"
         # resp = resp[resp.rindex(search) + len(search):]
@@ -829,6 +832,7 @@ class AudioDownloader:
     def get_spotify_part(self, url):
         out = deque()
         self.spotify_x += 1
+        self.waiting.result()
         resp = requests.get(url, headers=self.spotify_header).content
         d = eval_json(resp)
         with suppress(KeyError):
@@ -944,6 +948,7 @@ class AudioDownloader:
             url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&key={google_api_key}&playlistId={p_id}"
             page = 50
             futs = deque()
+            self.pages.result()
             for curr in range(100, page * ceil(count / page), page):
                 search = f"{url}&pageToken={self.yt_pages[curr]}"
                 futs.append(create_future_ex(self.get_youtube_part, search))
@@ -1401,7 +1406,7 @@ class AudioDownloader:
             data = self.search(entry["url"])
             stream = data[0].setdefault("stream", data[0].url)
             icon = data[0].setdefault("icon", data[0].url)
-        elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 3)[3]) < utc() + 60 or is_youtube_stream(stream) and int(stream.split("expire=", 1)[-1].split("&", 1)[0]) < utc() + 60):
+        elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60 or is_youtube_stream(stream) and int(stream.split("expire=", 1)[-1].split("&", 1)[0]) < utc() + 60):
             data = self.extract(entry["url"])
             stream = data[0].setdefault("stream", data[0].url)
             icon = data[0].setdefault("icon", data[0].url)

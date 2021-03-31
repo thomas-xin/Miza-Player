@@ -8,29 +8,12 @@ atypes = "wav mp3 ogg opus flac aac m4a webm wma f4a mka mp2 riff".split()
 ftypes = [[f"*.{f}" for f in atypes + "mp4 mov qt mkv avi f4v flv wmv raw".split()]]
 ftypes[0].append("All supported audio files")
 
-
-# if 1 or not options.get("init"):
-#     yn = easygui.indexbox(
-#         "Assign Miza Player as the default application for audio?",
-#         "Welcome!",
-#         ("Yes", "No", "No and don't ask again")
-#     )
-#     if yn not in (None, "No"):
-#         options.init = True
-#     if yn == 0:
-#         s = "\n".join(f"assoc .{f}=Miza-Player.{f}" for f in atypes)
-#         if s:
-#             s += "\n"
-#         s += "\n".join(f'ftype Miza-Player.{f}="py" "{os.path.abspath("")}/{sys.argv[0]}" %%*' for f in atypes)
-#         with open("assoc.bat", "w", encoding="utf-8") as f:
-#             f.write(s)
-#         print(ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/k assoc.bat", None, 1))
-        # subprocess.run(("runas", "/user:Administrator", "temp.bat"), stderr=subprocess.PIPE)
-
 with open("assoc.bat", "w", encoding="utf-8") as f:
     f.write(f"cd {os.path.abspath('')}\nstart /MIN py -3.{pyv} {sys.argv[0]} %*")
 if not os.path.exists("cache"):
     os.mkdir("cache")
+if not os.path.exists("playlists"):
+    os.mkdir("playlists")
 
 
 teapot_fut = submit(load_surface, "misc/teapot.png")
@@ -55,6 +38,7 @@ sidebar = cdict(
     buttons=alist(),
     particles=alist(),
     ripples=alist(),
+    scroll=cdict(),
 )
 toolbar = cdict(
     pause=cdict(
@@ -83,13 +67,13 @@ button_sources = (
     "gears",
     "folder",
     "hyperlink",
+    "playlist",
     "repeat",
     "shuffle",
     "back",
     "microphone",
 )
 button_images = [submit(load_surface, "misc/" + i + ".png") for i in button_sources]
-
 
 def setup_buttons():
     try:
@@ -129,7 +113,62 @@ def setup_buttons():
             click=enqueue_search,
         ))
         reset_menu(full=False)
-        repeat = button_images[3].result()
+        playlist = button_images[3].result()
+        def get_playlist():
+            items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
+            if not items:
+                return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
+            choices = easygui.get_list_of_choices("Select a locally saved playlist here!", items)
+            sidebar.loading = True
+            start = len(queue)
+            for item in items:
+                start = len(queue)
+                fn = "playlists/" + quote(item)[:245] + ".json"
+                if os.path.exists(fn) and os.path.getsize(fn):
+                    with open(fn, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    queue.extend(ensure_duration(cdict(**e, pos=start)) for e in data.get("queue", ()))
+            if control.shuffle and len(queue) > 1:
+                random.shuffle(queue.view[bool(start):])
+            sidebar.loading = False
+        def edit_playlist():
+            method = easygui.buttonbox(
+                "Select an operation to perform on a playlist!",
+                "Miza Player",
+                ("Create", "Edit", "Delete"),
+            ).casefold()
+            if method == "create":
+                text = (easygui.textbox(
+                    "Enter a list of URLs or file paths to include in the playlist!",
+                    "Miza Player",
+                ) or "").strip()
+                if text:
+                    urls = text.splitlines()
+                    entries = deque()
+                    for url in urls:
+                        if url:
+                            name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+                            entries.append(dict(name=name, url=url))
+                    if entries:
+                        entries = list(entries)
+                        playlists = os.listdir("playlists")
+                        text = (easygui.get_string(
+                            "Enter a name for your new playlist!",
+                            f"Playlist {len(playlists)}",
+                        ) or "").strip()
+                        if text:
+                            with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
+                                json.dump(dict(queue=entries, stats={}), f)
+                            easygui.show_message(
+                                f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+                            )
+            # elif method == "edit":
+        sidebar.buttons.append(cdict(
+            sprite=playlist,
+            click=(get_playlist, edit_playlist),
+        ))
+        reset_menu(full=False)
+        repeat = button_images[4].result()
         def repeat_1():
             control.loop = (control.loop + 1) % 3
         toolbar.buttons.append(cdict(
@@ -137,7 +176,7 @@ def setup_buttons():
             click=repeat_1,
         ))
         reset_menu(full=False)
-        shuffle = button_images[4].result()
+        shuffle = button_images[5].result()
         def shuffle_1():
             control.shuffle = (control.shuffle + 1) % 3
             if control.shuffle in (0, 2):
@@ -149,7 +188,7 @@ def setup_buttons():
             click=shuffle_1,
         ))
         reset_menu(full=False)
-        back = button_images[5].result()
+        back = button_images[6].result()
         def rleft():
             mixer.clear()
             queue.rotate(1)
@@ -168,7 +207,7 @@ def setup_buttons():
             click=rright,
         ))
         reset_menu(full=False)
-        microphone = button_images[6].result()
+        microphone = button_images[7].result()
         globals()["pya"] = afut.result()
         sidebar.buttons.append(cdict(
             sprite=microphone,
@@ -208,18 +247,6 @@ def _enqueue_local(*files):
                     except:
                         print_exc()
                         dur, cdc = (None, "N/A")
-                    # if dur is None and cdc == "N/A":
-                    #     fi = fn
-                    #     fn = "cache/~" + shash(fi) + ".pcm"
-                    #     if not os.path.exists(fn):
-                    #         args = ["py", f"-3.{sys.version_info[1]}", "misc/png2wav.py", fi, fn]
-                    #         proc = psutil.Popen(args, stderr=subprocess.PIPE)
-                    #         while True:
-                    #             if os.path.exists(fn) and os.path.getsize(fn) >= 96000:
-                    #                 break
-                    #             if not proc.is_running():
-                    #                 raise RuntimeError(as_str(proc.stderr.read()))
-                    #     dur, cdc = get_duration_2(fn)
                     entry = cdict(
                         url=fn,
                         stream=fn,
@@ -229,10 +256,9 @@ def _enqueue_local(*files):
                         pos=start,
                     )
                 queue.append(entry)
-            sidebar.loading = False
-            ensure_next()
             if control.shuffle and len(queue) > 1:
                 random.shuffle(queue.view[bool(start):])
+            sidebar.loading = False
     except:
         sidebar.loading = False
         print_exc()
@@ -269,16 +295,15 @@ def _enqueue_search(query):
                     queue.extend(entries)
                 else:
                     sidebar.particles.append(cdict(eparticle))
-            sidebar.loading = False
-            ensure_next()
             if control.shuffle and len(queue) > 1:
                 random.shuffle(queue.view[bool(start):])
+            sidebar.loading = False
     except:
         sidebar.loading = False
         print_exc()
 
 def enqueue_search():
-    query = easygui.enterbox(
+    query = easygui.get_string(
         "Search for one or more songs online!",
         "Miza Player",
         "",
@@ -314,7 +339,7 @@ def enqueue_device():
                 continue
             d.id = i
             devices.add(d)
-    selected = easygui.choicebox(
+    selected = easygui.get_choice(
         "Transfer audio from a sound input device!",
         "Miza Player",
         sorted(str(d.id) + ": " + d.name for d in devices),
@@ -406,6 +431,10 @@ is_active = lambda: pc() - player.get("last", 0) <= max(player.get("lastframe", 
 
 e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else nan)
 
+def ensure_duration(e):
+    e.duration = e.get("duration")
+    return e
+
 lyrics_surf = None
 lyrics_cache = {}
 lyrics_renders = {}
@@ -456,7 +485,7 @@ def render_lyrics(entry):
                         x += mx
                         mx = 0
                     if line[0] == "[" and line[-1] in "])":
-                        name = line.split("(", 1)[0].rstrip()[1:-1].casefold().strip()
+                        name = line.split("(", 1)[0].lstrip("[(").rstrip("]) ").casefold().strip()
                         if name.startswith("pre-"):
                             pre = True
                             name = name[4:]
@@ -540,28 +569,50 @@ def render_lyrics(entry):
     except:
         print_exc()
 
-def prepare(entry, force=False):
-    stream = entry.get("stream")
+def prepare(entry, force=False, stream=True):
+    if not entry.url:
+        return
+    stream = entry.get("stream", "")
     if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60) or is_youtube_stream(stream) and int(stream.split("expire=", 1)[-1].split("&", 1)[0]) < utc() + 60:
         ytdl = downloader.result()
         try:
-            data = ytdl.search(entry.url)[0]
-            stream = ytdl.get_stream(entry, force=True, download=False)
+            resp = ytdl.search(entry.url)
+            data = resp[0]
+            if stream:
+                stream = ytdl.get_stream(entry, force=True, download=False)
         except:
             entry.url = ""
             print_exc()
             return
         else:
+            if entry.name != data.get("name"):
+                entry.pop("lyrics", None)
+                entry.pop("surf", None)
+                entry.pop("lyrics_loading", None)
             entry.update(data)
+            if len(resp) > 1:
+                try:
+                    i = queue.index(entry) + 1
+                except:
+                    i = len(queue)
+                q1, q3 = queue.view[:i - 1], queue.view[i:]
+                q2 = alist(cdict(**e, pos=i) for e in resp)
+                if control.shuffle and len(q2) > 1:
+                    random.shuffle(q2.view)
+                queue.__init__(np.concatenate((q1, q2, q3)), fromarray=True)
     else:
         stream = entry.stream
     return stream.strip()
 
-def start_player(entry, pos=None):
+def start_player(pos=None):
     player.last = 0
     player.amp = 0
     player.pop("osci", None)
-    stream = prepare(entry, force=True)
+    stream = prepare(queue[0], force=True)
+    if not queue[0].url:
+        return skip()
+    stream = prepare(queue[0], force=True)
+    entry = queue[0]
     if not entry.url:
         return skip()
     if not stream:
@@ -646,7 +697,7 @@ def skip():
     return None, inf
 
 def seek_abs(pos):
-    start_player(queue[0], pos) if queue else (None, inf)
+    start_player(pos) if queue else (None, inf)
 
 def seek_rel(pos):
     if not pos:
@@ -753,20 +804,23 @@ def pos():
 submit(play)
 submit(pos)
 
-def ensure_next():
-    if len(queue) > 1:
-        submit(prepare, queue[1])
-        if not queue[1].get("lyrics_loading") and not queue[1].get("lyrics"):
-            queue[1].lyrics_loading = True
-            submit(render_lyrics, queue[1])
+def ensure_next(i=1):
+    if len(queue) > i:
+        e = queue[i]
+        e.duration = e.get("duration") or False
+        e.pop("research", None)
+        # print(i)
+        submit(prepare, e, stream=False)
+        if i <= 1 and not e.get("lyrics_loading") and not e.get("lyrics"):
+            e.lyrics_loading = True
+            submit(render_lyrics, e)
 
 def enqueue(entry, start=True):
     try:
-        ensure_next()
         queue[0].lyrics_loading = True
         submit(render_lyrics, queue[0])
         flash_window()
-        stream, duration = start_player(entry)
+        stream, duration = start_player()
         progress.num = 0
         progress.alpha = 0
         return stream, duration
@@ -800,7 +854,7 @@ def update_menu():
     sidebar.maxitems = int(screensize[1] - options.toolbar_height - 36 >> 5)
     for i, entry in enumerate(queue[:sidebar.maxitems]):
         entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
-    sidebar.scroll = max(0, min(len(sidebar.queue) - sidebar.maxitems // 2, sidebar.get("scroll", 0)))
+    # sidebar.scroll = max(0, min(len(sidebar.queue) - sidebar.maxitems // 2, sidebar.get("scroll", 0)))
     # sidebar.scroll_pos = 
     if kspam[K_SPACE]:
         player.paused ^= True
@@ -877,7 +931,7 @@ def update_menu():
             if queue and isfinite(e_dur(queue[0].duration)):
                 mixer.clear()
         elif mclick[1]:
-            enter = easygui.enterbox(
+            enter = easygui.get_string(
                 "Seek to position",
                 "Miza Player",
                 time_disp(player.pos),
@@ -1027,6 +1081,8 @@ def draw_menu():
                     sidebar.pop("last_selected", None)
                     lq = nan
             for i, entry in enumerate(queue[:maxitems]):
+                if i and (entry.duration is None or entry.get("research")) and queue[i - 1].duration:
+                    ensure_next(i)
                 if entry.get("selected") and sidebar.get("dragging"):
                     x = 8 + offs
                     y = round(Z + entry.get("pos", 0) * 32)
@@ -1049,15 +1105,12 @@ def draw_menu():
                     if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL] and sidebar.get("last_selected") is entry:
                         if target != i:
                             swap = target - i
-            noparticles = set()
             for i, entry in enumerate(queue):
                 if entry.get("selected"):
                     if not entry.url or kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
                         pops.add(i)
                         if sidebar.get("last_selected") == entry:
                             sidebar.pop("last_selected", None)
-                        if i >= maxitems:
-                            noparticles.add(i)
                     if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
                         entry.flash = 16
                         copies.append(entry.url)
@@ -1173,7 +1226,7 @@ def draw_menu():
             if copies:
                 pyperclip.copy("\n".join(copies))
             if pops:
-                sidebar.particles.extend(queue[i] for i in pops if i not in noparticles)
+                sidebar.particles.extend(queue[i] for i in pops if i <= maxitems)
                 skipping = 0 in pops
                 queue.pops(pops)
                 if skipping:
@@ -1400,7 +1453,7 @@ def draw_menu():
                     elif mclick[0]:
                         aediting[opt] = True
                     elif mclick[1]:
-                        enter = easygui.enterbox(
+                        enter = easygui.get_string(
                             opt.capitalize(),
                             "Miza Player",
                             round_min(options.audio[opt] * 100),
@@ -1998,6 +2051,11 @@ try:
             if minimised:
                 toolbar.ripples.clear()
                 sidebar.ripples.clear()
+        if not player.get("fut"):
+            if queue:
+                player.fut = submit(start)
+        elif not queue:
+            player.pop("fut").result()
         if not minimised:
             mclick = [x and not y for x, y in zip(mheld, mprev)]
             mrelease = [not x and y for x, y in zip(mheld, mprev)]
@@ -2047,11 +2105,6 @@ try:
                 except:
                     print_exc()
                 draw_menu()
-            if not player.get("fut"):
-                if queue:
-                    player.fut = submit(start)
-            elif not queue:
-                player.pop("fut").result()
             if not queue:
                 player.pos = 0
                 player.end = inf

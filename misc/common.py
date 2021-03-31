@@ -2,7 +2,7 @@ import os, sys, json, traceback, subprocess, copy, concurrent.futures
 
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=48)
 submit = exc.submit
 print_exc = traceback.print_exc
 
@@ -401,16 +401,37 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import PIL, easygui, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, hashlib, base64
+import PIL, easygui, easygui_qt, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, hashlib, base64, urllib
 from PIL import Image, ImageChops
 from math import *
 np = numpy
+easygui.__dict__.update(easygui_qt.easygui_qt.__dict__)
 deque = collections.deque
 suppress = contextlib.suppress
 d2r = pi / 180
 utc = time.time
 
-shash = lambda s: as_str(base64.b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
+shash = lambda s: as_str(base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
+
+def quote(s):
+    if s.isascii():
+        return urllib.parse.quote(s)
+    a = urllib.parse.quote(s)
+    b = base64.urlsafe_b64encode(s.encode("utf-8")).rstrip(b"=")
+    if len(a) < len(b):
+        return a
+    return "\x7f" + as_str(b)
+
+def unquote(s):
+    if s.startswith("\x7f"):
+        s = s[1:].encode("utf-8")
+        s += b"=="
+        if (len(s) - 1) & 3 == 0:
+            s += b"="
+        return as_str(base64.urlsafe_b64decode(s))
+    return urllib.parse.unquote(s)
+
+
 afut = submit(pyaudio.PyAudio)
 
 pt = None

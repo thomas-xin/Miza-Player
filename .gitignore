@@ -1,0 +1,7 @@
+__pycache__
+.vscode
+cache
+playlists
+assoc.bat
+*.json
+*.tmp

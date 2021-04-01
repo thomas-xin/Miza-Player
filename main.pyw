@@ -502,6 +502,9 @@ def render_lyrics(entry):
                 lyrics = lyrics_scraper.result()(name)
             except LookupError:
                 lyrics = None
+            except:
+                print_exc()
+                lyrics = None
             if lyrics:
                 lyrics_cache[name] = lyrics
             else:
@@ -885,6 +888,7 @@ def enqueue(entry, start=True):
         return stream, duration
     except:
         print_exc()
+    return None, inf
 
 
 def update_menu():

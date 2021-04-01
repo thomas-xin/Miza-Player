@@ -1583,7 +1583,7 @@ def get_lyrics(search):
         item = verify_search(to_alphanumeric(search))
         if not item:
             item = search
-    print(item)
+    # print(item)
     url = "https://api.genius.com/search"
     for i in range(2):
         header = {"Authorization": f"Bearer {genius_key}"}
@@ -1622,6 +1622,6 @@ def get_lyrics(search):
                 if i:
                     raise
                 print_exc()
-                print(s)
-                print(text)
+                # print(s)
+                # print(text)
     raise LookupError(f"No results for {item}.")

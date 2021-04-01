@@ -1956,23 +1956,24 @@ class alist(collections.abc.MutableSequence, collections.abc.Callable):
 
     # Removes all duplicate values from the list.
     @blocking
-    def removedups(self, sorted=True):
-        if sorted:
-            try:
-                temp = np.unique(self.view)
-            except:
-                temp = sorted(set(self.view))
-        elif sorted is None:
-            temp = tuple(set(self.view))
-        else:
-            temp = {}
-            for x in self.view:
-                if x not in temp:
-                    temp[x] = None
-            temp = tuple(temp.keys())
-        self.size = len(temp)
-        self.offs = (len(self.data) - self.size) // 3
-        self.view[:] = temp
+    def removedups(self, sort=True):
+        if self.data is not None:
+            if sort:
+                try:
+                    temp = np.unique(self.view)
+                except:
+                    temp = sort(set(self.view))
+            elif sort is None:
+                temp = tuple(set(self.view))
+            else:
+                temp = {}
+                for x in self.view:
+                    if x not in temp:
+                        temp[x] = None
+                temp = tuple(temp.keys())
+            self.size = len(temp)
+            self.offs = (len(self.data) - self.size) // 3
+            self.view[:] = temp
         return self
 
     uniq = unique = removedups

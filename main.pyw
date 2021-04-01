@@ -1142,6 +1142,8 @@ def draw_menu():
             for i, entry in enumerate(queue[:maxitems]):
                 if i and (entry.duration is None or entry.get("research")) and queue[i - 1].duration:
                     ensure_next(i)
+                elif i == 1 and not entry.get("lyrics") and not entry.get("lyrics_loading"):
+                    ensure_next(i)
                 if entry.get("selected") and sidebar.get("dragging"):
                     x = 8 + offs
                     y = round(Z + entry.get("pos", 0) * 32)

@@ -11,7 +11,7 @@ pygame>=2.0.1
 easygui>=0.98.2
 easygui_qt>=0.9.3
 PyQt5>=5.15.4
-youtube-dlc>=2020.11.11.post3
+youtube-dl>=2021.4.1
 requests>=2.25.1
 """.split("\n")
 

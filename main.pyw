@@ -119,16 +119,17 @@ def setup_buttons():
             if not items:
                 return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
             choice = easygui.get_choice("Select a locally saved playlist here!", "Miza Player", items)
-            sidebar.loading = True
-            start = len(queue)
-            fn = "playlists/" + quote(choice)[:245] + ".json"
-            if os.path.exists(fn) and os.path.getsize(fn):
-                with open(fn, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                queue.extend(ensure_duration(cdict(**e, pos=start)) for e in data.get("queue", ()))
-            if control.shuffle and len(queue) > 1:
-                random.shuffle(queue.view[bool(start):])
-            sidebar.loading = False
+            if choice:
+                sidebar.loading = True
+                start = len(queue)
+                fn = "playlists/" + quote(choice)[:245] + ".json"
+                if os.path.exists(fn) and os.path.getsize(fn):
+                    with open(fn, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    queue.extend(ensure_duration(cdict(**e, pos=start)) for e in data.get("queue", ()))
+                if control.shuffle and len(queue) > 1:
+                    random.shuffle(queue.view[bool(start):])
+                sidebar.loading = False
         def edit_playlist():
             method = easygui.buttonbox(
                 "Select an operation to perform on a playlist!",
@@ -159,7 +160,8 @@ def setup_buttons():
                             with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
                                 json.dump(dict(queue=entries, stats={}), f)
                             easygui.show_message(
-                                f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+                                f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+                                "Success!",
                             )
             elif method == "edit":
                 items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
@@ -184,7 +186,8 @@ def setup_buttons():
                         if not text:
                             os.remove(fn)
                             easygui.show_message(
-                                f"Success! Playlist {repr(choice)} has been removed!",
+                                f"Playlist {repr(choice)} has been removed!",
+                                "Success!",
                             )
                         else:
                             urls = text.splitlines()
@@ -198,7 +201,8 @@ def setup_buttons():
                                 with open(fn, "w", encoding="utf-8") as f:
                                     json.dump(dict(queue=entries, stats={}), f)
                                 easygui.show_message(
-                                    f"Success! Playlist {repr(choice)} has been updated!",
+                                    f"Playlist {repr(choice)} has been updated!",
+                                    "Success!",
                                 )
             elif method == "delete":
                 items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
@@ -209,7 +213,8 @@ def setup_buttons():
                     fn = "playlists/" + quote(choice)[:245] + ".json"
                     os.remove(fn)
                     easygui.show_message(
-                        f"Success! Playlist {repr(choice)} has been removed!",
+                        f"Playlist {repr(choice)} has been removed!",
+                        "Success!",
                     )
         sidebar.buttons.append(cdict(
             sprite=playlist,
@@ -617,16 +622,16 @@ def render_lyrics(entry):
     except:
         print_exc()
 
-def prepare(entry, force=False, stream=True):
+def prepare(entry, force=False):
     if not entry.url:
         return
     stream = entry.get("stream", "")
-    if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60) or is_youtube_stream(stream) and int(stream.split("expire=", 1)[-1].split("&", 1)[0]) < utc() + 60:
+    if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream)):
         ytdl = downloader.result()
         try:
             resp = ytdl.search(entry.url)
             data = resp[0]
-            if stream:
+            if force:
                 stream = ytdl.get_stream(entry, force=True, download=False)
         except:
             entry.url = ""
@@ -858,7 +863,7 @@ def ensure_next(i=1):
         e.duration = e.get("duration") or False
         e.pop("research", None)
         # print(i)
-        submit(prepare, e, stream=False)
+        submit(prepare, e)
         if i <= 1 and not e.get("lyrics_loading") and not e.get("lyrics"):
             e.lyrics_loading = True
             submit(render_lyrics, e)

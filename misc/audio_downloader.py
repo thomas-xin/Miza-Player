@@ -468,6 +468,14 @@ is_youtube_url = lambda url: regexp("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\
 is_youtube_stream = lambda url: regexp("^https?:\\/\\/r[0-9]+---.{2}-\\w+-\\w{4,}\\.googlevideo\\.com").findall(url)
 is_deviantart_url = lambda url: regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
 
+def expired(stream):
+    if stream.startswith("https://www.yt-download.org/download/"):
+        if int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60:
+            return True
+    elif is_youtube_stream(stream):
+        if int(stream.replace("/", "=").split("expire=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) < utc() + 60:
+            return True
+
 verify_url = lambda url: url if is_url(url) else url_parse(url)
 
 is_alphanumeric = lambda string: string.replace(" ", "").isalnum()
@@ -1406,7 +1414,7 @@ class AudioDownloader:
             data = self.search(entry["url"])
             stream = data[0].setdefault("stream", data[0].url)
             icon = data[0].setdefault("icon", data[0].url)
-        elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or stream.startswith("https://www.yt-download.org/download/") and int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60 or is_youtube_stream(stream) and int(stream.split("expire=", 1)[-1].split("&", 1)[0]) < utc() + 60):
+        elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream)):
             data = self.extract(entry["url"])
             stream = data[0].setdefault("stream", data[0].url)
             icon = data[0].setdefault("icon", data[0].url)

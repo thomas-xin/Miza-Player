@@ -2440,4 +2440,13 @@ def time_parse(ts):
     return round_min(sum(float(count) * mult for count, mult in zip(data, reversed(mults[:len(data)]))))
 
 is_youtube_stream = lambda url: url and re.findall("^https?:\\/\\/r[0-9]+---.{2}-\\w+-\\w{4,}\\.googlevideo\\.com", url)
+
+def expired(stream):
+    if stream.startswith("https://www.yt-download.org/download/"):
+        if int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60:
+            return True
+    elif is_youtube_stream(stream):
+        if int(stream.replace("/", "=").split("expire=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) < utc() + 60:
+            return True
+
 # Regex moment - Smudge

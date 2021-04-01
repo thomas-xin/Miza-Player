@@ -642,6 +642,8 @@ def prepare(entry, force=False):
                 entry.pop("lyrics", None)
                 entry.pop("surf", None)
                 entry.pop("lyrics_loading", None)
+                if len(resp) == 1:
+                    submit(render_lyrics, queue[0])
             entry.update(data)
             if len(resp) > 1:
                 try:
@@ -653,6 +655,10 @@ def prepare(entry, force=False):
                 if control.shuffle and len(q2) > 1:
                     random.shuffle(q2.view)
                 queue.__init__(np.concatenate((q1, q2, q3)), fromarray=True)
+                submit(render_lyrics, queue[0])
+    elif force:
+        ytdl = downloader.result()
+        stream = ytdl.get_stream(entry, force=True, download=False)
     else:
         stream = entry.stream
     return stream.strip()

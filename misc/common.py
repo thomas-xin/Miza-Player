@@ -2442,6 +2442,8 @@ def time_parse(ts):
 is_youtube_stream = lambda url: url and re.findall("^https?:\\/\\/r[0-9]+---.{2}-\\w+-\\w{4,}\\.googlevideo\\.com", url)
 
 def expired(stream):
+    if is_youtube_url(stream):
+        return True
     if stream.startswith("https://www.yt-download.org/download/"):
         if int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60:
             return True

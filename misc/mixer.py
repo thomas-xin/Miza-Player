@@ -1097,7 +1097,6 @@ while not sys.stdin.closed and failed < 16:
                     continue
                 pos = (frame + drop) / 30
             elif command != "~replay":
-                print(command)
                 pos, duration, cdc = sys.stdin.readline().rstrip().split(" ", 2)
                 pos, duration = map(float, (pos, duration))
                 stream = command

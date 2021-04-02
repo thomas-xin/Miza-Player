@@ -754,21 +754,17 @@ def start():
 
 def skip():
     if queue:
+        e = queue.popleft()
+        if control.shuffle:
+            for entry in queue[1:sidebar.maxitems]:
+                entry.pos = sidebar.maxitems
+            random.shuffle(queue.view[1:])
         if control.loop == 2:
-            pass
+            queue.appendleft(e)
         elif control.loop == 1:
-            e = queue.popleft()
-            if control.shuffle:
-                for entry in queue[1:sidebar.maxitems]:
-                    entry.pos = sidebar.maxitems
-                random.shuffle(queue.view[1:])
             queue.append(e)
         else:
-            sidebar.particles.append(queue.popleft())
-            if control.shuffle:
-                for entry in queue[1:sidebar.maxitems]:
-                    entry.pos = sidebar.maxitems
-                random.shuffle(queue.view[1:])
+            sidebar.particles.append(e)
         if queue:
             return enqueue(queue[0])
         mixer.clear()

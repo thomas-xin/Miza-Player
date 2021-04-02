@@ -1172,7 +1172,7 @@ def draw_menu():
                             swap = target - i
             for i, entry in enumerate(queue):
                 if entry.get("selected"):
-                    if not entry.url or kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
+                    if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
                         pops.add(i)
                         if sidebar.get("last_selected") == entry:
                             sidebar.pop("last_selected", None)

@@ -694,6 +694,7 @@ class AudioDownloader:
         self.searched = cdict()
         self.paging = create_future_ex(self.setup_pages)
         self.waiting = create_future_ex(self.update_dl)
+        self.youtube_base = "CONSENT=YES+cb.20210328-17-p0.en+FX"
         self.cookie = create_future_ex(self.set_cookie)
         self.downloader = youtube_dl.YoutubeDL(self.ydl_opts)
 
@@ -706,7 +707,6 @@ class AudioDownloader:
         # self.yt_pages = [page10[i] for i in range(0, len(page10), 5)]
 
     def set_cookie(self):
-        self.youtube_base = "CONSENT=YES+cb.20210328-17-p0.en+FX"
         resp = requests.get("https://www.youtube.com").text
         if "<title>Before you continue to YouTube</title>" in resp:
             resp = resp.split('<input type="hidden" name="v" value="', 1)[-1]
@@ -715,9 +715,11 @@ class AudioDownloader:
             self.youtube_x += 1
     
     def youtube_header(self):
-        if self.youtube_base:
-            return dict(cookie=self.youtube_base + "%03d" % random.randint(0, 999) + ";")
-        return {}
+        try:
+            self.cookie.result()
+        except:
+            pass
+        return dict(cookie=self.youtube_base + "%03d" % random.randint(0, 999) + ";")
 
     # Initializes youtube_dl object as well as spotify tokens, every 720 seconds.
     def update_dl(self):
@@ -926,7 +928,6 @@ class AudioDownloader:
     def get_youtube_playlist(self, p_id):
         out = deque()
         self.youtube_x += 1
-        self.cookie.result()
         resp = requests.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header()).content
         try:
             search = b'window["ytInitialData"] = '
@@ -1317,7 +1318,6 @@ class AudioDownloader:
     def search_yt(self, query):
         url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
         self.youtube_x += 1
-        self.cookie.result()
         resp = requests.get(url, headers=self.youtube_header()).content
         result = None
         with suppress(ValueError):

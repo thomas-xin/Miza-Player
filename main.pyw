@@ -1305,6 +1305,7 @@ def draw_menu():
                     surface=DISP2,
                     align=2,
                     cache=True,
+                    font="Comic Sans MS",
                 )
             if copies:
                 pyperclip.copy("\n".join(copies))
@@ -1376,6 +1377,7 @@ def draw_menu():
                         surface=DISP2,
                         align=2,
                         cache=True,
+                        font="Comic Sans MS",
                     )
                     anima_rectangle(
                         DISP2,
@@ -2038,6 +2040,7 @@ def draw_menu():
                 surface=DISP,
                 align=2,
                 cache=True,
+                font="Comic Sans MS",
             )
             anima_rectangle(
                 DISP,
@@ -2257,7 +2260,7 @@ try:
                             (player.rect[2] - teapot.get_width() >> 1, player.rect[3] - teapot.get_height() >> 1),
                         )
                         message_display(
-                            f"No lyrics found for {queue[0].name}...",
+                            f"No lyrics found for {queue[0].name}.",
                             size,
                             (player.rect[2] >> 1, size),
                             (255, 0, 0),

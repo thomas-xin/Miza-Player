@@ -1113,7 +1113,7 @@ class AudioDownloader:
                                 break
                     return output
                 except:
-                    pass
+                    print_exc()
         elif regexp("(play|open|api)\\.spotify\\.com").search(item):
             # Spotify playlist searches contain up to 100 items each
             if "playlist" in item:

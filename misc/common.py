@@ -533,9 +533,9 @@ from pygame.locals import *
 import pygame.ftfont, pygame.gfxdraw
 gfxdraw = pygame.gfxdraw
 
-# a = submit(pygame.ftfont.init)
+a = submit(pygame.ftfont.init)
 b = submit(pygame.font.init)
-# a.result()
+a.result()
 b.result()
 
 def load_surface(fn):
@@ -1083,30 +1083,29 @@ def text_objects(text, font, colour, background):
     return text_surface, text_surface.get_rect()
 
 def sysfont(font, size, unicode=False):
-    func = pygame.font
-    # func = pygame.ftfont if unicode else pygame.font
+    func = pygame.ftfont if unicode else pygame.font
     if font == "OpenSansEmoji":
         return func.Font("misc/OpenSansEmoji.ttf", size)
     return func.SysFont(font, size)
 
 def surface_font(text, colour, background, size, font):
     size = round(size)
-    asc = text.isascii()
-    if asc:
+    unicode = any(ord(c) >= 65536 for c in text)
+    if not unicode:
         ct_font = globals().setdefault("ct_font", {})
     else:
         ct_font = globals().setdefault("ft_font", {})
     data = (size, font)
     f = ct_font.get(data, None)
     if not f:
-        f = ct_font[data] = sysfont(font, size, unicode=not asc)
+        f = ct_font[data] = sysfont(font, size, unicode=unicode)
     for i in range(4):
         try:
             return text_objects(text, f, colour, background)
         except:
             if i >= 3:
                 raise
-            f = ct_font[data] = sysfont(font, size, unicode=not asc)
+            f = ct_font[data] = sysfont(font, size, unicode=unicode)
 
 def text_size(text, size, font="OpenSansEmoji"):
     size = round(size)

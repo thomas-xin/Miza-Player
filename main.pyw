@@ -481,7 +481,7 @@ submit(setup_buttons)
 
 
 is_active = lambda: pc() - player.get("last", 0) <= max(player.get("lastframe", 0), 1 / 30) * 4
-
+shash = lambda s: as_str(base64.b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
 e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else nan)
 
 def ensure_duration(e):
@@ -540,8 +540,12 @@ def render_lyrics(entry):
                         y = 0
                         x += mx
                         mx = 0
-                    if line[0] == "[" and line[-1] in "])":
-                        name = line.split("(", 1)[0].lstrip("[(").rstrip("]) ").casefold().strip()
+                    if line[0] in "([" and line[-1] in "])":
+                        if line[0] != "(":
+                            name = line.split("(", 1)[0][1:]
+                        else:
+                            name = line[1:]
+                        name = name.rstrip("]) ").casefold().strip()
                         if name.startswith("pre-"):
                             pre = True
                             name = name[4:]
@@ -625,7 +629,7 @@ def render_lyrics(entry):
     except:
         print_exc()
 
-def prepare(entry, force=False):
+def prepare(entry, force=False, download=False):
     if not entry.url:
         return
     stream = entry.get("stream", "")
@@ -664,7 +668,10 @@ def prepare(entry, force=False):
         stream = ytdl.get_stream(entry, force=True, download=False)
     else:
         stream = entry.stream
-    return stream.strip()
+    stream = stream.strip()
+    if stream and is_url(stream) and download:
+        mixer.submit(f"~download {stream} {shash(entry.url)}")
+    return stream
 
 def start_player(pos=None):
     player.last = 0
@@ -719,7 +726,8 @@ def start_player(pos=None):
         player.needs_shuffle = False
     else:
         player.needs_shuffle = not is_url(stream)
-    mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")))
+    h = shash(entry.url)
+    mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")) + " " + h)
     player.pos = pos
     player.index = player.pos * 30
     player.end = duration or inf
@@ -872,7 +880,7 @@ def ensure_next(i=1):
         e.duration = e.get("duration") or False
         e.pop("research", None)
         # print(i)
-        submit(prepare, e)
+        submit(prepare, e, force=i == 1, download=i == 1)
         if i <= 1 and not e.get("lyrics_loading") and not e.get("lyrics"):
             e.lyrics_loading = True
             submit(render_lyrics, e)
@@ -2378,7 +2386,7 @@ except Exception as ex:
             pass
     futs = set()
     for fn in os.listdir("cache"):
-        if fn[0] in "~\x7f" and fn.endswith(".pcm"):
+        if fn[0] == "\x7f" and fn.endswith(".pcm"):
             futs.add(submit(os.remove, "cache/" + fn))
     for fut in futs:
         try:

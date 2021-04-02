@@ -29,7 +29,6 @@ def as_str(s):
     return str(s)
 
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
-shash = lambda s: as_str(base64.b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
 
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 submit = exc.submit
@@ -1027,6 +1026,7 @@ sbuffer = None
 cdc = "auto"
 duration = inf
 stream = ""
+sh = ""
 fut = None
 reading = None
 point_fut = None
@@ -1082,6 +1082,14 @@ while not sys.stdin.closed and failed < 16:
             if command.startswith("~ssize"):
                 ssize = tuple(map(int, command[7:].split()))
                 continue
+            if command.startswith("~download"):
+                st, h = command[10:].split()
+                fn2 = "cache/~" + h + ".pcm"
+                if not os.path.exists(fn2):
+                    cmd = ffmpeg_start + ("-nostdin", "-i", st, "-f", "s16le", "-ar", "48k", "-ac", "2", fn2)
+                    print(cmd)
+                    subprocess.Popen(cmd)
+                continue
             if command.startswith("~setting"):
                 setting, value = command[9:].split()
                 if setting.startswith("#"):
@@ -1098,7 +1106,7 @@ while not sys.stdin.closed and failed < 16:
                     continue
                 pos = (frame + drop) / 30
             elif command != "~replay":
-                pos, duration, cdc = sys.stdin.readline().rstrip().split(" ", 2)
+                pos, duration, cdc, sh = sys.stdin.readline().rstrip().split(" ", 3)
                 pos, duration = map(float, (pos, duration))
                 stream = command
             shuffling = False
@@ -1124,7 +1132,7 @@ while not sys.stdin.closed and failed < 16:
                 reading = None
             ext = construct_options()
             if is_url(stream):
-                fn = "cache/~" + shash(stream) + ".pcm"
+                fn = "cache/~" + sh + ".pcm"
                 if os.path.exists(fn):
                     stream = fn
                     fn = None
@@ -1189,7 +1197,7 @@ while not sys.stdin.closed and failed < 16:
                 if not fn and (cdc == "mp3" and pos >= 960 or settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
                     if (fn or not stream.endswith(".pcm")) and (settings.speed < 0 or cdc != "mp3"):
                         ostream = stream
-                        stream = "cache/~" + shash(ostream) + ".pcm"
+                        stream = "cache/~" + sh + ".pcm"
                         if not os.path.exists(stream):
                             cmd = ffmpeg_start + ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
                             print(cmd)

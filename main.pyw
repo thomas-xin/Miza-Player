@@ -1171,6 +1171,9 @@ def draw_menu():
                         if target != i:
                             swap = target - i
             for i, entry in enumerate(queue):
+                if not entry.url:
+                    pops.add(i)
+                    continue
                 if entry.get("selected"):
                     if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
                         pops.add(i)

@@ -2378,7 +2378,7 @@ except Exception as ex:
             pass
     futs = set()
     for fn in os.listdir("cache"):
-        if fn[0] == "\x7f" and fn.endswith(".pcm"):
+        if fn[0] in "~\x7f" and fn.endswith(".pcm"):
             futs.add(submit(os.remove, "cache/" + fn))
     for fut in futs:
         try:

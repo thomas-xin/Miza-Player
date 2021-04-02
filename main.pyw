@@ -932,7 +932,7 @@ def update_menu():
     sidebar.maxitems = int(screensize[1] - options.toolbar_height - 36 >> 5)
     for i, entry in enumerate(queue[:sidebar.maxitems]):
         entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
-    # sidebar.scroll = max(0, min(len(sidebar.queue) - sidebar.maxitems // 2, sidebar.get("scroll", 0)))
+    # sidebar.scroll.pos = max(0, min(len(sidebar.queue) - sidebar.maxitems // 2, sidebar.get("scroll", 0)))
     # sidebar.scroll_pos = 
     if kspam[K_SPACE]:
         player.paused ^= True
@@ -1060,12 +1060,16 @@ def update_menu():
     sidebar.updated = False#sidebar.colour != c
     sidebar.colour = c
     sidebar.relpos = min(1, (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.abspos) / ratio)
-    sidebar.scroll_rect = (screensize[0] - 20, 68, 12, screensize[1] - toolbar_height - 72)
-    if sidebar.scrolling or in_rect(mpos, sidebar.scroll_rect):
-        c = (191, 127, 255, 255)
+    sidebar.scroll.rect = (screensize[0] - 20, 68, 12, screensize[1] - toolbar_height - 72)
+    sidebar.scroll.rect = (screensize[0] - 20, 68, 12, screensize[1] - toolbar_height - 72)
+    if sidebar.scrolling or in_rect(mpos, sidebar.scroll.rect):
+        c1 = (191, 127, 255)
+        c2 = (255, 127, 191)
     else:
-        c = (127, 0, 255, 191)
-    sidebar.scroll_colour = c
+        c1 = (191, 127, 255, 191)
+        c2 = (255, 127, 191, 191)
+    sidebar.scroll.background = c1
+    sidebar.scroll.colour = c2
 
 ripple_colours = (
     (191, 127, 255),
@@ -1472,13 +1476,19 @@ def draw_menu():
                 except (AttributeError, ValueError, IndexError):
                     sidebar.pop("last_selected", None)
                     lq2 = nan
-            if sidebar.get("scroll_colour"):
+            if sidebar.scroll.get("colour"):
                 rounded_bev_rect(
                     DISP2,
-                    sidebar.scroll_colour,
-                    (sidebar.scroll_rect[0] - screensize[0] + sidebar_width, sidebar.scroll_rect[1]) + (sidebar.scroll_rect[2:]),
+                    sidebar.scroll.background,
+                    (sidebar.scroll.rect[0] - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
                     4,
                 )
+                # rounded_bev_rect(
+                #     DISP2,
+                #     sidebar.scroll.colour,
+                #     (sidebar.scroll.select_rect[0] - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
+                #     4,
+                # )
             DISP.blit(
                 DISP2,
                 (screensize[0] - sidebar_width, 0),
@@ -2231,7 +2241,7 @@ try:
                             rect[:2],
                         )
                 if queue and not options.spectrogram:
-                    size = max(16, min(32, (screensize[0] - sidebar_width) // 48))
+                    size = max(16, min(32, (screensize[0] - sidebar_width) // 36))
                     if "lyrics" not in queue[0]:
                         if pc() % 0.25 < 0.125:
                             col = (255,) * 3
@@ -2245,6 +2255,7 @@ try:
                             surface=DISP,
                             cache=True,
                             background=(0,) * 3,
+                            font="Rockwell",
                         )
                     elif queue[0].lyrics:
                         rect = (player.rect[2] - 8, player.rect[3] - 64)
@@ -2263,6 +2274,7 @@ try:
                             surface=DISP,
                             cache=True,
                             background=(0,) * 3,
+                            font="Rockwell",
                         )
                     else:
                         teapot_source = teapot_fut.result()
@@ -2282,6 +2294,7 @@ try:
                             surface=DISP,
                             cache=True,
                             background=(0,) * 3,
+                            font="Rockwell",
                         )
                 if player.flash_s > 0:
                     bevel_rectangle(

@@ -1084,8 +1084,9 @@ def text_objects(text, font, colour, background):
 
 def sysfont(font, size, unicode=False):
     func = pygame.ftfont if unicode else pygame.font
-    if font == "OpenSansEmoji":
-        return func.Font("misc/OpenSansEmoji.ttf", size)
+    fn = "misc/" + font + ".ttf"
+    if os.path.exists(fn):
+        return func.Font(fn, size)
     return func.SysFont(font, size)
 
 def surface_font(text, colour, background, size, font):

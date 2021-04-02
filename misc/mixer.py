@@ -836,11 +836,12 @@ def render():
                 lastpacket = packet
                 buffer = sbuffer
 
-                ampm1 = buffer > 0
-                ampm2 = buffer < 0
-                amp1 = sum(buffer[ampm1])
-                amp2 = -sum(buffer[ampm2])
-                amp = (amp1 + amp2) / len(buffer)
+                amp = sum(np.abs(buffer)) / len(buffer)
+                # ampm1 = buffer > 0
+                # ampm2 = buffer < 0
+                # amp1 = sum(buffer[ampm1])
+                # amp2 = -sum(buffer[ampm2])
+                # amp = (amp1 + amp2) / len(buffer)
                 p_amp = sqrt(amp / 32767)
 
                 if is_minimised():

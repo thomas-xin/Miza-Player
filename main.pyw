@@ -271,7 +271,7 @@ def setup_buttons():
         print_exc()
 
 cached_fns = {}
-def _enqueue_local(*files):
+def _enqueue_local(*files, probe=True):
     try:
         if files:
             sidebar.loading = True
@@ -296,7 +296,10 @@ def _enqueue_local(*files):
                         try:
                             dur, cdc = cached_fns[fn]
                         except KeyError:
-                            dur, cdc = cached_fns[fn] = get_duration_2(fn)
+                            if probe:
+                                dur, cdc = cached_fns[fn] = get_duration_2(fn)
+                            else:
+                                dur, cdc = None, None
                     except:
                         print_exc()
                         dur, cdc = (None, "N/A")
@@ -401,13 +404,21 @@ def enqueue_device():
         submit(_enqueue_local, "<" + selected.split(":", 1)[0] + ">")
 
 def enqueue_auto(*queries):
-    for query in queries:
+    futs = deque()
+    start = len(queue)
+    for i, query in enumerate(queries):
         q = query.strip()
         if q:
             if is_url(q) or not os.path.exists(q):
-                submit(_enqueue_search, q)
+                if i < 1:
+                    futs.append(submit(_enqueue_search, q))
+                else:
+                    for fut in futs:
+                        fut.result()
+                    name = q.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+                    queue.append(cdict(name=name, url=q, duration=None, pos=start))
             else:
-                submit(_enqueue_local, q)
+                futs.append(submit(_enqueue_local, q, probe=i < 1))
 
 
 if len(sys.argv) > 1:
@@ -546,10 +557,10 @@ def render_lyrics(entry):
                         else:
                             name = line[1:]
                         name = name.rstrip("]) ").casefold().strip()
-                        if name.startswith("pre-"):
+                        if name.startswith("pre-") or name.startswith("pre "):
                             pre = True
                             name = name[4:]
-                        elif name.startswith("post-"):
+                        elif name.startswith("post-") or name.startswith("post "):
                             pre = True
                             name = name[5:]
                         else:
@@ -1116,7 +1127,7 @@ def draw_menu():
                     alpha=sqrt(max(0, ripple.alpha)) * 16,
                 )
             if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
-                enqueue_auto(*pyperclip.paste().splitlines())
+                submit(enqueue_auto, *pyperclip.paste().splitlines())
             n = len(queue)
             t = sum(e.get("duration") or 300 for e in queue) - (player.pos or 0)
             message_display(

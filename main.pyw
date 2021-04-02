@@ -1117,6 +1117,7 @@ def draw_menu():
                 (6 + offs, 48),
                 surface=DISP2,
                 align=0,
+                font="Comic Sans MS",
             )
             if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
                 sidebar.pop("dragging", None)
@@ -1498,6 +1499,7 @@ def draw_menu():
                     surface=DISP,
                     align=0,
                     cache=True,
+                    font="Comic Sans MS",
                 )
                 # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
                 s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
@@ -1508,6 +1510,7 @@ def draw_menu():
                     surface=DISP,
                     align=2,
                     cache=True,
+                    font="Comic Sans MS",
                 )
                 srange = asettings[opt]
                 w = (sidebar_width - 16)
@@ -1761,6 +1764,7 @@ def draw_menu():
                         colour=(0,) * 3,
                         surface=DISP,
                         cache=True,
+                        font="Comic Sans MS",
                     )
         pos = toolbar.pause.pos
         radius = toolbar.pause.radius
@@ -1881,6 +1885,7 @@ def draw_menu():
             (screensize[0] - 4, screensize[1] - 2),
             surface=DISP,
             align=2,
+            font="Comic Sans MS",
         )
         x = progress.pos[0] + round(progress.length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
         x = min(progress.pos[0] - width // 2 + progress.length, max(progress.pos[0] - width // 2, x))
@@ -1964,6 +1969,7 @@ def draw_menu():
                 c,
                 surface=DISP,
                 alpha=a,
+                font="Comic Sans MS",
             )
     if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
         maxitems = sidebar.maxitems
@@ -2087,6 +2093,7 @@ def draw_menu():
                 (mpos2[0], mpos2[1] - 17),
                 (255, 255, 127),
                 surface=DISP,
+                font="Comic Sans MS",
             )
         if hovertext:
             message_display(
@@ -2095,6 +2102,7 @@ def draw_menu():
                 (mpos2[0], mpos2[1] - 17),
                 (255, 255, 127),
                 surface=DISP,
+                font="Comic Sans MS",
             )
 
 
@@ -2300,6 +2308,7 @@ try:
                             (4, 14 * i),
                             align=0,
                             surface=DISP,
+                            font="Comic Sans MS",
                         )
                 if modified:
                     modified.add(tuple(screensize))

@@ -533,9 +533,9 @@ from pygame.locals import *
 import pygame.ftfont, pygame.gfxdraw
 gfxdraw = pygame.gfxdraw
 
-a = submit(pygame.ftfont.init)
+# a = submit(pygame.ftfont.init)
 b = submit(pygame.font.init)
-a.result()
+# a.result()
 b.result()
 
 def load_surface(fn):
@@ -1083,11 +1083,11 @@ def text_objects(text, font, colour, background):
     return text_surface, text_surface.get_rect()
 
 def sysfont(font, size, unicode=False):
-    if not unicode:
-        return pygame.font.SysFont(font, size)
-    # if font == "Comic Sans MS":
-    #     return pygame.ftfont.Font("misc/Comic.ttf", size)
-    return pygame.ftfont.SysFont(font, size)
+    func = pygame.font
+    # func = pygame.ftfont if unicode else pygame.font
+    if font == "OpenSansEmoji":
+        return func.Font("misc/OpenSansEmoji.ttf", size)
+    return func.SysFont(font, size)
 
 def surface_font(text, colour, background, size, font):
     size = round(size)
@@ -1108,7 +1108,7 @@ def surface_font(text, colour, background, size, font):
                 raise
             f = ct_font[data] = sysfont(font, size, unicode=not asc)
 
-def text_size(text, size, font="Comic Sans MS"):
+def text_size(text, size, font="OpenSansEmoji"):
     size = round(size)
     asc = text.isascii()
     if asc:
@@ -1128,7 +1128,7 @@ def text_size(text, size, font="Comic Sans MS"):
             f = ct_font[data] = sysfont(font, size, unicode=not asc)
 
 md_font = {}
-def message_display(text, size, pos, colour=(255,) * 3, background=None, surface=None, font="Comic Sans MS", alpha=255, align=1, cache=False):
+def message_display(text, size, pos, colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False):
     # text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
     data = (text, colour, background, size, font)
     try:
@@ -1155,7 +1155,7 @@ def message_display(text, size, pos, colour=(255,) * 3, background=None, surface
     else:
         return TextSurf
 
-def char_display(char, size, font="Comic Sans MS"):
+def char_display(char, size, font="OpenSansEmoji"):
     size = round(size)
     cs_font = globals().setdefault("cs_font", {})
     data = (char, size, font)

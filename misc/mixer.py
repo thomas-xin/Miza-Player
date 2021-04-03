@@ -220,6 +220,8 @@ def duration_est():
     last_fs = 0
     while True:
         try:
+            while is_minimised():
+                time.sleep(0.5)
             if stream and not is_url(stream) and (stream[0] != "<" or stream[-1] != ">") and os.path.exists(stream):
                 stat = None
                 if last_fn == stream:

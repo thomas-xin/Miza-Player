@@ -2440,8 +2440,6 @@ def time_parse(ts):
     mults = (1, 60, 3600, 86400)
     return round_min(sum(float(count) * mult for count, mult in zip(data, reversed(mults[:len(data)]))))
 
-is_youtube_stream = lambda url: url and re.findall("^https?:\\/\\/r[0-9]+---.{2}-\\w+-\\w{4,}\\.googlevideo\\.com", url)
-
 def expired(stream):
     if is_youtube_url(stream):
         return True
@@ -2452,4 +2450,6 @@ def expired(stream):
         if int(stream.replace("/", "=").split("expire=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) < utc() + 60:
             return True
 
+is_youtube_stream = lambda url: url and re.findall("^https?:\\/\\/r[0-9]+---.{2}-\\w+-\\w{4,}\\.googlevideo\\.com", url)
+is_youtube_url = lambda url: url and re.findall("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+", url)
 # Regex moment - Smudge

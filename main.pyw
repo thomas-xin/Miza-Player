@@ -581,7 +581,7 @@ def render_lyrics(entry):
                             col = (0, 255, 0)
                         elif name.startswith("instrumental"):
                             col = (255, 127, 0)
-                        else:
+                        elif line[0] == "[":
                             col = (0, 0, 255)
                         if pre:
                             col = tuple(i >> 1 for i in col)
@@ -674,7 +674,7 @@ def prepare(entry, force=False, download=False):
                     random.shuffle(q2.view)
                 queue.__init__(np.concatenate((q1, q2, q3)), fromarray=True)
                 submit(render_lyrics, queue[0])
-    elif force:
+    elif force and is_url(entry.get("url")):
         ytdl = downloader.result()
         stream = ytdl.get_stream(entry, force=True, download=False)
     else:
@@ -1060,13 +1060,15 @@ def update_menu():
     sidebar.updated = False#sidebar.colour != c
     sidebar.colour = c
     sidebar.relpos = min(1, (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.abspos) / ratio)
-    sidebar.scroll.rect = (screensize[0] - 20, 68, 12, screensize[1] - toolbar_height - 72)
-    sidebar.scroll.rect = (screensize[0] - 20, 68, 12, screensize[1] - toolbar_height - 72)
+    scroll_height = screensize[1] - toolbar_height - 72
+    sidebar.scroll.rect = (screensize[0] - 20, 68, 12, scroll_height)
+    scroll_rat = max(12, min(scroll_height, scroll_height / max(1, len(queue)) * (screensize[1] - toolbar_height - 36) / 32))
+    sidebar.scroll.select_rect = sidebar.scroll.rect[:3] + (scroll_rat,)
     if sidebar.scrolling or in_rect(mpos, sidebar.scroll.rect):
-        c1 = (191, 127, 255)
+        c1 = (191, 127, 255, 191)
         c2 = (255, 127, 191)
     else:
-        c1 = (191, 127, 255, 191)
+        c1 = (191, 127, 255, 127)
         c2 = (255, 127, 191, 191)
     sidebar.scroll.background = c1
     sidebar.scroll.colour = c2
@@ -1483,12 +1485,12 @@ def draw_menu():
                     (sidebar.scroll.rect[0] - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
                     4,
                 )
-                # rounded_bev_rect(
-                #     DISP2,
-                #     sidebar.scroll.colour,
-                #     (sidebar.scroll.select_rect[0] - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
-                #     4,
-                # )
+                rounded_bev_rect(
+                    DISP2,
+                    sidebar.scroll.colour,
+                    (sidebar.scroll.select_rect[0] - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
+                    4,
+                )
             DISP.blit(
                 DISP2,
                 (screensize[0] - sidebar_width, 0),

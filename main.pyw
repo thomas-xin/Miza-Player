@@ -933,7 +933,8 @@ def update_menu():
     toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * 2) % tau
     toolbar.pause.speed *= 0.995 ** (duration * 480)
     sidebar.scroll.target = max(0, min(sidebar.scroll.target, len(queue) * 32 - screensize[1] + options.toolbar_height + 36 + 32))
-    sidebar.scroll.pos = (sidebar.scroll.pos * (ratio / 3 - 1) + sidebar.scroll.target) / ratio * 3
+    r = ratio if sidebar.scrolling else (ratio - 1) / 3 + 1
+    sidebar.scroll.pos = (sidebar.scroll.pos * (r - 1) + sidebar.scroll.target) / r
     sidebar.maxitems = ceil(screensize[1] - options.toolbar_height - 36 + sidebar.scroll.pos % 32) // 32
     sidebar.base = max(0, int(sidebar.scroll.pos // 32))
     # print(sidebar.scroll.target, sidebar.scroll.pos, sidebar.maxitems, sidebar.base)

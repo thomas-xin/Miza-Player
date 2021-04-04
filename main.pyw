@@ -1138,14 +1138,20 @@ def draw_menu():
         modified.add(sidebar.rect)
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
         sc = sidebar.colour or (64, 0, 96)
-        bevel_rectangle(
-            DISP,
-            sc,
-            sidebar.rect2,
-            4,
-        )
-        if sidebar.ripples:
+        # bevel_rectangle(
+        #     DISP,
+        #     sc,
+        #     sidebar.rect2,
+        #     4,
+        # )
+        if sidebar.ripples or offs > -sidebar_width + 4:
             DISP2 = pygame.Surface((sidebar.rect[2], sidebar.rect[3] + 4), SRCALPHA)
+            bevel_rectangle(
+                DISP2,
+                sc,
+                (0, 0) + sidebar.rect2[2:],
+                4,
+            )
             for ripple in sidebar.ripples:
                 concentric_circle(
                     DISP2,
@@ -1155,9 +1161,40 @@ def draw_menu():
                     fill_ratio=1 / 3,
                     alpha=sqrt(max(0, ripple.alpha)) * 16,
                 )
+            if offs > -sidebar_width + 4:
+                n = len(queue)
+                t = sum(e.get("duration") or 300 for e in queue) - (player.pos or 0)
+                message_display(
+                    f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
+                    12,
+                    (6 + offs, 48),
+                    surface=DISP2,
+                    align=0,
+                    font="Comic Sans MS",
+                )
+            if sidebar.scroll.get("colour"):
+                rounded_bev_rect(
+                    DISP2,
+                    sidebar.scroll.background,
+                    (sidebar.scroll.rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
+                    4,
+                )
+                rounded_bev_rect(
+                    DISP2,
+                    sidebar.scroll.colour,
+                    (sidebar.scroll.select_rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
+                    4,
+                )
             DISP.blit(
                 DISP2,
                 sidebar.rect[:2],
+            )
+        else:
+            bevel_rectangle(
+                DISP,
+                sc,
+                sidebar.rect2,
+                4,
             )
         if offs > -sidebar_width + 4:
             Z = -sidebar.scroll.pos
@@ -1166,16 +1203,6 @@ def draw_menu():
             DISP2.set_colorkey(sc)
             if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
                 submit(enqueue_auto, *pyperclip.paste().splitlines())
-            n = len(queue)
-            t = sum(e.get("duration") or 300 for e in queue) - (player.pos or 0)
-            message_display(
-                f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
-                12,
-                (screensize[0] - sidebar_width + 6 + offs, 48),
-                surface=DISP,
-                align=0,
-                font="Comic Sans MS",
-            )
             if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
                 sidebar.pop("dragging", None)
             if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue):
@@ -1519,19 +1546,6 @@ def draw_menu():
                 except (AttributeError, ValueError, IndexError):
                     sidebar.pop("last_selected", None)
                     lq2 = nan
-            if sidebar.scroll.get("colour"):
-                rounded_bev_rect(
-                    DISP,
-                    sidebar.scroll.background,
-                    (sidebar.scroll.rect[0], sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
-                    4,
-                )
-                rounded_bev_rect(
-                    DISP,
-                    sidebar.scroll.colour,
-                    (sidebar.scroll.select_rect[0], sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
-                    4,
-                )
             DISP.blit(
                 DISP2,
                 (screensize[0] - sidebar_width + 4, 52 + 16),

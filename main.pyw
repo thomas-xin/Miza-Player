@@ -454,6 +454,8 @@ def reset_menu(full=True, reset=False):
     sidebar.resizing = False
     sidebar.resizer = False
     sidebar.scrolling = False
+    sidebar.scroll.setdefault("pos", 0)
+    sidebar.scroll.setdefault("target", 0)
     toolbar.colour = None
     toolbar.updated = False
     toolbar.rect = (0, screensize[1] - toolbar_height, screensize[0], toolbar_height)
@@ -756,8 +758,8 @@ def skip():
     if queue:
         e = queue.popleft()
         if control.shuffle:
-            for entry in queue[1:sidebar.maxitems]:
-                entry.pos = sidebar.maxitems
+            for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
+                entry.pos = sidebar.base + sidebar.maxitems
             random.shuffle(queue.view[1:])
         if control.loop == 2:
             queue.appendleft(e)
@@ -882,15 +884,16 @@ submit(play)
 submit(pos)
 
 def ensure_next(i=1):
-    if len(queue) > i:
-        e = queue[i]
-        e.duration = e.get("duration") or False
-        e.pop("research", None)
-        # print(i)
-        submit(prepare, e, force=i == 1, download=i == 1)
-        if i <= 1 and not e.get("lyrics_loading") and not e.get("lyrics"):
-            e.lyrics_loading = True
-            submit(render_lyrics, e)
+    if i <= 1 or all(e.done() for e in enext):
+        enext.clear()
+        if len(queue) > i:
+            e = queue[i]
+            e.duration = e.get("duration") or False
+            e.pop("research", None)
+            enext.add(submit(prepare, e, force=i == 1, download=i == 1))
+            if i <= 1 and not e.get("lyrics_loading") and not e.get("lyrics"):
+                e.lyrics_loading = True
+                enext.add(submit(render_lyrics, e))
 
 def enqueue(entry, start=True):
     try:
@@ -915,7 +918,7 @@ def update_menu():
     player.flash_i = max(0, player.get("flash_i", 0) - duration * 60)
     player.flash_o = max(0, player.get("flash_o", 0) - duration * 60)
     toolbar.pause.timestamp = pc()
-    ratio = 1 / (duration * 8)
+    ratio = 1 + 1 / (duration * 8)
     progress.vis = (progress.vis * (ratio - 1) + player.pos) / ratio
     progress.alpha *= 0.998 ** (duration * 480)
     if progress.alpha < 16:
@@ -929,11 +932,13 @@ def update_menu():
     progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
     toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * 2) % tau
     toolbar.pause.speed *= 0.995 ** (duration * 480)
-    sidebar.maxitems = int(screensize[1] - options.toolbar_height - 36 >> 5)
-    for i, entry in enumerate(queue[:sidebar.maxitems]):
+    sidebar.scroll.target = max(0, min(sidebar.scroll.target, len(queue) * 32 - screensize[1] + options.toolbar_height + 36 + 32))
+    sidebar.scroll.pos = (sidebar.scroll.pos * (ratio / 3 - 1) + sidebar.scroll.target) / ratio * 3
+    sidebar.maxitems = ceil(screensize[1] - options.toolbar_height - 36 + sidebar.scroll.pos % 32) // 32
+    sidebar.base = max(0, int(sidebar.scroll.pos // 32))
+    # print(sidebar.scroll.target, sidebar.scroll.pos, sidebar.maxitems, sidebar.base)
+    for i, entry in enumerate(queue[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base):
         entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
-    # sidebar.scroll.pos = max(0, min(len(sidebar.queue) - sidebar.maxitems // 2, sidebar.get("scroll", 0)))
-    # sidebar.scroll_pos = 
     if kspam[K_SPACE]:
         player.paused ^= True
         mixer.state(player.paused)
@@ -1061,12 +1066,29 @@ def update_menu():
     sidebar.colour = c
     sidebar.relpos = min(1, (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.abspos) / ratio)
     scroll_height = screensize[1] - toolbar_height - 72
-    sidebar.scroll.rect = (screensize[0] - 20, 68, 12, scroll_height)
+    sidebar.scroll.rect = (screensize[0] - 20, 52 + 16, 12, scroll_height)
     scroll_rat = max(12, min(scroll_height, scroll_height / max(1, len(queue)) * (screensize[1] - toolbar_height - 36) / 32))
-    sidebar.scroll.select_rect = sidebar.scroll.rect[:3] + (scroll_rat,)
+    scroll_pos = sidebar.scroll.pos / (32 * max(1, len(queue)) - screensize[1] + toolbar_height + 52 + 16) * (scroll_height - scroll_rat) + 52 + 16
+    sidebar.scroll.select_rect = (sidebar.scroll.rect[0], scroll_pos, sidebar.scroll.rect[2], scroll_rat)
     if sidebar.scrolling or in_rect(mpos, sidebar.scroll.rect):
         c1 = (191, 127, 255, 191)
         c2 = (255, 127, 191)
+        if mclick[0]:
+            sidebar.scrolling = True
+        elif mclick[1]:
+            enter = easygui.get_string(
+                "Scroll to position",
+                "Miza Player",
+                str(round(sidebar.scroll.target / 32)),
+            )
+            if enter:
+                pos = float(enter) * 32
+                sidebar.scroll.target = pos
+        elif not mheld[0]:
+            sidebar.scrolling = False
+        else:
+            r = min(max(0, mpos2[1] - 52 - 16 - scroll_rat / 2) / (scroll_height - scroll_rat), 1)
+            sidebar.scroll.target = r * (32 * max(1, len(queue)) - screensize[1] + toolbar_height + 52 + 16)
     else:
         c1 = (191, 127, 255, 127)
         c2 = (255, 127, 191, 191)
@@ -1115,10 +1137,15 @@ def draw_menu():
             ))
         modified.add(sidebar.rect)
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
-        if offs > -sidebar_width + 4:
-            Z = 52 + 16
-            DISP2 = pygame.Surface(sidebar.rect2[2:])
-            DISP2.fill(sidebar.colour)
+        sc = sidebar.colour or (64, 0, 96)
+        bevel_rectangle(
+            DISP,
+            sc,
+            sidebar.rect2,
+            4,
+        )
+        if sidebar.ripples:
+            DISP2 = pygame.Surface((sidebar.rect[2], sidebar.rect[3] + 4), SRCALPHA)
             for ripple in sidebar.ripples:
                 concentric_circle(
                     DISP2,
@@ -1128,6 +1155,15 @@ def draw_menu():
                     fill_ratio=1 / 3,
                     alpha=sqrt(max(0, ripple.alpha)) * 16,
                 )
+            DISP.blit(
+                DISP2,
+                sidebar.rect[:2],
+            )
+        if offs > -sidebar_width + 4:
+            Z = -sidebar.scroll.pos
+            DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16))
+            DISP2.fill(sc)
+            DISP2.set_colorkey(sc)
             if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
                 submit(enqueue_auto, *pyperclip.paste().splitlines())
             n = len(queue)
@@ -1135,8 +1171,8 @@ def draw_menu():
             message_display(
                 f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
                 12,
-                (6 + offs, 48),
-                surface=DISP2,
+                (screensize[0] - sidebar_width + 6 + offs, 48),
+                surface=DISP,
                 align=0,
                 font="Comic Sans MS",
             )
@@ -1155,23 +1191,27 @@ def draw_menu():
                 lq = nan
             lq2 = lq
             swap = None
-            maxitems = sidebar.maxitems
-            otarget = round((mpos[1] - Z - 16) / 32)
-            etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, Z, sidebar_width - 32, screensize[1] - toolbar_height - Z)) else nan
-            target = min(max(0, round((mpos2[1] - Z - 16) / 32)), len(queue) - 1)
-            if in_rect(mpos, sidebar.rect) and mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
+            base, maxitems = sidebar.base, sidebar.maxitems
+            otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
+            etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
+            target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
+            if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
                 if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                     for entry in queue:
                         entry.pop("selected", None)
                     sidebar.pop("last_selected", None)
                     lq = nan
-            for i, entry in enumerate(queue[:maxitems]):
-                if i and (entry.duration is None or entry.get("research")) and queue[i - 1].duration:
+            if len(queue) > 1:
+                entry = queue[1]
+                if (entry.duration is None or entry.get("research")):
+                    ensure_next(1)
+            for i, entry in enumerate(queue[base:base + maxitems], base):
+                if i > 1 and (entry.duration is None or entry.get("research")) and (queue[i - 1].duration or i == base):
                     ensure_next(i)
                 elif i == 1 and not entry.get("lyrics") and not entry.get("lyrics_loading"):
                     ensure_next(i)
                 if entry.get("selected") and sidebar.get("dragging"):
-                    x = 8 + offs
+                    x = 4 + offs
                     y = round(Z + entry.get("pos", 0) * 32)
                     rect = (x, y, sidebar_width - 32, 32)
                     sat = 0.875
@@ -1208,13 +1248,13 @@ def draw_menu():
                     entry.selected = True
                     sidebar.last_selected = entry
                     lq = i
-                if i >= maxitems:
-                    entry.pop("flash", None)
+                if i < base or i >= base + maxitems:
+                    entry.flash = 8
                     entry.pos = i
                     continue
                 if not isfinite(lq):
                     lq2 = nan
-                x = 8 + offs
+                x = 4 + offs
                 y = round(Z + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 32, 32)
                 t = 255
@@ -1256,7 +1296,7 @@ def draw_menu():
                             )
                     if entry.get("selected"):
                         flash = entry.get("flash", 16)
-                        if flash:
+                        if flash >= 0:
                             entry.flash = flash - 1
                         continue
                     sat = 0.875
@@ -1331,17 +1371,18 @@ def draw_menu():
             if copies:
                 pyperclip.copy("\n".join(copies))
             if pops:
-                sidebar.particles.extend(queue[i] for i in pops if i <= maxitems)
+                r = range(base, base + maxitems + 1)
+                sidebar.particles.extend(queue[i] for i in pops if i in r)
                 skipping = 0 in pops
                 queue.pops(pops)
                 if skipping:
                     mixer.clear()
                     submit(start)
             if not sidebar.get("dragging"):
-                for i, entry in enumerate(queue[:maxitems]):
+                for i, entry in enumerate(queue[base:base + maxitems], base):
                     if not entry.get("selected"):
                         continue
-                    x = 8 + offs
+                    x = 4 + offs
                     y = round(Z + entry.get("pos", 0) * 32)
                     sat = 0.875
                     val = 1
@@ -1411,8 +1452,8 @@ def draw_menu():
                         reduction=0.1,
                     )
             if sidebar.get("loading"):
-                x = 8 + offs
-                y = round(Z + len(queue) * 32)
+                x = 4 + offs
+                y = round(Z + (len(queue) - base) * 32)
                 rect = (x, y, sidebar_width - 32, 32)
                 rounded_bev_rect(
                     DISP2,
@@ -1480,44 +1521,22 @@ def draw_menu():
                     lq2 = nan
             if sidebar.scroll.get("colour"):
                 rounded_bev_rect(
-                    DISP2,
+                    DISP,
                     sidebar.scroll.background,
-                    (sidebar.scroll.rect[0] - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
+                    (sidebar.scroll.rect[0], sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
                     4,
                 )
                 rounded_bev_rect(
-                    DISP2,
+                    DISP,
                     sidebar.scroll.colour,
-                    (sidebar.scroll.select_rect[0] - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
+                    (sidebar.scroll.select_rect[0], sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
                     4,
                 )
             DISP.blit(
                 DISP2,
-                (screensize[0] - sidebar_width, 0),
+                (screensize[0] - sidebar_width + 4, 52 + 16),
             )
-        bevel_rectangle(
-            DISP,
-            sidebar.colour or (64, 0, 96),
-            sidebar.rect2,
-            4,
-            filled=offs <= -sidebar_width + 4
-        )
         if offs <= -4:
-            if sidebar.ripples:
-                DISP2 = pygame.Surface((sidebar.rect[2] - 8, sidebar.rect[3] - 4), SRCALPHA)
-                for ripple in sidebar.ripples:
-                    concentric_circle(
-                        DISP2,
-                        ripple.colour,
-                        (ripple.pos[0] - screensize[0] + sidebar_width - 4, ripple.pos[1] - 4),
-                        ripple.radius,
-                        fill_ratio=1 / 3,
-                        alpha=sqrt(max(0, ripple.alpha)) * 16,
-                    )
-                DISP.blit(
-                    DISP2,
-                    (sidebar.rect[0] + 4, sidebar.rect[1] + 4),
-                )
             in_sidebar = in_rect(mpos, sidebar.rect)
             offs2 = offs + sidebar_width
             for i, opt in enumerate(asettings):
@@ -2001,18 +2020,16 @@ def draw_menu():
                 font="Comic Sans MS",
             )
     if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
-        maxitems = sidebar.maxitems
-        for i, entry in enumerate(queue[:maxitems]):
+        base, maxitems = sidebar.base, sidebar.maxitems
+        for i, entry in enumerate(queue[base:base + maxitems], base):
             if not entry.get("selected"):
                 continue
-            x = 8 + offs + screensize[0] - sidebar_width
-            y = round(Z + entry.get("pos", 0) * 32)
             sat = 0.875
             val = 1
-            rect = (x, y, sidebar_width - 32, 32)
             entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
             x, y = mpos2 - sidebar.selection_offset
-            x += screensize[0] - sidebar_width
+            y += 52 + 16
+            x += screensize[0] - sidebar_width + 4
             if isfinite(lq2):
                 y += (i - lq2) * 32
             rect = (x, y, sidebar_width - 32, 32)
@@ -2143,6 +2160,7 @@ K_SPACE = 44
 K_BACKQUOTE = 53
 K_DELETE = 76
 reset_menu(True)
+enext = set()
 foc = True
 minimised = False
 mpos = mpos2 = (-inf,) * 2
@@ -2367,6 +2385,8 @@ try:
         for event in pygame.event.get():
             if event.type == QUIT:
                 raise StopIteration
+            elif event.type == MOUSEWHEEL:
+                sidebar.scroll.target -= event.y * 8
             elif event.type == VIDEORESIZE:
                 flags = get_window_flags()
                 if flags == 3:

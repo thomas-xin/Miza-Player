@@ -976,6 +976,8 @@ def play(pos):
                         fut.result(timeout=0.12)
                     except:
                         print("Pyaudio timed out.")
+                        channel2.stop_stream()
+                        submit(channel2.close)
                         globals()["aout"] = submit(pya_init)
                         globals()["channel2"] = None
                 if not channel2:

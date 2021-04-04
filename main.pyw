@@ -1084,11 +1084,11 @@ def update_menu():
             if enter:
                 pos = float(enter) * 32
                 sidebar.scroll.target = pos
-        elif not mheld[0]:
-            sidebar.scrolling = False
-        else:
+        if sidebar.scrolling:
             r = min(max(0, mpos2[1] - 52 - 16 - scroll_rat / 2) / (scroll_height - scroll_rat), 1)
             sidebar.scroll.target = r * (32 * max(1, len(queue)) - screensize[1] + toolbar_height + 52 + 16)
+            if not mheld[0]:
+                sidebar.scrolling = False
     else:
         c1 = (191, 127, 255, 127)
         c2 = (255, 127, 191, 191)

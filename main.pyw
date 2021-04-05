@@ -264,8 +264,8 @@ def setup_buttons():
         scramble = button_images[7].result()
         def scramble_1():
             mixer.clear()
-            for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
-                entry.pos = sidebar.base + sidebar.maxitems
+            # for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
+            #     entry.pos = sidebar.base + sidebar.maxitems
             random.shuffle(queue.view)
             start()
         toolbar.buttons.append(cdict(
@@ -771,8 +771,8 @@ def skip():
     if queue:
         e = queue.popleft()
         if control.shuffle:
-            for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
-                entry.pos = sidebar.base + sidebar.maxitems
+            # for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
+            #     entry.pos = sidebar.base + sidebar.maxitems
             random.shuffle(queue.view[1:])
         if control.loop == 2:
             queue.appendleft(e)

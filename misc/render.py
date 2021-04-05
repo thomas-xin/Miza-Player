@@ -65,7 +65,8 @@ class Bar(Particle):
 
     __slots__ = ("x", "colour", "height", "height2", "surf", "line")
 
-    font = ImageFont.truetype("misc/Pacifico.ttf", 12)
+    fsize = 0
+    # font = ImageFont.truetype("misc/Pacifico.ttf", fsize)
 
     def __init__(self, x):
         super().__init__()
@@ -169,6 +170,10 @@ def spectrogram_render():
             sfx = sfx.resize(ssize2, resample=Image.NEAREST)
 
         if specs != 2:
+            fsize = max(1, round(ssize2[0] / barcount * 3 / 2))
+            if Bar.fsize != fsize:
+                Bar.fsize = fsize
+                Bar.font = ImageFont.truetype("misc/Pacifico.ttf", Bar.fsize)
             globals()["DRAW"] = ImageDraw.Draw(sfx)
             highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:24]
             high = highbars[0]

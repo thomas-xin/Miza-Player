@@ -608,7 +608,7 @@ barcount = int(highest_note - lowest_note) + 1 + 2
 freqmul = 1 / (1 - log(minfreq, maxfreq))
 
 barheight = 720
-res_scale = 98304
+res_scale = 65536
 dfts = res_scale // 2 + 1
 fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
 fftrans = np.zeros(dfts, dtype=int)
@@ -835,9 +835,16 @@ def play(pos):
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
                 smp = np.frombuffer(b, dtype=np.int16)
-                if settings.volume != 1:
-                    s = smp * settings.volume
-                    if abs(settings.volume) > 1 or settings.volume < -32767 / 32768:
+                aa = any(alphakeys)
+                if settings.volume != 1 or aa:
+                    if settings.volume != 1:
+                        s = smp * settings.volume
+                    # if aa:
+                    #     for i, a in enumerate(alphakeys):
+                    #         if a:
+                    #             freq = 110 * 2 ** ((i + 3) / 12)
+                    #             wave = np.arange(buffoffs, buffoffs + 1600)
+                    if aa or abs(settings.volume) > 1 or settings.volume < -32767 / 32768:
                         s = np.clip(s, -32767, 32767)
                     sample = s.astype(np.int16)
                     b = sample.tobytes()
@@ -851,7 +858,10 @@ def play(pos):
                         fut.result(timeout=0.12)
                     except:
                         print("Pyaudio timed out.")
-                        channel2.stop_stream()
+                        try:
+                            channel2.stop_stream()
+                        except:
+                            pass
                         submit(channel2.close)
                         globals()["aout"] = submit(pya_init)
                         globals()["channel2"] = None
@@ -896,6 +906,8 @@ def ensure_parent():
 
 ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 settings = cdict()
+alphakeys = [0] * 32
+buffoffs = 0
 osize = (0, 0)
 ssize = (0, 0)
 lastpacket = None
@@ -929,6 +941,9 @@ while not sys.stdin.closed and failed < 8:
             command = command.rstrip().rstrip("\x00")
             failed = 0
             pos = frame / 30
+            if command.startswith("~keys"):
+                alphakeys = json.loads(command[6:])
+                continue
             if command == "~clear":
                 if proc:
                     temp, proc = proc, None

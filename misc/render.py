@@ -29,7 +29,7 @@ barcount = int(highest_note - lowest_note) + 1 + 2
 freqmul = 1 / (1 - log(minfreq, maxfreq))
 
 barheight = 720
-res_scale = 98304
+res_scale = 65536
 dfts = res_scale // 2 + 1
 fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
 fftrans = np.zeros(dfts, dtype=int)

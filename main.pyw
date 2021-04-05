@@ -71,6 +71,7 @@ button_sources = (
     "repeat",
     "shuffle",
     "back",
+    "scramble",
     "microphone",
 )
 button_images = [submit(load_surface, "misc/" + i + ".png") for i in button_sources]
@@ -260,7 +261,19 @@ def setup_buttons():
             click=rright,
         ))
         reset_menu(full=False)
-        microphone = button_images[7].result()
+        scramble = button_images[7].result()
+        def scramble_1():
+            mixer.clear()
+            for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
+                entry.pos = sidebar.base + sidebar.maxitems
+            random.shuffle(queue.view)
+            start()
+        toolbar.buttons.append(cdict(
+            image=scramble,
+            click=scramble_1,
+        ))
+        reset_menu(full=False)
+        microphone = button_images[8].result()
         globals()["pya"] = afut.result()
         sidebar.buttons.append(cdict(
             sprite=microphone,

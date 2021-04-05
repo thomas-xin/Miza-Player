@@ -170,7 +170,7 @@ def spectrogram_render():
             sfx = sfx.resize(ssize2, resample=Image.NEAREST)
 
         if specs != 2:
-            fsize = max(1, round(ssize2[0] / barcount * 3 / 2))
+            fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
             if Bar.fsize != fsize:
                 Bar.fsize = fsize
                 Bar.font = ImageFont.truetype("misc/Pacifico.ttf", Bar.fsize)

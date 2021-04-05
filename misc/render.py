@@ -141,13 +141,13 @@ class Bar(Particle):
         if size > 8:
             ix = barcount - 1 - self.x - 1
             sx = round(ix / barcount * ssize2[0])
-            width = round((ix + 1) / barcount * ssize2[0]) - sx
-            x = sx + (width >> 1) - 8
+            w = round((ix + 1) / barcount * ssize2[0]) - sx
             try:
                 width = DRAW.textlength(self.line, self.font)
             except (TypeError, AttributeError):
-                width = 8 * len(self.line)
-            pos = max(64, ssize2[1] - size - width)
+                width = self.fsize / (sqrt(5) + 1) * len(self.line)
+            x = sx + w / 2 - width / 2
+            pos = max(64, ssize2[1] - size - width * (sqrt(5) + 1))
             factor = round(255 * scale)
             col = sum(factor << (i << 3) for i in range(3))
             DRAW.text((x, pos), self.line, col, self.font)
@@ -168,6 +168,10 @@ def spectrogram_render():
                 bar.render2(sfx=sfx)
         if sfx.size != ssize2:
             sfx = sfx.resize(ssize2, resample=Image.NEAREST)
+            # if specs != 2:
+            #     sfx = sfx.resize(ssize2, resample=Image.NEAREST)
+            # else:
+            #     sfx = sfx.resize(ssize2, resample=Image.LINEAR)
 
         if specs != 2:
             fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))

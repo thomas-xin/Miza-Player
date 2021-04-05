@@ -1086,10 +1086,10 @@ def update_menu():
                 pos = float(enter) * 32
                 sidebar.scroll.target = pos
         if sidebar.scrolling:
-            r = min(max(0, mpos2[1] - 52 - 16 - scroll_rat / 2) / (scroll_height - scroll_rat), 1)
-            sidebar.scroll.target = r * (32 * max(1, len(queue)) - screensize[1] + toolbar_height + 52 + 16)
             if not mheld[0]:
                 sidebar.scrolling = False
+            r = min(max(0, mpos2[1] - 52 - 16 - scroll_rat / 2) / max(1, scroll_height - scroll_rat), 1)
+            sidebar.scroll.target = r * (32 * max(1, len(queue)) - screensize[1] + toolbar_height + 52 + 16)
     else:
         c1 = (191, 127, 255, 127)
         c2 = (255, 127, 191, 191)
@@ -1685,9 +1685,9 @@ def draw_menu():
                     if entry.life <= 0:
                         pops.add(i)
                 col = [round(i * entry.life) for i in entry.get("colour", (223, 0, 0))]
-                y = round(Z + entry.get("pos", 0) * 32)
+                y = round(Z + 52 + 16 + entry.get("pos", 0) * 32)
                 ext = round(32 - 32 * entry.life)
-                rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 + ext * 2, 32 + ext * 2)
+                rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 - 16 + ext * 2, 32 + ext * 2)
                 bevel_rectangle(
                     DISP,
                     col,

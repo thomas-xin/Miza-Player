@@ -4,14 +4,15 @@ import sys
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, pyaudio, numpy, math, random, base64, hashlib, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, concurrent.futures
+import os, sys, pyaudio, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, concurrent.futures
 from math import *
-from PIL import Image, ImageDraw, ImageFont
 np = numpy
 deque = collections.deque
 suppress = contextlib.suppress
 hwnd = int(sys.stdin.readline()[1:])
 is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
+
+rproc = psutil.Popen(("py", f"-3.{sys.version_info[1]}", "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
 pt = None
 pt2 = None
@@ -585,7 +586,7 @@ def oscilloscope(buffer):
     except:
         print_exc()
 
-higher_bound = "F#10"
+higher_bound = "C10"
 highest_note = "C~D~EF~G~A~B".index(higher_bound[0].upper()) - 9 + ("#" in higher_bound)
 while higher_bound[0] not in "0123456789-":
     higher_bound = higher_bound[1:]
@@ -593,13 +594,13 @@ while higher_bound[0] not in "0123456789-":
         raise ValueError("Octave not found.")
 highest_note += int(higher_bound) * 12 + 1
 
-lower_bound = "A0"
+lower_bound = "C0"
 lowest_note = "C~D~EF~G~A~B".index(lower_bound[0].upper()) - 9 + ("#" in lower_bound)
 while lower_bound[0] not in "0123456789-":
     lower_bound = lower_bound[1:]
     if not lower_bound:
         raise ValueError("Octave not found.")
-lowest_note += int(lower_bound) * 12 - 1
+lowest_note += int(lower_bound) * 12 + 1
 
 maxfreq = 27.5 * 2 ** ((highest_note + 0.5) / 12)
 minfreq = 27.5 * 2 ** ((lowest_note - 0.5) / 12)
@@ -607,7 +608,7 @@ barcount = int(highest_note - lowest_note) + 1 + 2
 freqmul = 1 / (1 - log(minfreq, maxfreq))
 
 barheight = 720
-res_scale = 65536
+res_scale = 98304
 dfts = res_scale // 2 + 1
 fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
 fftrans = np.zeros(dfts, dtype=int)
@@ -621,161 +622,34 @@ for i, x in enumerate(fff):
         continue
     fftrans[i] = x
 
-PARTICLES = set()
-P_ORDER = 0
-TICK = 0
-
-class Particle(collections.abc.Hashable):
-
-    __slots__ = ("hash", "order")
-
-    def __init__(self):
-        global P_ORDER
-        self.order = P_ORDER
-        P_ORDER += 1
-        self.hash = random.randint(-2147483648, 2147483647)
-
-    __hash__ = lambda self: self.hash
-    update = lambda self: None
-    render = lambda self, surf: None
-
-class Bar(Particle):
-
-    __slots__ = ("x", "colour", "height", "height2", "surf", "line")
-
-    font = ImageFont.truetype("misc/Pacifico.ttf", 12)
-
-    def __init__(self, x):
-        super().__init__()
-        dark = False
-        self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / barcount, 1, 1))
-        note = highest_note - x + 9
-        if note % 12 in (1, 3, 6, 8, 10):
-            dark = True
-        name = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")[note % 12]
-        octave = note // 12
-        self.line = name + str(octave)
-        self.x = x
-        if dark:
-            self.colour = tuple(i + 1 >> 1 for i in self.colour)
-            self.surf = Image.new("RGB", (1, 3), self.colour)
-        else:
-            self.surf = Image.new("RGB", (1, 2), self.colour)
-        self.surf.putpixel((0, 0), 0)
-        self.height = 0
-        self.height2 = 0
-
-    def update(self, dur=1):
-        if self.height:
-            self.height = self.height * 0.2 ** dur - 1
-            if self.height < 0:
-                self.height = 0
-        if self.height2:
-            self.height2 = self.height2 * 0.4 ** dur - 1
-            if self.height2 < 0:
-                self.height2 = 0
-
-    def ensure(self, value):
-        if self.height < value:
-            self.height = value
-        if self.height2 < value:
-            self.height2 = value
-
-    def render(self, sfx, **void):
-        size = min(2 * barheight, round(self.height))
-        if size:
-            dark = False
-            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, 1, 1))
-            note = highest_note - self.x + 9
-            if note % 12 in (1, 3, 6, 8, 10):
-                dark = True
-            if dark:
-                self.colour = tuple(i + 1 >> 1 for i in self.colour)
-                self.surf = Image.new("RGB", (1, 3), self.colour)
-            else:
-                self.surf = Image.new("RGB", (1, 2), self.colour)
-            self.surf.putpixel((0, 0), 0)
-            surf = self.surf.resize((1, size), resample=Image.BILINEAR)
-            sfx.paste(surf, (barcount - 2 - self.x, barheight - size))
-    
-    def render2(self, sfx, **void):
-        size = min(2 * barheight, round(self.height))
-        if size:
-            amp = size / barheight * 2
-            val = min(1, amp)
-            sat = 1 - min(1, max(0, amp - 1))
-            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc() / 3 + self.x / barcount) % 1, sat, val))
-            x = barcount - self.x - 2
-            DRAW.rectangle(
-                (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),
-                None,
-                self.colour,
-                width=1,
-            )
-
-    def post_render(self, sfx, scale, **void):
-        size = round(self.height2)
-        if size > 8:
-            ix = barcount - 1 - self.x - 1
-            sx = round(ix / barcount * ssize2[0])
-            width = round((ix + 1) / barcount * ssize2[0]) - sx
-            x = sx + (width >> 1) - 8
-            try:
-                width = DRAW.textlength(self.line, self.font)
-            except (TypeError, AttributeError):
-                width = 8 * len(self.line)
-            pos = max(64, ssize2[1] - size - width)
-            factor = round(255 * scale)
-            col = sum(factor << (i << 3) for i in range(3))
-            DRAW.text((x, pos), self.line, col, self.font)
-
-bars = [Bar(i - 1) for i in range(barcount)]
 spec_update_fut = None
 lastspec = 0
 lastspec2 = 0
 
 def spectrogram_render():
-    global stderr_lock, ssize2, spectrobytes, lastspec2, spec_update_fut, packet_advanced2
+    global stderr_lock, ssize2, lastspec2, spec_update_fut, packet_advanced2
     try:
         t = pc()
         dur = max(0.001, min(0.125, t - lastspec2))
         lastspec2 = t
-
         ssize2 = ssize
         specs = settings.spectrogram
-        if specs != 2:
-            sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
-            time.sleep(0.01)
-            for bar in bars:
-                bar.render(sfx=sfx)
-        else:
-            sfx = Image.new("RGB", (barcount * 2 - 2,) * 2, (0,) * 3)
-            globals()["DRAW"] = ImageDraw.Draw(sfx)
-            for bar in bars:
-                bar.render2(sfx=sfx)
-        sfx = sfx.resize(ssize2, resample=Image.NEAREST)
-
-        if specs != 2:
-            globals()["DRAW"] = ImageDraw.Draw(sfx)
-            time.sleep(0.01)
-            highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:24]
-            high = highbars[0]
-            for bar in reversed(highbars):
-                bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
-        time.sleep(0.01)
-        spectrobytes = sfx.tobytes()
-        
-        write = False
-        for bar in bars:
-            if bar.height2:
-                write = True
-            bar.update(dur=dur)
-
-        if write:
+        packet_advanced2 = False
+        binfo = b"~r" + b"~".join(map(lambda a: json.dumps(a).encode("utf-8"), (ssize2, specs, dur, pc()))) + b"\n"
+        rproc.stdin.write(binfo)
+        rproc.stdin.flush()
+        line = rproc.stdout.readline().rstrip()
+        while not line.startswith(b"~s"):
+            if line:
+                print("\x00" + line.decode("utf-8", "replace"))
+            line = rproc.stdout.readline().rstrip()
+        if line[2:]:
+            bsize = 3 * np.prod(deque(map(int, line[2:].split(b"~"))))
+            spectrobytes = rproc.stdout.read(bsize)
             while stderr_lock:
                 stderr_lock.result()
             stderr_lock = concurrent.futures.Future()
-            bsend(b"s" + "~".join(map(str, ssize2)).encode("utf-8") + b"\n", spectrobytes)
+            bsend(line[1:] + b"\n", spectrobytes)
             lock, stderr_lock = stderr_lock, None
             if lock:
                 lock.set_result(None)
@@ -795,13 +669,14 @@ def spectrogram_update():
         dur = max(0.001, min(0.125, t - lastspec))
         lastspec = t
         dft = np.fft.rfft(spec_buffer)
-        np.multiply(spec_buffer, 0.25 ** dur, out=spec_buffer)
+        np.multiply(spec_buffer, (1 / 3) ** dur, out=spec_buffer)
         arr = np.zeros(barcount, dtype=np.complex64)
         np.add.at(arr, fftrans, dft)
         arr[0] = 0
         amp = np.abs(arr, dtype=np.float32)
-        for i, pwr in enumerate(amp):
-            bars[i].ensure(pwr / 8)
+        b = amp.tobytes()
+        rproc.stdin.write(b"~e" + b)
+        rproc.stdin.flush()
         if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
             spec2_fut = submit(spectrogram_update)
             packet_advanced3 = False
@@ -1047,10 +922,11 @@ submit(remover)
 submit(duration_est)
 submit(ensure_parent)
 pc()
-while not sys.stdin.closed and failed < 16:
+while not sys.stdin.closed and failed < 8:
     try:
-        command = sys.stdin.readline().rstrip().rstrip("\x00")
+        command = sys.stdin.readline()
         if command:
+            command = command.rstrip().rstrip("\x00")
             failed = 0
             pos = frame / 30
             if command == "~clear":

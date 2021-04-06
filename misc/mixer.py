@@ -911,7 +911,7 @@ def piano_player():
     global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3
     try:
         while True:
-            if channel2 and channel2.get_write_available() or not pygame.mixer.Channel(0).get_queue():
+            if channel2 and channel2.get_write_available() or not channel2 and not pygame.mixer.Channel(0).get_queue():
                 aa = any(alphakeys)
                 if aa:
                     s = None

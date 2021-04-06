@@ -2183,14 +2183,17 @@ def draw_menu():
 
 for i in range(26):
     globals()[f"K_{chr(i + 97)}"] = i + 4
+for i in range(1, 11):
+    globals()[f"K_{i % 10}"] = i + 29
 code = ""
 K_SPACE = 44
 K_EQUALS = 46
 K_LEFTBRACKET = 47
 K_RIGHTBRACKET = 48
-K_PERIOD = 51
+K_SEMICOLON = 51
 K_BACKQUOTE = 53
 K_COMMA = 54
+K_PERIOD = 55
 K_SLASH = 56
 K_DELETE = 76
 reset_menu(True)
@@ -2240,9 +2243,10 @@ try:
             kprev = kheld
             kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
             kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
+            krelease = [not x and y for x, y in zip(kheld, kprev)]
             kspam = kclick
-            if any(kclick):
-                print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
+            # if any(kclick):
+            #     print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
             if kclick[K_BACKQUOTE]:
                 output = easygui.textbox(
                     "Debug mode",
@@ -2271,7 +2275,7 @@ try:
                     )
             if not tick & 15:
                 kspam = KeyList(x or y >= 240 for x, y in zip(kclick, kheld))
-            if any(mclick) or any(mrelease):
+            if any(kclick) or any(krelease):
                 alphakeys = [0] * 32
                 if not kheld[K_LCTRL] and not kheld[K_LSHIFT] and not kheld[K_RCTRL] and not kheld[K_RSHIFT]:
                     notekeys = "zsxdcvgbhnjmq2w3er5t6y7ui9o0p"
@@ -2279,11 +2283,11 @@ try:
                     alphakeys[-3] = kheld[K_LEFTBRACKET]
                     alphakeys[-2] = kheld[K_EQUALS]
                     alphakeys[-1] = kheld[K_RIGHTBRACKET]
-                    alphakeys[12] = kheld[K_COMMA]
-                    alphakeys[13] = kheld[K_l]
-                    alphakeys[14] = kheld[K_PERIOD]
-                    alphakeys[15] = kheld[K_SEMICOLON]
-                    alphakeys[16] = kheld[K_SLASH]
+                    alphakeys[12] |= kheld[K_COMMA]
+                    alphakeys[13] |= kheld[K_l]
+                    alphakeys[14] |= kheld[K_PERIOD]
+                    alphakeys[15] |= kheld[K_SEMICOLON]
+                    alphakeys[16] |= kheld[K_SLASH]
                 mixer.submit("~keys " + repr(alphakeys), force=True)
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
                 try:
@@ -2291,12 +2295,13 @@ try:
                 except:
                     print_exc()
                 draw_menu()
-            if not queue:
+            if not queue and not is_active() and not any(kheld):
                 player.pos = 0
                 player.end = inf
                 player.last = 0
                 progress.num = 0
                 progress.alpha = 0
+                # player.pop("spec", None)
             if not tick + 2 & 7:
                 if player.get("spec"):
                     if options.get("spectrogram"):

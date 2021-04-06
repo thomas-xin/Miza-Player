@@ -839,17 +839,29 @@ def play(pos):
                 if settings.volume != 1 or aa:
                     if settings.volume != 1:
                         s = smp * settings.volume
-                    # if aa:
-                    #     for i, a in enumerate(alphakeys):
-                    #         if a:
-                    #             freq = 110 * 2 ** ((i + 3) / 12)
-                    #             wave = np.arange(buffoffs, buffoffs + 1600)
+                    else:
+                        s = smp
+                    if aa:
+                        for i, a in enumerate(alphakeys):
+                            if a:
+                                freq = 110 * 2 ** ((i + 3) / 12)
+                                wave = np.arange(buffoffs, buffoffs + 3200, dtype=np.float64)
+                                wave /= (96000 / freq)
+                                wave %= 1
+                                wave -= 0.5
+                                wave *= 32768
+                                wave += s
+                                s = wave
+                        globals()["buffoffs"] += 3200
+                    else:
+                        globals()["buffoffs"] %= 3200
                     if aa or abs(settings.volume) > 1 or settings.volume < -32767 / 32768:
                         s = np.clip(s, -32767, 32767)
                     sample = s.astype(np.int16)
                     b = sample.tobytes()
                 else:
                     sample = smp
+                    globals()["buffoffs"] = 0
                 sbuffer = sample.astype(np.float32)
                 if channel2:
                     b = bytes(b)
@@ -894,6 +906,78 @@ def play(pos):
             pass
         print_exc()
 
+
+def piano_player():
+    global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3
+    try:
+        while True:
+            if channel2 and channel2.get_write_available() or not pygame.mixer.Channel(0).get_queue():
+                aa = any(alphakeys)
+                if aa:
+                    s = None
+                    for i, a in enumerate(alphakeys):
+                        if a:
+                            freq = 110 * 2 ** ((i + 3) / 12)
+                            wave = np.arange(buffoffs, buffoffs + 3200, dtype=np.float64)
+                            wave /= (96000 / freq)
+                            wave %= 1
+                            wave -= 0.5
+                            wave *= 32768
+                            if s is not None:
+                                wave += s
+                            s = wave
+                    if s is not None:
+                        globals()["buffoffs"] += 3200
+                        s = np.clip(s, -32767, 32767)
+                        sample = s.astype(np.int16)
+                        b = sample.tobytes()
+                        lastpacket = packet
+                        packet = b
+                        packet_advanced = True
+                        packet_advanced2 = True
+                        packet_advanced3 = True
+                        sbuffer = sample.astype(np.float32)
+                        if channel2:
+                            fut = submit(channel2.write, b)
+                            try:
+                                fut.result(timeout=0.12)
+                            except:
+                                print("Pyaudio timed out.")
+                                try:
+                                    channel2.stop_stream()
+                                except:
+                                    pass
+                                submit(channel2.close)
+                                globals()["aout"] = submit(pya_init)
+                                globals()["channel2"] = None
+                        if not channel2:
+                            buffer = sample.reshape((1600, 2))
+                            sound = pygame.sndarray.make_sound(buffer)
+                            channel = pygame.mixer.Channel(0)
+                            for i in range(12):
+                                if not channel.get_queue():
+                                    break
+                                time.sleep(0.01)
+                            if channel.get_queue():
+                                print("Pygame timed out.")
+                                channel.stop()
+                                if aout.done():
+                                    globals()["channel2"] = aout.result()
+                        if not point_fut or point_fut.done():
+                            point_fut = submit(point, "~0 inf")
+                        if not channel2:
+                            channel.queue(sound)
+                    else:
+                        globals()["buffoffs"] %= 3200
+                if settings.get("spectrogram") and ssize[0] and ssize[1] and not is_minimised():
+                    if spec_fut:
+                        spec_fut.result()
+                    spec_fut = submit(spectrogram, sbuffer)
+            time.sleep(0.01)
+    except:
+        print_exc()
+
+
 def ensure_parent():
     proc = psutil.Process()
     par = psutil.Process(os.getppid())
@@ -933,6 +1017,7 @@ submit(render)
 submit(remover)
 submit(duration_est)
 submit(ensure_parent)
+submit(piano_player)
 pc()
 while not sys.stdin.closed and failed < 8:
     try:
@@ -943,6 +1028,8 @@ while not sys.stdin.closed and failed < 8:
             pos = frame / 30
             if command.startswith("~keys"):
                 alphakeys = json.loads(command[6:])
+                if aout.done():
+                    channel2 = aout.result()
                 continue
             if command == "~clear":
                 if proc:

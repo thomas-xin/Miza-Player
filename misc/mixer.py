@@ -292,9 +292,10 @@ def remover():
         print_exc()
 
 def remove(file):
-    fn = file.name
-    if "\x7f" in fn:
-        removing.add(fn)
+    if file:
+        fn = file.name
+        if "\x7f" in fn:
+            removing.add(fn)
 
 def stdclose(p):
     try:
@@ -944,46 +945,77 @@ da = 0
 db = 0
 dc = 8
 
-
-# wsmp = np.linspace(0, tau, 4096, endpoint=False)
-# wsmp = np.sin(wsmp, out=wsmp)
-# wsmp *= pi / 4
-
-def synth_gen(shape):
+def synth_gen(shape, amplitude, phase, pulse, shrink, exponent):
     try:
-        if shape < 1:
-            x = np.linspace(0, tau, 4096, endpoint=False)
-            x = np.sin(x, out=x)
-            if shape != 0:
-                y = np.linspace(0, 1, 4096, endpoint=False)
-                y -= np.floor(y + 0.5)
-                y = np.abs(y, out=y)
-                x *= pi / 4 * (1 - shape)
-                y *= 4 * shape
-                y -= shape
-                x += y
-            else:
-                x *= pi / 4
-            globals()["wsmp"] = x
-        elif shape < 2:
-            x = np.linspace(0, 1, 4096, endpoint=False)
-            x = np.concatenate((x[1024:], x[:1024]))
-            x -= np.floor(x + 0.5)
-            x = np.abs(x, out=x)
-            if shape != 1:
-                shape -= 1
-                y = np.linspace(0, tau, 4096, endpoint=False)
-                y = (np.sin(y, out=y) >= 0).astype(np.float64)
-                y -= 0.5
-                x *= 4 * (1 - shape)
-                y *= shape
-                x -= 1 - shape
-                x += y
-            else:
+        if amplitude == 0 or shrink == 1:
+            x = np.zeros(4096)
+        else:
+            if shape < 1:
+                x = np.linspace(0, tau, 4096, endpoint=False)
+                x = np.sin(x, out=x)
+                if shape != 0:
+                    y = np.linspace(0.25, 1.25, 4096, endpoint=False)
+                    y[y >= 0.5] -= 1
+                    y = np.abs(y, out=y)
+                    x *= pi / 4 * (1 - shape)
+                    y *= 4 * shape
+                    y -= shape
+                    x += y
+                else:
+                    x *= pi / 4
+            elif shape < 2:
+                x = np.linspace(0.25, 1.25, 4096, endpoint=False)
+                x[x >= 0.5] -= 1
+                x = np.abs(x, out=x)
                 x *= 4
                 x -= 1
-            # print("\n".join(map(str, x)))
-            globals()["wsmp"] = x
+                if shape != 1:
+                    shape -= 1
+                    x *= 1 / (1 - shape)
+                    m = 1 / (1 + shape)
+                    np.clip(x, -m, m, out=x)
+            elif shape < 3:
+                x = np.linspace(0, tau, 4096, endpoint=False)
+                x = (np.sin(x, out=x) >= 0).astype(np.float64)
+                x -= 0.5
+                if shape != 2:
+                    shape -= 2
+                    y = np.linspace(0, 2, 4096, endpoint=False)
+                    y %= 1
+                    y[2048:] -= 1
+                    x *= (1 - shape)
+                    y *= shape
+                    x += y
+            else:
+                x = np.linspace(0, 2, 4096, endpoint=False)
+                x %= 1
+                x[2048:] -= 1
+            if amplitude != 1:
+                x *= amplitude
+                if amplitude > 1:
+                    np.clip(x, -1, 1, out=x)
+            if phase != 0 and phase != 1:
+                x = np.roll(x, round(phase * 4096))
+            if pulse != 0.5:
+                r = round(4096 * pulse)
+                left = np.linspace(0, 2048, r, endpoint=False)
+                right = np.linspace(2048, 4096, 4096 - r, endpoint=False)
+                indices = np.concatenate((left, right))
+                x = np.interp(indices, range(4096), x)
+            if shrink != 0:
+                r = round(4096 * (1 - shrink))
+                y = np.zeros(4096, dtype=np.float64)
+                indices = np.linspace(0, 4096, r, endpoint=False)
+                x = np.interp(indices, range(4096), x)
+                y[2048 - r // 2:2048 + (r + 1) // 2] = x
+                x = y
+            if exponent != 1:
+                msk = x < 0
+                np.abs(x, out=x)
+                x **= exponent
+                x[msk] *= -1
+        globals()["wsmp"] = x
+        # print("\n".join(map(str, x)))
         globals()["wavecache"].clear()
     except:
         print_exc()
@@ -1010,43 +1042,49 @@ def synthesize():
             dc = 0
         da = den
         db = dt
+    su = settings.get("unison", 1)
     s = None
     for i, a in enumerate(alphakeys):
         if a or prevkeys[i]:
-            freq = 110 * 2 ** ((i + 3 + settings.get("pitch", 0) + settings.get("nightcore", 0)) / 12)
-            period = SR / freq
-            synth_period = period * ceil(4096 / period)
-            offs = buffoffs % synth_period
-            wave = waveget(synth_period)
-            c = SR // 48
-            if a:
-                xa = np.linspace(0, period, len(wave), endpoint=False)
-                wave = np.interp(np.linspace(offs, FR + offs, FR, endpoint=False) % period, xa, wave)
-                # print(buffoffs + FR, offs, len(wave), period)
-                if not prevkeys[i]:
-                    x = min(int((period - offs) % period), FR - c)
-                    wave[:x] = 0
-                    wave[x:x + c] *= cm
-                    # print(wave[x:x + 3])
-                if s is not None:
-                    wave += s
-                s = wave
-            elif prevkeys[i]:
-                x = min(int((period - offs - c) % period), FR - c)
-                if s is None:
-                    s = np.zeros(FR, dtype=np.float64)
-                xa = np.linspace(0, period, len(wave), endpoint=False)
-                wave = np.interp(np.linspace(offs, x + c + offs, x + c, endpoint=False) % period, xa, wave)
-                samplespace = np.linspace(-2, 2, x + c)
-                samplespace = scipy.special.erf(samplespace)
-                samplespace -= 1
-                wave *= samplespace
-                wave *= -0.5
-                s[:x + c] += wave
-                # print(wave[x + c - 3:x + c])
+            if su == 1:
+                partials = [i]
+            else:
+                partials = np.linspace(i - sqrt(su / 8) / 3, i + sqrt(su / 8) / 3, round(su))
+            for j in partials:
+                freq = 110 * 2 ** ((j + 3 + settings.get("pitch", 0) + settings.get("nightcore", 0)) / 12)
+                period = SR / freq
+                synth_period = period * ceil(4096 / period)
+                offs = buffoffs % synth_period
+                wave = waveget(synth_period)
+                c = SR // 48
+                if a:
+                    xa = np.linspace(0, period, len(wave), endpoint=False)
+                    wave = np.interp(np.linspace(offs, FR + offs, FR, endpoint=False) % period, xa, wave)
+                    # print(buffoffs + FR, offs, len(wave), period)
+                    if not prevkeys[i]:
+                        x = min(int((period - offs) % period), FR - c)
+                        wave[:x] = 0
+                        wave[x:x + c] *= cm
+                        # print(wave[x:x + 3])
+                    if s is not None:
+                        wave += s
+                    s = wave
+                elif prevkeys[i]:
+                    x = min(int((period - offs - c) % period), FR - c)
+                    if s is None:
+                        s = np.zeros(FR, dtype=np.float64)
+                    xa = np.linspace(0, period, len(wave), endpoint=False)
+                    wave = np.interp(np.linspace(offs, x + c + offs, x + c, endpoint=False) % period, xa, wave)
+                    samplespace = np.linspace(-2, 2, x + c)
+                    samplespace = scipy.special.erf(samplespace)
+                    samplespace -= 1
+                    wave *= samplespace
+                    wave *= -0.5
+                    s[:x + c] += wave
+                    # print(wave[x + c - 3:x + c])
     if s is not None:
         globals()["buffoffs"] += FR
-        m = 32767
+        m = 32767 / su
         if dc < 5:
             lin = basewave + dc
             lin -= 2
@@ -1157,6 +1195,7 @@ duration = inf
 stream = ""
 sh = ""
 fut = None
+sf = None
 reading = None
 point_fut = None
 proc = None
@@ -1181,8 +1220,10 @@ while not sys.stdin.closed and failed < 8:
             failed = 0
             pos = frame / 30
             if command.startswith("~synth"):
-                shape = float(command[7:])
-                sf = submit(synth_gen, shape)
+                it = map(float, command[7:].split())
+                if sf and not sf.done():
+                    sf.result()
+                sf = submit(synth_gen, *it)
                 if "wsmp" not in globals():
                     sf.result()
                 continue

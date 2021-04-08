@@ -1028,6 +1028,8 @@ class AudioDownloader:
     def ydl_errors(self, s):
         return "this video has been removed" not in s and "private video" not in s and "has been terminated" not in s
 
+    blocked_yt = False
+
     # Repeatedly makes calls to youtube-dl until there is no more data to be collected.
     def extract_true(self, url):
         while not is_url(url):
@@ -1051,11 +1053,15 @@ class AudioDownloader:
                 title = title[:title.rindex(".")]
             return dict(url=url, name=title, direct=True)
         try:
+            if self.blocked_yt > utc():
+                raise PermissionError
             self.youtube_dl_x += 1
             entries = self.downloader.extract_info(url, download=False, process=True)
         except Exception as ex:
             s = str(ex).casefold()
             if type(ex) is not youtube_dl.DownloadError or self.ydl_errors(s):
+                if "429" in s:
+                    self.blocked_yt = utc() + 3600
                 try:
                     entries = self.extract_backup(url)
                 except youtube_dl.DownloadError:
@@ -1088,11 +1094,15 @@ class AudioDownloader:
                 title = title[:title.rindex(".")]
             return dict(url=url, webpage_url=url, title=title, direct=True)
         try:
+            if self.blocked_yt > utc():
+                raise PermissionError
             self.youtube_dl_x += 1
             return self.downloader.extract_info(url, download=False, process=False)
         except Exception as ex:
             s = str(ex).casefold()
             if type(ex) is not youtube_dl.DownloadError or self.ydl_errors(s):
+                if "429" in s:
+                    self.blocked_yt = utc() + 3600
                 if is_url(url):
                     try:
                         return self.extract_backup(url)
@@ -1359,42 +1369,7 @@ class AudioDownloader:
 
     def search_yt(self, query):
         out = None
-        # url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
-        # self.youtube_x += 1
-        # resp = requests.get(url, headers=self.youtube_header()).content
-        # result = None
-        # with suppress(ValueError):
-        #     s = resp[resp.index(b"// scraper_data_begin") + 21:resp.rindex(b"// scraper_data_end")]
-        #     s = s[s.index(b"var ytInitialData = ") + 20:s.rindex(b";")]
-        #     result = self.parse_yt(s)
-        # with suppress(ValueError):
-        #     s = resp[resp.index(b'window["ytInitialData"] = ') + 26:]
-        #     s = s[:s.index(b'window["ytInitialPlayerResponse"] = null;')]
-        #     s = s[:s.rindex(b";")]
-        #     result = self.parse_yt(s)
-        # if result is None:
-        #     raise NotImplementedError("Unable to read json response.")
-        # q = to_alphanumeric(full_prune(query))
-        # high = deque()
-        # low = deque()
-        # for entry in result:
-        #     if entry.duration:
-        #         name = full_prune(entry.name)
-        #         aname = to_alphanumeric(name)
-        #         spl = aname.split()
-        #         if entry.duration < 960 or "extended" in q or "hour" in q or "extended" not in spl and "hour" not in spl and "hours" not in spl:
-        #             if fuzzy_substring(aname, q, match_length=False) >= 0.5:
-        #                 high.append(entry)
-        #                 continue
-        #     low.append(entry)
-        # def key(entry):
-        #     coeff = fuzzy_substring(to_alphanumeric(full_prune(entry.name)), q, match_length=False)
-        #     if coeff < 0.5:
-        #         coeff = 0
-        #     return coeff
-        # out = sorted(high, key=key, reverse=True)
-        # out.extend(sorted(low, key=key, reverse=True))
-        if not out:
+        try:
             resp = self.extract_info(query)
             if resp.get("_type", None) == "url":
                 resp = self.extract_from(resp["url"])
@@ -1402,7 +1377,7 @@ class AudioDownloader:
                 entries = list(resp["entries"])
             else:
                 entries = [resp]
-            out = alist()
+            out = []
             for entry in entries:
                 try:
                     found = True
@@ -1428,6 +1403,44 @@ class AudioDownloader:
                     out.append(temp)
                 except:
                     print_exc()
+        except:
+            print_exc()
+        if not out:
+            url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
+            self.youtube_x += 1
+            resp = requests.get(url, headers=self.youtube_header()).content
+            result = None
+            with suppress(ValueError):
+                s = resp[resp.index(b"// scraper_data_begin") + 21:resp.rindex(b"// scraper_data_end")]
+                s = s[s.index(b"var ytInitialData = ") + 20:s.rindex(b";")]
+                result = self.parse_yt(s)
+            with suppress(ValueError):
+                s = resp[resp.index(b'window["ytInitialData"] = ') + 26:]
+                s = s[:s.index(b'window["ytInitialPlayerResponse"] = null;')]
+                s = s[:s.rindex(b";")]
+                result = self.parse_yt(s)
+            if result is None:
+                raise NotImplementedError("Unable to read json response.")
+            q = to_alphanumeric(full_prune(query))
+            high = deque()
+            low = deque()
+            for entry in result:
+                if entry.duration:
+                    name = full_prune(entry.name)
+                    aname = to_alphanumeric(name)
+                    spl = aname.split()
+                    if entry.duration < 960 or "extended" in q or "hour" in q or "extended" not in spl and "hour" not in spl and "hours" not in spl:
+                        if fuzzy_substring(aname, q, match_length=False) >= 0.5:
+                            high.append(entry)
+                            continue
+                low.append(entry)
+            def key(entry):
+                coeff = fuzzy_substring(to_alphanumeric(full_prune(entry.name)), q, match_length=False)
+                if coeff < 0.5:
+                    coeff = 0
+                return coeff
+            out = sorted(high, key=key, reverse=True)
+            out.extend(sorted(low, key=key, reverse=True))
         return out
 
     # Performs a search, storing and using cached search results for efficiency.

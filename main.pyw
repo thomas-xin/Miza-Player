@@ -65,6 +65,8 @@ modified = set()
 
 button_sources = (
     "gears",
+    "notes",
+    "waves",
     "folder",
     "hyperlink",
     "playlist",
@@ -74,18 +76,20 @@ button_sources = (
     "scramble",
     "microphone",
 )
-button_images = [submit(load_surface, "misc/" + i + ".png") for i in button_sources]
+button_images = cdict((i, submit(load_surface, "misc/" + i + ".png")) for i in button_sources)
 
 def setup_buttons():
     try:
-        gears = button_images[0].result()
-        img = Image.frombuffer("RGBA", gears.get_size(), pygame.image.tostring(gears, "RGBA"))
-        B, A = img.getchannel("B"), img.getchannel("A")
-        I = ImageChops.invert(B)
-        R = Image.new("L", I.size, 0)
-        inv = pygame.image.frombuffer(Image.merge("RGBA", (R, I, I, A)).tobytes(), I.size, "RGBA")
+        gears = button_images.gears.result()
+        waves = button_images.waves.result()
+        notes = button_images.notes.result()
+        # img = Image.frombuffer("RGBA", gears.get_size(), pygame.image.tostring(gears, "RGBA"))
+        # B, A = img.getchannel("B"), img.getchannel("A")
+        # I = ImageChops.invert(B)
+        # R = Image.new("L", I.size, 0)
+        # inv = pygame.image.frombuffer(Image.merge("RGBA", (R, I, I, A)).tobytes(), I.size, "RGBA")
         def settings_toggle():
-            sidebar.abspos ^= 1
+            sidebar.abspos = (sidebar.abspos + 1) % 3
         def settings_reset():
             sidebar.abspos = 1
             options.audio.update(audio_default)
@@ -97,24 +101,23 @@ def setup_buttons():
             mixer.stdin.write(s.read().encode("utf-8"))
             mixer.stdin.flush()
         sidebar.buttons.append(cdict(
-            sprite=gears,
-            invert=inv,
+            sprite=(gears, waves, notes),
             click=(settings_toggle, settings_reset),
         ))
         reset_menu(full=False)
-        folder = button_images[1].result()
+        folder = button_images.folder.result()
         sidebar.buttons.append(cdict(
             sprite=folder,
             click=enqueue_local,
         ))
         reset_menu(full=False)
-        hyperlink = button_images[2].result()
+        hyperlink = button_images.hyperlink.result()
         sidebar.buttons.append(cdict(
             sprite=hyperlink,
             click=enqueue_search,
         ))
         reset_menu(full=False)
-        playlist = button_images[3].result()
+        playlist = button_images.playlist.result()
         def get_playlist():
             items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
             if not items:
@@ -222,27 +225,35 @@ def setup_buttons():
             click=(get_playlist, edit_playlist),
         ))
         reset_menu(full=False)
-        repeat = button_images[4].result()
+        repeat = button_images.repeat.result()
         def repeat_1():
             control.loop = (control.loop + 1) % 3
+        def repeat_2():
+            control.loop = (control.loop - 1) % 3
         toolbar.buttons.append(cdict(
             image=repeat,
-            click=repeat_1,
+            click=(repeat_1, repeat_2),
         ))
         reset_menu(full=False)
-        shuffle = button_images[5].result()
+        shuffle = button_images.shuffle.result()
         def shuffle_1():
             control.shuffle = (control.shuffle + 1) % 3
             if control.shuffle in (0, 2):
                 mixer.submit(f"~setting shuffle {control.shuffle}", force=True)
             if control.shuffle == 2 and player.get("needs_shuffle"):
                 seek_abs(player.pos)
+        def shuffle_2():
+            control.shuffle = (control.shuffle - 1) % 3
+            if control.shuffle in (0, 2):
+                mixer.submit(f"~setting shuffle {control.shuffle}", force=True)
+            if control.shuffle == 2 and player.get("needs_shuffle"):
+                seek_abs(player.pos)
         toolbar.buttons.append(cdict(
             image=shuffle,
-            click=shuffle_1,
+            click=(shuffle_1, shuffle_2),
         ))
         reset_menu(full=False)
-        back = button_images[6].result()
+        back = button_images.back.result()
         def rleft():
             mixer.clear()
             queue.rotate(1)
@@ -261,7 +272,7 @@ def setup_buttons():
             click=rright,
         ))
         reset_menu(full=False)
-        scramble = button_images[7].result()
+        scramble = button_images.scramble.result()
         def scramble_1():
             mixer.clear()
             # for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
@@ -273,7 +284,7 @@ def setup_buttons():
             click=scramble_1,
         ))
         reset_menu(full=False)
-        microphone = button_images[8].result()
+        microphone = button_images.microphone.result()
         globals()["pya"] = afut.result()
         sidebar.buttons.append(cdict(
             sprite=microphone,
@@ -1078,7 +1089,7 @@ def update_menu():
         c = (64, 0, 96)
     sidebar.updated = False#sidebar.colour != c
     sidebar.colour = c
-    sidebar.relpos = min(1, (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.abspos) / ratio)
+    sidebar.relpos = (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.abspos) / ratio
     scroll_height = screensize[1] - toolbar_height - 72
     sidebar.scroll.rect = (screensize[0] - 20, 52 + 16, 12, scroll_height)
     scroll_rat = max(12, min(scroll_height, scroll_height / max(1, len(queue)) * (screensize[1] - toolbar_height - 36) / 32))
@@ -1186,7 +1197,7 @@ def draw_menu():
                     align=0,
                     font="Comic Sans MS",
                 )
-            if sidebar.scroll.get("colour"):
+            if queue and sidebar.scroll.get("colour"):
                 rounded_bev_rect(
                     DISP2,
                     sidebar.scroll.background,
@@ -1210,7 +1221,7 @@ def draw_menu():
                 sidebar.rect2,
                 4,
             )
-        if offs > -sidebar_width + 4:
+        if offs > 4 - sidebar_width:
             Z = -sidebar.scroll.pos
             DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16))
             DISP2.fill(sc)
@@ -1564,15 +1575,18 @@ def draw_menu():
                 DISP2,
                 (screensize[0] - sidebar_width + 4, 52 + 16),
             )
-        if offs <= -4:
+        if offs <= -4 and offs > 4 - 2 * sidebar_width:
+            DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
+            DISP2.fill(sc)
+            DISP2.set_colorkey(sc)
             in_sidebar = in_rect(mpos, sidebar.rect)
             offs2 = offs + sidebar_width
             for i, opt in enumerate(asettings):
                 message_display(
                     opt.capitalize(),
                     11,
-                    (screensize[0] + offs + 8, 52 + i * 32),
-                    surface=DISP,
+                    (offs2 + 8, i * 32),
+                    surface=DISP2,
                     align=0,
                     cache=True,
                     font="Comic Sans MS",
@@ -1582,8 +1596,8 @@ def draw_menu():
                 message_display(
                     s,
                     11,
-                    (screensize[0] + offs + sidebar_width - 8, 68 + i * 32),
-                    surface=DISP,
+                    (offs2 + sidebar_width - 8, 16 + i * 32),
+                    surface=DISP2,
                     align=2,
                     cache=True,
                     font="Comic Sans MS",
@@ -1597,6 +1611,7 @@ def draw_menu():
                     x = min(1, abs(x))
                 x = round(x * w)
                 brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
+                brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
                 hovered = in_sidebar and in_rect(mpos, brect) or aediting[opt]
                 crosshair |= bool(hovered) << 1
                 v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
@@ -1627,44 +1642,160 @@ def draw_menu():
                         if orig != v:
                             mixer.submit(f"~setting {opt} {v}", force=opt == "volume" or not queue)
                 z = max(0, x - 4)
-                rect = (screensize[0] + offs + 8 + z, 69 + i * 32, sidebar_width - 16 - z, 9)
+                rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
                 col = (48 if hovered else 32,) * 3
                 bevel_rectangle(
-                    DISP,
+                    DISP2,
                     col,
                     rect,
                     3,
                 )
                 rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
-                DISP.blit(
+                DISP2.blit(
                     rainbow,
-                    (screensize[0] + offs + 8 + x, 69 + i * 32),
+                    (offs2 + 8 + x, 17 + i * 32),
                     (x, 0, w - x, 9),
                     special_flags=BLEND_RGB_MULT,
                 )
-                rect = (screensize[0] + offs + 8, 69 + i * 32, x, 9)
+                rect = (offs2 + 8, 17 + i * 32, x, 9)
                 col = (223 if hovered else 191,) * 3
                 bevel_rectangle(
-                    DISP,
+                    DISP2,
                     col,
                     rect,
                     3,
                 )
                 rainbow = quadratic_gradient((w, 9), pc() + i / 4)
-                DISP.blit(
+                DISP2.blit(
                     rainbow,
-                    (screensize[0] + offs + 8, 69 + i * 32),
+                    (offs2 + 8, 17 + i * 32),
                     (0, 0, x, 9),
                     special_flags=BLEND_RGB_MULT,
                 )
                 if hovered:
                     bevel_rectangle(
-                        DISP,
+                        DISP2,
                         (191, 127, 255),
-                        brect,
+                        brect2,
                         2,
                         filled=False,
                     )
+            DISP.blit(
+                DISP2,
+                (screensize[0] - sidebar_width, 52),
+            )
+        if offs <= -4 - sidebar_width:
+            DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
+            DISP2.fill(sc)
+            DISP2.set_colorkey(sc)
+            in_sidebar = in_rect(mpos, sidebar.rect)
+            offs2 = offs + sidebar_width * 2
+            for i, opt in enumerate(ssettings):
+                message_display(
+                    opt.capitalize(),
+                    11,
+                    (offs2 + 8, i * 32),
+                    surface=DISP2,
+                    align=0,
+                    cache=True,
+                    font="Comic Sans MS",
+                )
+                # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
+                s = str(round(options.synth.get(opt, 0) * 100, 2)) + "%"
+                message_display(
+                    s,
+                    11,
+                    (offs2 + sidebar_width - 8, 16 + i * 32),
+                    surface=DISP2,
+                    align=2,
+                    cache=True,
+                    font="Comic Sans MS",
+                )
+                srange = ssettings[opt]
+                w = (sidebar_width - 16)
+                x = (options.synth.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
+                if opt in ("speed", "pitch", "nightcore"):
+                    x = min(1, max(0, x))
+                else:
+                    x = min(1, abs(x))
+                x = round(x * w)
+                brect = (screensize[0] + offs + sidebar_width + 6, 67 + i * 32, sidebar_width - 12, 13)
+                brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
+                hovered = in_sidebar and in_rect(mpos, brect) or sediting[opt]
+                crosshair |= bool(hovered) << 1
+                v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + sidebar_width + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
+                if len(srange) > 2:
+                    v = round_min(math.round(v / srange[2]) * srange[2])
+                else:
+                    rv = round_min(math.round(v * 32) / 32)
+                    if type(rv) is int and rv not in srange:
+                        v = rv
+                if hovered and not hovertext:
+                    hovertext = str(round(v * 100, 2)) + "%"
+                    if sediting[opt]:
+                        if not mheld[0]:
+                            sediting[opt] = False
+                    elif mclick[0]:
+                        sediting[opt] = True
+                    elif mclick[1]:
+                        enter = easygui.get_string(
+                            opt.capitalize(),
+                            "Miza Player",
+                            str(round_min(options.synth[opt] * 100)),
+                        )
+                        if enter:
+                            v = round_min(float(eval(enter, {}, {})) / 100)
+                            sediting[opt] = True
+                    if sediting[opt]:
+                        orig, options.synth[opt] = options.synth[opt], v
+                        if orig != v:
+                            if opt == "unison":
+                                mixer.submit(f"~setting unison {synth.setdefault('unison', 1)}", force=True)
+                            else:
+                                mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
+                z = max(0, x - 4)
+                rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
+                col = (48 if hovered else 32,) * 3
+                bevel_rectangle(
+                    DISP2,
+                    col,
+                    rect,
+                    3,
+                )
+                rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
+                DISP2.blit(
+                    rainbow,
+                    (offs2 + 8 + x, 17 + i * 32),
+                    (x, 0, w - x, 9),
+                    special_flags=BLEND_RGB_MULT,
+                )
+                rect = (offs2 + 8, 17 + i * 32, x, 9)
+                col = (223 if hovered else 191,) * 3
+                bevel_rectangle(
+                    DISP2,
+                    col,
+                    rect,
+                    3,
+                )
+                rainbow = quadratic_gradient((w, 9), pc() + i / 4)
+                DISP2.blit(
+                    rainbow,
+                    (offs2 + 8, 17 + i * 32),
+                    (0, 0, x, 9),
+                    special_flags=BLEND_RGB_MULT,
+                )
+                if hovered:
+                    bevel_rectangle(
+                        DISP2,
+                        (191, 127, 255),
+                        brect2,
+                        2,
+                        filled=False,
+                    )
+            DISP.blit(
+                DISP2,
+                (screensize[0] - sidebar_width, 52),
+            )
         maxb = (sidebar_width - 12) // 44
         for i, button in enumerate(sidebar.buttons[:maxb]):
             if button.get("rect"):
@@ -1680,9 +1811,10 @@ def draw_menu():
                     button.rect,
                     4,
                 )
-                sprite = button.sprite
-                if not i and sidebar.abspos:
-                    sprite = button.invert
+                if not i:
+                    sprite = button.sprite[sidebar.abspos]
+                else:
+                    sprite = button.sprite
                 DISP.blit(
                     sprite,
                     (button.rect[0] + 5, button.rect[1] + 5),

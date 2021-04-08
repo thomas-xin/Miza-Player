@@ -206,15 +206,26 @@ control_default = cdict(
     shuffle=1,
     loop=1,
 )
+ssettings = cdict(
+    shape=(0, 3),
+    amplitude=(-1, 8),
+    phase=(0, 1),
+    pulse=(0, 1),
+    shrink=(0, 1),
+    exponent=(0, 3),
+    unison=(1, 8, 1),
+)
 synth_default = cdict(
     shape=0,
-    amplitude=0.5,
+    amplitude=1,
     phase=0,
     pulse=0.5,
     shrink=0,
     exponent=1,
+    unison=1,
 )
 aediting = dict.fromkeys(asettings)
+sediting = dict.fromkeys(ssettings)
 config = "config.json"
 options = None
 if os.path.exists(config):
@@ -313,8 +324,9 @@ if hasmisc:
     s.write(f"~setting #shuffle {control.setdefault('shuffle', 0)}\n")
     s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
     s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
-    s.write(f"~synth {options.synth.shape}\n")
-    # s.write(f"~synth 0\n")
+    s.write(f"~setting unison {synth.setdefault('unison', 1)}\n")
+    s.write(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}\n")
+    # s.write(f"~synth 0.8\n")
     s.seek(0)
     mixer.stdin.write(s.read().encode("utf-8"))
     try:

@@ -2,6 +2,40 @@ import os, sys, json, traceback, subprocess, copy, concurrent.futures
 
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 
+
+from concurrent.futures import thread
+
+def _adjust_thread_count(self):
+    # if idle threads are available, don't spin new threads
+    if self._idle_semaphore.acquire(timeout=0):
+        return
+
+    # When the executor gets lost, the weakref callback will wake up
+    # the worker threads.
+    def weakref_cb(_, q=self._work_queue):
+        q.put(None)
+
+    num_threads = len(self._threads)
+    if num_threads < self._max_workers:
+        thread_name = '%s_%d' % (self._thread_name_prefix or self, num_threads)
+        t = thread.threading.Thread(
+            name=thread_name,
+            target=thread._worker,
+            args=(
+                thread.weakref.ref(self, weakref_cb),
+                self._work_queue,
+                self._initializer,
+                self._initargs,
+            ),
+            daemon=True
+        )
+        t.start()
+        self._threads.add(t)
+        thread._threads_queues[t] = self._work_queue
+
+concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
+
+
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=48)
 submit = exc.submit
 print_exc = traceback.print_exc
@@ -168,6 +202,18 @@ audio_default = dict(
     chorus=0,
     nightcore=0,
 )
+control_default = cdict(
+    shuffle=1,
+    loop=1,
+)
+synth_default = cdict(
+    shape=0,
+    amplitude=0.5,
+    phase=0,
+    pulse=0.5,
+    shrink=0,
+    exponent=1,
+)
 aediting = dict.fromkeys(asettings)
 config = "config.json"
 options = None
@@ -185,15 +231,14 @@ else:
         sidebar_width=256,
         toolbar_height=64,
         audio=cdict(audio_default),
-        control=cdict(
-            shuffle=1,
-            loop=1
-        ),
+        control=cdict(control_default),
+        synth=cdict(synth_default),
         spectrogram=1,
         oscilloscope=1,
     )
-options.audio = cdict(options.audio)
-options.control = cdict(options.control)
+options.audio = cdict(options.get("audio", audio_default))
+options.control = cdict(options.get("control", control_default))
+options.synth = cdict(options.get("synth", synth_default))
 orig_options = copy.deepcopy(options)
 globals().update(options)
 
@@ -268,6 +313,8 @@ if hasmisc:
     s.write(f"~setting #shuffle {control.setdefault('shuffle', 0)}\n")
     s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
     s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
+    s.write(f"~synth {options.synth.shape}\n")
+    # s.write(f"~synth 0\n")
     s.seek(0)
     mixer.stdin.write(s.read().encode("utf-8"))
     try:
@@ -2330,6 +2377,11 @@ hlist = alist
 arange = lambda *args, **kwargs: alist(range(*args, **kwargs))
 afull = lambda size, n=0: alist(repeat(n, size))
 azero = lambda size: alist(repeat(0, size))
+
+
+from rainbow_print import *
+
+PRINT.start()
 
 
 # Runs ffprobe on a file or url, returning the duration if possible.

@@ -1617,7 +1617,7 @@ def draw_menu():
                         enter = easygui.get_string(
                             opt.capitalize(),
                             "Miza Player",
-                            round_min(options.audio[opt] * 100),
+                            str(round_min(options.audio[opt] * 100)),
                         )
                         if enter:
                             v = round_min(float(eval(enter, {}, {})) / 100)
@@ -1625,7 +1625,7 @@ def draw_menu():
                     if aediting[opt]:
                         orig, options.audio[opt] = options.audio[opt], v
                         if orig != v:
-                            mixer.submit(f"~setting {opt} {v}", force=opt == "volume")
+                            mixer.submit(f"~setting {opt} {v}", force=opt == "volume" or not queue)
                 z = max(0, x - 4)
                 rect = (screensize[0] + offs + 8 + z, 69 + i * 32, sidebar_width - 16 - z, 9)
                 col = (48 if hovered else 32,) * 3

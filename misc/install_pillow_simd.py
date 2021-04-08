@@ -4,15 +4,17 @@ print("Loading and checking modules...")
 
 modlist = """
 bs4>=0.0.1
-numpy>=1.20.1
-psutil>=5.8.0
-pyperclip>=1.8.2
-pygame>=2.0.1
 easygui>=0.98.2
 easygui_qt>=0.9.3
+numpy>=1.20.1
+psutil>=5.8.0
+pygame>=2.0.1
+pyperclip>=1.8.2
 PyQt5>=5.15.4
-youtube-dl>=2021.4.1
 requests>=2.25.1
+samplerate>=0.1.0
+scipy>=1.6.2
+youtube-dl>=2021.4.1
 """.split("\n")
 
 import pkg_resources, struct

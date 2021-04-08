@@ -4,7 +4,7 @@ import sys
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, pyaudio, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, concurrent.futures
+import os, sys, pyaudio, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, concurrent.futures, scipy.special
 from math import *
 np = numpy
 deque = collections.deque
@@ -30,6 +30,40 @@ def as_str(s):
     return str(s)
 
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
+
+
+from concurrent.futures import thread
+
+def _adjust_thread_count(self):
+    # if idle threads are available, don't spin new threads
+    if self._idle_semaphore.acquire(timeout=0):
+        return
+
+    # When the executor gets lost, the weakref callback will wake up
+    # the worker threads.
+    def weakref_cb(_, q=self._work_queue):
+        q.put(None)
+
+    num_threads = len(self._threads)
+    if num_threads < self._max_workers:
+        thread_name = '%s_%d' % (self._thread_name_prefix or self, num_threads)
+        t = thread.threading.Thread(
+            name=thread_name,
+            target=thread._worker,
+            args=(
+                thread.weakref.ref(self, weakref_cb),
+                self._work_queue,
+                self._initializer,
+                self._initargs,
+            ),
+            daemon=True
+        )
+        t.start()
+        self._threads.add(t)
+        thread._threads_queues[t] = self._work_queue
+
+concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
+
 
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 submit = exc.submit
@@ -557,7 +591,7 @@ def oscilloscope(buffer):
             if packet:
                 size = osize
                 OSCI = pygame.Surface(size)
-                time.sleep(0.01)
+                time.sleep(0.005)
                 if packet:
                     point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
                     for i in range(1, len(osci)):
@@ -573,7 +607,7 @@ def oscilloscope(buffer):
                             point,
                             prev,
                         )
-                    time.sleep(0.01)
+                    time.sleep(0.005)
                     if packet:
                         b = pygame.image.tostring(OSCI, "RGB")
                         while stderr_lock:
@@ -754,7 +788,7 @@ def render():
                 if settings.spectrogram and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
                     spec2_fut = submit(spectrogram_update)
             packet_advanced = False
-            time.sleep(0.01)
+            time.sleep(0.005)
     except:
         print_exc()
 
@@ -780,7 +814,7 @@ def play(pos):
                     except (OSError, FileNotFoundError, PermissionError):
                         if proc and not proc.is_running():
                             raise
-                        time.sleep(0.01)
+                        time.sleep(0.005)
                         continue
                 try:
                     b = file.read(req)
@@ -788,7 +822,7 @@ def play(pos):
                     b = b""
             else:
                 while not getattr(proc, "readable", lambda: True)():
-                    time.sleep(0.01)
+                    time.sleep(0.005)
                 try:
                     fut = submit(proc.stdout.read, req)
                     b = fut.result(timeout=4)
@@ -835,33 +869,21 @@ def play(pos):
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
                 smp = np.frombuffer(b, dtype=np.int16)
-                aa = any(alphakeys)
-                if settings.volume != 1 or aa:
+                wave = synthesize()
+                if settings.volume != 1 or wave is not None:
                     if settings.volume != 1:
                         s = smp * settings.volume
                     else:
                         s = smp
-                    if aa:
-                        for i, a in enumerate(alphakeys):
-                            if a:
-                                freq = 110 * 2 ** ((i + 3) / 12)
-                                wave = np.arange(buffoffs, buffoffs + 3200, dtype=np.float64)
-                                wave /= (96000 / freq)
-                                wave %= 1
-                                wave -= 0.5
-                                wave *= 32768
-                                wave += s
-                                s = wave
-                        globals()["buffoffs"] += 3200
-                    else:
-                        globals()["buffoffs"] %= 3200
-                    if aa or abs(settings.volume) > 1 or settings.volume < -32767 / 32768:
+                    if wave is not None:
+                        wave += s
+                        s = wave
+                    if wave is not None or abs(settings.volume) > 1 or settings.volume < -32767 / 32768:
                         s = np.clip(s, -32767, 32767)
                     sample = s.astype(np.int16)
                     b = sample.tobytes()
                 else:
                     sample = smp
-                    globals()["buffoffs"] = 0
                 sbuffer = sample.astype(np.float32)
                 if channel2:
                     b = bytes(b)
@@ -884,7 +906,7 @@ def play(pos):
                     for i in range(12):
                         if not channel.get_queue():
                             break
-                        time.sleep(0.01)
+                        time.sleep(0.005)
                     if channel.get_queue():
                         print("Pygame timed out.")
                         channel.stop()
@@ -907,73 +929,205 @@ def play(pos):
         print_exc()
 
 
+SR = 48000
+FR = 1600
+
+baserange = np.arange(FR, dtype=np.float64)
+basewave = baserange / FR
+c = SR // 48
+cm = np.linspace(-2, 2, c, endpoint=True)
+cm = scipy.special.erf(cm)
+cm += 1
+cm /= 2
+den = 2
+da = 0
+db = 0
+dc = 8
+
+
+# wsmp = np.linspace(0, tau, 4096, endpoint=False)
+# wsmp = np.sin(wsmp, out=wsmp)
+# wsmp *= pi / 4
+
+def synth_gen(shape):
+    try:
+        if shape < 1:
+            x = np.linspace(0, tau, 4096, endpoint=False)
+            x = np.sin(x, out=x)
+            if shape != 0:
+                y = np.linspace(0, 1, 4096, endpoint=False)
+                y -= np.floor(y + 0.5)
+                y = np.abs(y, out=y)
+                x *= pi / 4 * (1 - shape)
+                y *= 4 * shape
+                y -= shape
+                x += y
+            else:
+                x *= pi / 4
+            globals()["wsmp"] = x
+        elif shape < 2:
+            x = np.linspace(0, 1, 4096, endpoint=False)
+            x = np.concatenate((x[1024:], x[:1024]))
+            x -= np.floor(x + 0.5)
+            x = np.abs(x, out=x)
+            if shape != 1:
+                shape -= 1
+                y = np.linspace(0, tau, 4096, endpoint=False)
+                y = (np.sin(y, out=y) >= 0).astype(np.float64)
+                y -= 0.5
+                x *= 4 * (1 - shape)
+                y *= shape
+                x -= 1 - shape
+                x += y
+            else:
+                x *= 4
+                x -= 1
+            # print("\n".join(map(str, x)))
+            globals()["wsmp"] = x
+        globals()["wavecache"].clear()
+    except:
+        print_exc()
+
+wavecache = {}
+
+def waveget(period, offs=0):
+    if period not in wavecache:
+        temp = wsmp
+        rat = len(temp) / period
+        while len(temp) and rat > 8:
+            temp = samplerate.resample(temp, 0.125, "sinc_fastest")
+            rat = len(temp) / period
+        if rat != 1:
+            temp = samplerate.resample(temp, 1 / rat, "sinc_fastest")
+        wavecache[period] = temp
+    return wavecache[period]
+
+def synthesize():
+    global prevkeys, den, da, db, dc
+    dt = max(1, sum(1 for i in alphakeys if i)) + 1
+    if db != dt:
+        if da != 0:
+            dc = 0
+        da = den
+        db = dt
+    s = None
+    for i, a in enumerate(alphakeys):
+        if a or prevkeys[i]:
+            freq = 110 * 2 ** ((i + 3 + settings.get("pitch", 0) + settings.get("nightcore", 0)) / 12)
+            period = SR / freq
+            synth_period = period * ceil(4096 / period)
+            offs = buffoffs % synth_period
+            wave = waveget(synth_period)
+            c = SR // 48
+            if a:
+                xa = np.linspace(0, period, len(wave), endpoint=False)
+                wave = np.interp(np.linspace(offs, FR + offs, FR, endpoint=False) % period, xa, wave)
+                # print(buffoffs + FR, offs, len(wave), period)
+                if not prevkeys[i]:
+                    x = min(int((period - offs) % period), FR - c)
+                    wave[:x] = 0
+                    wave[x:x + c] *= cm
+                    # print(wave[x:x + 3])
+                if s is not None:
+                    wave += s
+                s = wave
+            elif prevkeys[i]:
+                x = min(int((period - offs - c) % period), FR - c)
+                if s is None:
+                    s = np.zeros(FR, dtype=np.float64)
+                xa = np.linspace(0, period, len(wave), endpoint=False)
+                wave = np.interp(np.linspace(offs, x + c + offs, x + c, endpoint=False) % period, xa, wave)
+                samplespace = np.linspace(-2, 2, x + c)
+                samplespace = scipy.special.erf(samplespace)
+                samplespace -= 1
+                wave *= samplespace
+                wave *= -0.5
+                s[:x + c] += wave
+                # print(wave[x + c - 3:x + c])
+    if s is not None:
+        globals()["buffoffs"] += FR
+        m = 32767
+        if dc < 5:
+            lin = basewave + dc
+            lin -= 2
+            lin = scipy.special.erf(lin)
+            lin += 1
+            lin *= (db - da) / 2
+            lin += da
+            den = lin[-1]
+            s /= lin
+            dc += 1
+        else:
+            den = db
+            m /= den
+            da = db
+        m *= settings.get("volume", 1)
+        s *= m
+        s = np.round(s, out=s)
+        print(s)
+        s = np.repeat(s, 2)
+    else:
+        globals()["buffoffs"] = 0
+        den = db
+        dc = 8
+        da = 0
+    prevkeys = alphakeys
+    return s
+
+
 def piano_player():
     global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3
     try:
         while True:
             if channel2 and channel2.get_write_available() or not channel2 and not pygame.mixer.Channel(0).get_queue():
-                aa = any(alphakeys)
-                if aa:
-                    s = None
-                    for i, a in enumerate(alphakeys):
-                        if a:
-                            freq = 110 * 2 ** ((i + 3) / 12)
-                            wave = np.arange(buffoffs, buffoffs + 3200, dtype=np.float64)
-                            wave /= (96000 / freq)
-                            wave %= 1
-                            wave -= 0.5
-                            wave *= 32768
-                            if s is not None:
-                                wave += s
-                            s = wave
-                    if s is not None:
-                        globals()["buffoffs"] += 3200
-                        s = np.clip(s, -32767, 32767)
-                        sample = s.astype(np.int16)
-                        b = sample.tobytes()
-                        lastpacket = packet
-                        packet = b
-                        packet_advanced = True
-                        packet_advanced2 = True
-                        packet_advanced3 = True
-                        sbuffer = sample.astype(np.float32)
-                        if channel2:
-                            fut = submit(channel2.write, b)
+                s = synthesize()
+                # if s is None:
+                #     s = np.zeros(3200, dtype=np.int16)
+                if s is not None:
+                    s = np.clip(s, -32767, 32767)
+                    sample = s.astype(np.int16)
+                    b = sample.tobytes()
+                    lastpacket = packet
+                    packet = b
+                    packet_advanced = True
+                    packet_advanced2 = True
+                    packet_advanced3 = True
+                    sbuffer = sample.astype(np.float32)
+                    if channel2:
+                        fut = submit(channel2.write, b)
+                        try:
+                            fut.result(timeout=0.12)
+                        except:
+                            print("Pyaudio timed out.")
                             try:
-                                fut.result(timeout=0.12)
+                                channel2.stop_stream()
                             except:
-                                print("Pyaudio timed out.")
-                                try:
-                                    channel2.stop_stream()
-                                except:
-                                    pass
-                                submit(channel2.close)
-                                globals()["aout"] = submit(pya_init)
-                                globals()["channel2"] = None
-                        if not channel2:
-                            buffer = sample.reshape((1600, 2))
-                            sound = pygame.sndarray.make_sound(buffer)
-                            channel = pygame.mixer.Channel(0)
-                            for i in range(12):
-                                if not channel.get_queue():
-                                    break
-                                time.sleep(0.01)
-                            if channel.get_queue():
-                                print("Pygame timed out.")
-                                channel.stop()
-                                if aout.done():
-                                    globals()["channel2"] = aout.result()
-                        if not point_fut or point_fut.done():
-                            point_fut = submit(point, "~0 inf")
-                        if not channel2:
-                            channel.queue(sound)
-                    else:
-                        globals()["buffoffs"] %= 3200
+                                pass
+                            submit(channel2.close)
+                            globals()["aout"] = submit(pya_init)
+                            globals()["channel2"] = None
+                    if not channel2:
+                        buffer = sample.reshape((1600, 2))
+                        sound = pygame.sndarray.make_sound(buffer)
+                        channel = pygame.mixer.Channel(0)
+                        for i in range(12):
+                            if not channel.get_queue():
+                                break
+                            time.sleep(0.005)
+                        if channel.get_queue():
+                            print("Pygame timed out.")
+                            channel.stop()
+                            if aout.done():
+                                globals()["channel2"] = aout.result()
+                    if not point_fut or point_fut.done():
+                        point_fut = submit(point, "~0 inf")
+                    if not channel2:
+                        channel.queue(sound)
                 if settings.get("spectrogram") and ssize[0] and ssize[1] and not is_minimised():
                     if spec_fut:
                         spec_fut.result()
                     spec_fut = submit(spectrogram, sbuffer)
-            time.sleep(0.01)
+            time.sleep(0.005)
     except:
         print_exc()
 
@@ -990,7 +1144,7 @@ def ensure_parent():
 
 ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 settings = cdict()
-alphakeys = [0] * 32
+alphakeys = prevkeys = [0] * 32
 buffoffs = 0
 osize = (0, 0)
 ssize = (0, 0)
@@ -1026,9 +1180,15 @@ while not sys.stdin.closed and failed < 8:
             command = command.rstrip().rstrip("\x00")
             failed = 0
             pos = frame / 30
+            if command.startswith("~synth"):
+                shape = float(command[7:])
+                sf = submit(synth_gen, shape)
+                if "wsmp" not in globals():
+                    sf.result()
+                continue
             if command.startswith("~keys"):
                 alphakeys = json.loads(command[6:])
-                if aout.done():
+                if aout.done() and any(alphakeys):
                     channel2 = aout.result()
                 continue
             if command == "~clear":
@@ -1125,6 +1285,8 @@ while not sys.stdin.closed and failed < 8:
             else:
                 fn = None
                 file = None
+            if not stream:
+                continue
             if not is_url(stream) and stream.endswith(".pcm") and not ext and settings.speed >= 0:
                 f = open(stream, "rb")
                 proc = cdict(
@@ -1241,4 +1403,4 @@ while not sys.stdin.closed and failed < 8:
             failed += 1
     except:
         print_exc()
-    time.sleep(0.01)
+    time.sleep(0.005)

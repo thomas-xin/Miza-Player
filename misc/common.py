@@ -1189,6 +1189,7 @@ def text_size(text, size, font="OpenSansEmoji"):
 md_font = {}
 def message_display(text, size, pos, colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False):
     # text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
+    colour = tuple(colour)
     data = (text, colour, background, size, font)
     try:
         resp = md_font[data]

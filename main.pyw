@@ -54,25 +54,31 @@ toolbar = cdict(
         num=0,
         particles=alist(),
     ),
+    downloading=cdict(
+        target=0,
+    ),
     buttons=alist(),
     ripples=alist(),
+    editor=0,
 )
 queue = sidebar.queue
 entries = sidebar.entries
 progress = toolbar.progress
+downloading = toolbar.downloading
 modified = set()
 
 
 button_sources = (
     "gears",
     "notes",
-    "waves",
     "folder",
     "hyperlink",
     "playlist",
+    "edit",
     "repeat",
     "shuffle",
     "back",
+    "flip",
     "scramble",
     "microphone",
 )
@@ -81,7 +87,6 @@ button_images = cdict((i, submit(load_surface, "misc/" + i + ".png")) for i in b
 def setup_buttons():
     try:
         gears = button_images.gears.result()
-        waves = button_images.waves.result()
         notes = button_images.notes.result()
         # img = Image.frombuffer("RGBA", gears.get_size(), pygame.image.tostring(gears, "RGBA"))
         # B, A = img.getchannel("B"), img.getchannel("A")
@@ -89,7 +94,7 @@ def setup_buttons():
         # R = Image.new("L", I.size, 0)
         # inv = pygame.image.frombuffer(Image.merge("RGBA", (R, I, I, A)).tobytes(), I.size, "RGBA")
         def settings_toggle():
-            sidebar.abspos = (sidebar.abspos + 1) % 3
+            sidebar.abspos ^= 1#= (sidebar.abspos + 1) % 3
         def settings_reset():
             sidebar.abspos = 1
             options.audio.update(audio_default)
@@ -101,7 +106,7 @@ def setup_buttons():
             mixer.stdin.write(s.read().encode("utf-8"))
             mixer.stdin.flush()
         sidebar.buttons.append(cdict(
-            sprite=(gears, waves, notes),
+            sprite=(gears, notes),
             click=(settings_toggle, settings_reset),
         ))
         reset_menu(full=False)
@@ -225,6 +230,14 @@ def setup_buttons():
             click=(get_playlist, edit_playlist),
         ))
         reset_menu(full=False)
+        edit = button_images.edit.result()
+        def edit_1():
+            toolbar.editor ^= 1
+        toolbar.buttons.append(cdict(
+            image=edit,
+            click=edit_1,
+        ))
+        reset_menu(full=False)
         repeat = button_images.repeat.result()
         def repeat_1():
             control.loop = (control.loop + 1) % 3
@@ -272,11 +285,19 @@ def setup_buttons():
             click=rright,
         ))
         reset_menu(full=False)
+        flip = button_images.flip.result()
+        def flip_1():
+            mixer.clear()
+            queue.__init__(queue.view[::-1], fromarray=True)
+            start()
+        toolbar.buttons.append(cdict(
+            image=flip,
+            click=flip_1,
+        ))
+        reset_menu(full=False)
         scramble = button_images.scramble.result()
         def scramble_1():
             mixer.clear()
-            # for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
-            #     entry.pos = sidebar.base + sidebar.maxitems
             random.shuffle(queue.view)
             start()
         toolbar.buttons.append(cdict(
@@ -493,14 +514,17 @@ def reset_menu(full=True, reset=False):
     progress.seeking = False
     bsize = min(40, toolbar_height // 3)
     for i, button in enumerate(toolbar.buttons):
-        button.pos = (toolbar_height + 8 + (bsize + 4) * i, screensize[1] - toolbar_height // 3 - 8)
+        if i:
+            button.pos = (toolbar_height + 8 + (bsize + 4) * (i - 1), screensize[1] - toolbar_height // 3 - 8)
+        else:
+            button.pos = (screensize[0] - bsize - 4, screensize[1] - toolbar_height // 3 - 4)
         rect = button.pos + (bsize,) * 2
         sprite = button.get("sprite", button.image)
         isize = (bsize - 6,) * 2
         if sprite.get_size() != isize:
             sprite = pygame.transform.smoothscale(button.image, isize)
         button.sprite = sprite
-        if i < 2:
+        if 0 < i < 3:
             button.on = button.sprite.convert_alpha()
             button.on.fill((0, 255, 255), special_flags=BLEND_RGB_MULT)
             button.off = button.sprite.convert_alpha()
@@ -577,6 +601,7 @@ def render_lyrics(entry):
                         y = 0
                         x += mx
                         mx = 0
+                    col = (255,) * 3
                     if line[0] in "([" and line[-1] in "])":
                         if line[0] != "(":
                             name = line.split("(", 1)[0][1:]
@@ -611,8 +636,6 @@ def render_lyrics(entry):
                             col = (0, 0, 255)
                         if pre:
                             col = tuple(i >> 1 for i in col)
-                    else:
-                        col = (255,) * 3
                     s = text_size(line, 12)
                     if s[0] <= render[1].get_width() >> 1:
                         rect = message_display(
@@ -707,7 +730,7 @@ def prepare(entry, force=False, download=False):
         stream = entry.stream
     stream = stream.strip()
     if stream and is_url(stream) and download:
-        mixer.submit(f"~download {stream} {shash(entry.url)}")
+        mixer.submit(f"~download {stream} cache/~{shash(entry.url)}.pcm")
     return stream
 
 def start_player(pos=None):
@@ -932,6 +955,74 @@ def enqueue(entry, start=True):
         print_exc()
     return None, inf
 
+ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+concat_buff = b"\x00" * (48000 * 2 * 2)
+
+def download(entries, fn):
+    try:
+        downloading.fn = fn
+        downloading.target = sum(e.duration or 300 for e in entries)
+        if len(entries) > 1:
+            downloading.target += len(entries)
+        cmd = ffmpeg_start + ("-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "-")
+        if fn.startswith(".pcm"):
+            cmd += ("-f", "s16le")
+        else:
+            cmd += ("-b:a", "192k")
+        cmd += ("-ar", "48k", "-ac", "2", fn)
+        print(cmd)
+        saving = psutil.Popen(cmd, stdin=subprocess.PIPE)
+        ots = ts = time.time_ns() // 1000
+        procs = deque()
+        for entry in entries:
+            if len(procs) > 2:
+                while procs:
+                    p = procs.popleft()
+                    if len(entries) > 1:
+                        saving.stdin.write(concat_buff)
+                    p.wait()
+                    if os.path.exists(p.fn):
+                        if os.path.getsize(p.fn):
+                            with open(p.fn, "rb") as sf:
+                                while True:
+                                    b = sf.read(1048576)
+                                    if not b:
+                                        break
+                                    saving.stdin.write(b)
+                        submit(os.remove(p.fn))
+            st = prepare(entry, force=True)
+            downloading.target = sum(e.duration or 300 for e in entries)
+            if len(entries) > 1:
+                downloading.target += len(entries)
+            fn3 = f"cache/\x7f{ts}.pcm"
+            cmd = ffmpeg_start + ("-nostdin", "-i", st)
+            if len(entries) > 1:
+                cmd += ("-af", "silenceremove=start_periods=1:start_duration=0.015625:start_threshold=-50dB:start_silence=0.015625:stop_periods=-9000:stop_threshold=-50dB:window=0.015625")
+            cmd += ("-f", "s16le", "-ar", "48k", "-ac", "2", fn3)
+            print(cmd)
+            p = psutil.Popen(cmd)
+            p.fn = fn3
+            procs.append(p)
+            ts += 1
+        while procs:
+            p = procs.popleft()
+            saving.stdin.write(concat_buff)
+            p.wait()
+            if os.path.exists(p.fn):
+                if os.path.getsize(p.fn):
+                    with open(p.fn, "rb") as sf:
+                        while True:
+                            b = sf.read(1048576)
+                            if not b:
+                                break
+                            saving.stdin.write(b)
+                submit(os.remove(p.fn))
+        saving.stdin.close()
+        saving.wait()
+        downloading.target = 0
+    except:
+        print_exc()
+
 
 def update_menu():
     global sidebar_width, toolbar_height
@@ -1128,266 +1219,324 @@ ripple_colours = (
     (255, 255, 255),
 )
 
-def draw_menu():
-    ts = toolbar.progress.setdefault("timestamp", 0)
-    t = pc()
-    dur = max(0.001, min(t - ts, 0.125))
-    if not tick & 7:
-        toolbar.progress.timestamp = pc()
-        pops = set()
-        for i, ripple in enumerate(toolbar.ripples):
-            ripple.radius += dur * 128
-            ripple.alpha -= dur * 128
-            if ripple.alpha <= 2:
-                pops.add(i)
-        if pops:
-            toolbar.ripples.pops(pops)
-        pops = set()
-        for i, ripple in enumerate(sidebar.ripples):
-            ripple.radius += dur * 128
-            ripple.alpha -= dur * 128
-            if ripple.alpha <= 2:
-                pops.add(i)
-        if pops:
-            sidebar.ripples.pops(pops)
-    crosshair = False
-    hovertext = None
-    if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
-        if any(mclick) and in_rect(mpos, sidebar.rect):
-            sidebar.ripples.append(cdict(
-                pos=mpos,
-                radius=0,
-                colour=ripple_colours[mclick.index(1)],
-                alpha=255,
-            ))
-        modified.add(sidebar.rect)
-        offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
-        sc = sidebar.colour or (64, 0, 96)
-        # bevel_rectangle(
-        #     DISP,
-        #     sc,
-        #     sidebar.rect2,
-        #     4,
-        # )
-        if sidebar.ripples or offs > -sidebar_width + 4:
-            DISP2 = pygame.Surface((sidebar.rect[2], sidebar.rect[3] + 4), SRCALPHA)
-            bevel_rectangle(
+def render_sidebar(dur=0):
+    global crosshair, hovertext, lq2
+    modified.add(sidebar.rect)
+    offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
+    sc = sidebar.colour or (64, 0, 96)
+    if sidebar.ripples or offs > -sidebar_width + 4:
+        DISP2 = pygame.Surface((sidebar.rect[2], sidebar.rect[3] + 4), SRCALPHA)
+        bevel_rectangle(
+            DISP2,
+            sc,
+            (0, 0) + sidebar.rect2[2:],
+            4,
+        )
+        for ripple in sidebar.ripples:
+            concentric_circle(
                 DISP2,
-                sc,
-                (0, 0) + sidebar.rect2[2:],
+                ripple.colour,
+                (ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
+                ripple.radius,
+                fill_ratio=1 / 3,
+                alpha=sqrt(max(0, ripple.alpha)) * 16,
+            )
+        if offs > -sidebar_width + 4:
+            n = len(queue)
+            t = sum(e.get("duration") or 300 for e in queue) - (player.pos or 0)
+            message_display(
+                f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
+                12,
+                (6 + offs, 48),
+                surface=DISP2,
+                align=0,
+                font="Comic Sans MS",
+            )
+        if queue and sidebar.scroll.get("colour"):
+            rounded_bev_rect(
+                DISP2,
+                sidebar.scroll.background,
+                (sidebar.scroll.rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
                 4,
             )
-            for ripple in sidebar.ripples:
-                concentric_circle(
-                    DISP2,
-                    ripple.colour,
-                    (ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
-                    ripple.radius,
-                    fill_ratio=1 / 3,
-                    alpha=sqrt(max(0, ripple.alpha)) * 16,
-                )
-            if offs > -sidebar_width + 4:
-                n = len(queue)
-                t = sum(e.get("duration") or 300 for e in queue) - (player.pos or 0)
-                message_display(
-                    f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
-                    12,
-                    (6 + offs, 48),
-                    surface=DISP2,
-                    align=0,
-                    font="Comic Sans MS",
-                )
-            if queue and sidebar.scroll.get("colour"):
-                rounded_bev_rect(
-                    DISP2,
-                    sidebar.scroll.background,
-                    (sidebar.scroll.rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
-                    4,
-                )
-                rounded_bev_rect(
-                    DISP2,
-                    sidebar.scroll.colour,
-                    (sidebar.scroll.select_rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
-                    4,
-                )
-            DISP.blit(
+            rounded_bev_rect(
                 DISP2,
-                sidebar.rect[:2],
-            )
-        else:
-            bevel_rectangle(
-                DISP,
-                sc,
-                sidebar.rect2,
+                sidebar.scroll.colour,
+                (sidebar.scroll.select_rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
                 4,
             )
-        if offs > 4 - sidebar_width:
-            Z = -sidebar.scroll.pos
-            DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16))
-            DISP2.fill(sc)
-            DISP2.set_colorkey(sc)
-            if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
-                submit(enqueue_auto, *pyperclip.paste().splitlines())
-            if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
-                sidebar.pop("dragging", None)
-            if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue):
-                sidebar.pop("last_selected")
-            copies = deque()
-            pops = set()
-            try:
-                if not sidebar.last_selected.selected:
-                    raise ValueError
-                lq = queue.index(sidebar.last_selected)
-            except (AttributeError, ValueError, IndexError):
+        DISP.blit(
+            DISP2,
+            sidebar.rect[:2],
+        )
+    else:
+        bevel_rectangle(
+            DISP,
+            sc,
+            sidebar.rect2,
+            4,
+        )
+    if offs > 4 - sidebar_width:
+        if queue and (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_s]:
+            name = None
+            entries = deque()
+            for entry in queue:
+                if entry.get("selected"):
+                    if not name:
+                        name = entry.name
+                    entries.append(entry)
+            if not entries:
+                name = queue[0].name
+                entries = queue[:1]
+            if len(entries) > 1:
+                name += f" +{len(entries) - 1}"
+            fn = easygui.filesavebox(
+                "Save As",
+                "Miza Player",
+                name + ".ogg",
+                filetypes=ftypes,
+            )
+            if fn:
+                submit(download, entries, fn)
+        Z = -sidebar.scroll.pos
+        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16))
+        DISP2.fill(sc)
+        DISP2.set_colorkey(sc)
+        if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
+            submit(enqueue_auto, *pyperclip.paste().splitlines())
+        if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
+            sidebar.pop("dragging", None)
+        if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue):
+            sidebar.pop("last_selected")
+        copies = deque()
+        pops = set()
+        try:
+            if not sidebar.last_selected.selected:
+                raise ValueError
+            lq = queue.index(sidebar.last_selected)
+        except (AttributeError, ValueError, IndexError):
+            sidebar.pop("last_selected", None)
+            lq = nan
+        lq2 = lq
+        swap = None
+        base, maxitems = sidebar.base, sidebar.maxitems
+        otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
+        etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
+        target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
+        if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
+            if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
+                for entry in queue:
+                    entry.pop("selected", None)
                 sidebar.pop("last_selected", None)
                 lq = nan
-            lq2 = lq
-            swap = None
-            base, maxitems = sidebar.base, sidebar.maxitems
-            otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
-            etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
-            target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
-            if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
-                if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
-                    for entry in queue:
-                        entry.pop("selected", None)
-                    sidebar.pop("last_selected", None)
-                    lq = nan
-            if len(queue) > 1:
-                entry = queue[1]
-                if (entry.duration is None or entry.get("research")):
-                    ensure_next(1)
-            for i, entry in enumerate(queue[base:base + maxitems], base):
-                if i > 1 and (entry.duration is None or entry.get("research")) and (queue[i - 1].duration or i == base):
-                    ensure_next(i)
-                elif i == 1 and not entry.get("lyrics") and not entry.get("lyrics_loading"):
-                    ensure_next(i)
-                if entry.get("selected") and sidebar.get("dragging"):
-                    x = 4 + offs
-                    y = round(Z + entry.get("pos", 0) * 32)
-                    rect = (x, y, sidebar_width - 32, 32)
-                    sat = 0.875
-                    val = 1
-                    secondary = True
-                    if pc() % 0.25 < 0.125:
-                        entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
-                    else:
-                        col = (255,) * 3
-                    rounded_bev_rect(
-                        DISP2,
-                        col,
-                        rect,
-                        4,
-                        alpha=round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
-                        filled=False,
-                    )
-                    if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL] and sidebar.get("last_selected") is entry:
-                        if target != i:
-                            swap = target - i
-            for i, entry in enumerate(queue):
-                if not entry.url:
-                    pops.add(i)
-                    continue
-                if entry.get("selected"):
-                    if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
-                        pops.add(i)
-                        if sidebar.get("last_selected") == entry:
-                            sidebar.pop("last_selected", None)
-                    if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
-                        entry.flash = 16
-                        copies.append(entry.url)
-                elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a]:
-                    entry.selected = True
-                    sidebar.last_selected = entry
-                    lq = i
-                if i < base or i >= base + maxitems:
-                    entry.flash = 8
-                    entry.pos = i
-                    continue
-                if not isfinite(lq):
-                    lq2 = nan
+        if len(queue) > 1:
+            entry = queue[1]
+            if (entry.duration is None or entry.get("research")):
+                ensure_next(1)
+        for i, entry in enumerate(queue[base:base + maxitems], base):
+            if i > 1 and (entry.duration is None or entry.get("research")) and (queue[i - 1].duration or i == base):
+                ensure_next(i)
+            elif i == 1 and not entry.get("lyrics") and not entry.get("lyrics_loading"):
+                ensure_next(i)
+            if entry.get("selected") and sidebar.get("dragging"):
                 x = 4 + offs
                 y = round(Z + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 32, 32)
-                t = 255
-                selectable = i == etarget
-                if not selectable and sidebar.get("last_selected") and (kheld[K_LSHIFT] or kheld[K_RSHIFT]):
-                    b = lq
-                    if b >= 0:
-                        a = target
-                        a, b = sorted((a, b))
-                        if a <= i <= b:
-                            selectable = True
-                if selectable or entry.get("selected"):
-                    if mclick[0] and selectable:
-                        if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
-                            entry.selected = False
-                            sidebar.dragging = False
-                            sidebar.pop("last_selected", None)
-                            lq = nan
-                        else:
-                            entry.selected = True
-                            sidebar.dragging = True
-                            if i == target:
-                                sidebar.last_selected = entry
-                                lq2 = i
-                                sidebar.selection_offset = np.array(mpos2) - rect[:2]
-                    elif mclick[1] and i == etarget:
-                        entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
-                        playlists = os.listdir("playlists")
-                        text = (easygui.get_string(
-                            "Enter a name for your new playlist!",
-                            "Miza Player",
-                            f"Custom List {len(entries)}",
-                        ) or "").strip()
-                        if text:
-                            with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
-                                json.dump(dict(queue=entries, stats={}), f)
-                            easygui.show_message(
-                                f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
-                            )
-                    if entry.get("selected"):
-                        flash = entry.get("flash", 16)
-                        if flash >= 0:
-                            entry.flash = flash - 1
-                        continue
-                    sat = 0.875
-                    val = 1
-                    secondary = True
+                sat = 0.875
+                val = 1
+                secondary = True
+                if pc() % 0.25 < 0.125:
+                    entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
                 else:
-                    sat = 1
-                    val = 0.75
-                    secondary = False
-                flash = entry.get("flash", 16)
-                if flash:
-                    if flash < 0:
-                        entry.flash = 0
-                    else:
-                        sat = max(0, sat - flash / 16)
-                        val = min(1, val + flash / 16)
-                        entry.flash = flash - 1
-                entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                    col = (255,) * 3
                 rounded_bev_rect(
                     DISP2,
                     col,
                     rect,
                     4,
-                    alpha=255 if secondary else round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
-                    filled=not secondary,
+                    alpha=round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
+                    filled=False,
                 )
-                if secondary:
-                    sat = 0.875
-                    val = 0.5
-                    if flash:
-                        sat = max(0, sat - flash / 16)
-                        val = min(1, val + flash / 16)
-                    bevel_rectangle(
-                        DISP2,
-                        [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
-                        [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
-                        0,
-                        alpha=191,
-                    )
+                if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL] and sidebar.get("last_selected") is entry:
+                    if target != i:
+                        swap = target - i
+        for i, entry in enumerate(queue):
+            if not entry.url:
+                pops.add(i)
+                continue
+            if entry.get("selected"):
+                if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
+                    pops.add(i)
+                    if sidebar.get("last_selected") == entry:
+                        sidebar.pop("last_selected", None)
+                if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
+                    entry.flash = 16
+                    copies.append(entry.url)
+            elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a]:
+                entry.selected = True
+                sidebar.last_selected = entry
+                lq = i
+            if i < base or i >= base + maxitems:
+                entry.flash = 8
+                entry.pos = i
+                continue
+            if not isfinite(lq):
+                lq2 = nan
+            x = 4 + offs
+            y = round(Z + entry.get("pos", 0) * 32)
+            rect = (x, y, sidebar_width - 32, 32)
+            t = 255
+            selectable = i == etarget
+            if not selectable and sidebar.get("last_selected") and (kheld[K_LSHIFT] or kheld[K_RSHIFT]):
+                b = lq
+                if b >= 0:
+                    a = target
+                    a, b = sorted((a, b))
+                    if a <= i <= b:
+                        selectable = True
+            if selectable or entry.get("selected"):
+                if mclick[0] and selectable:
+                    if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
+                        entry.selected = False
+                        sidebar.dragging = False
+                        sidebar.pop("last_selected", None)
+                        lq = nan
+                    else:
+                        entry.selected = True
+                        sidebar.dragging = True
+                        if i == target:
+                            sidebar.last_selected = entry
+                            lq2 = i
+                            sidebar.selection_offset = np.array(mpos2) - rect[:2]
+                elif mclick[1] and i == etarget:
+                    entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
+                    playlists = os.listdir("playlists")
+                    text = (easygui.get_string(
+                        "Enter a name for your new playlist!",
+                        "Miza Player",
+                        f"Custom List {len(entries)}",
+                    ) or "").strip()
+                    if text:
+                        with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
+                            json.dump(dict(queue=entries, stats={}), f)
+                        easygui.show_message(
+                            f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+                        )
+                if entry.get("selected"):
+                    flash = entry.get("flash", 16)
+                    if flash >= 0:
+                        entry.flash = flash - 1
+                    continue
+                sat = 0.875
+                val = 1
+                secondary = True
+            else:
+                sat = 1
+                val = 0.75
+                secondary = False
+            flash = entry.get("flash", 16)
+            if flash:
+                if flash < 0:
+                    entry.flash = 0
+                else:
+                    sat = max(0, sat - flash / 16)
+                    val = min(1, val + flash / 16)
+                    entry.flash = flash - 1
+            entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+            rounded_bev_rect(
+                DISP2,
+                col,
+                rect,
+                4,
+                alpha=255 if secondary else round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
+                filled=not secondary,
+            )
+            if secondary:
+                sat = 0.875
+                val = 0.5
+                if flash:
+                    sat = max(0, sat - flash / 16)
+                    val = min(1, val + flash / 16)
+                bevel_rectangle(
+                    DISP2,
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
+                    0,
+                    alpha=191,
+                )
+            if not entry.get("surf"):
+                entry.surf = message_display(
+                    entry.name[:128],
+                    12,
+                    (0,) * 2,
+                    align=0,
+                    cache=True,
+                )
+            if not t:
+                blit_complex(
+                    DISP2,
+                    entry.surf,
+                    (x + 6, y + 4),
+                    area=(0, 0, sidebar_width - 48, 24),
+                    colour=(t,) * 3,
+                )
+            else:
+                DISP2.blit(
+                    entry.surf,
+                    (x + 6, y + 4),
+                    (0, 0, sidebar_width - 48, 24),
+                )
+            message_display(
+                time_disp(entry.duration) if entry.duration else "N/A",
+                10,
+                [x + sidebar_width - 36, y + 28],
+                (t,) * 3,
+                surface=DISP2,
+                align=2,
+                cache=True,
+                font="Comic Sans MS",
+            )
+        if copies:
+            pyperclip.copy("\n".join(copies))
+        if pops:
+            r = range(base, base + maxitems + 1)
+            sidebar.particles.extend(queue[i] for i in pops if i in r)
+            skipping = 0 in pops
+            queue.pops(pops)
+            if skipping:
+                mixer.clear()
+                submit(start)
+        if not sidebar.get("dragging"):
+            for i, entry in enumerate(queue[base:base + maxitems], base):
+                if not entry.get("selected"):
+                    continue
+                x = 4 + offs
+                y = round(Z + entry.get("pos", 0) * 32)
+                sat = 0.875
+                val = 1
+                rect = (x, y, sidebar_width - 32, 32)
+                entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                sat = 0.875
+                val = 0.5
+                flash = entry.get("flash", 16)
+                if flash:
+                    sat = max(0, sat - flash / 16)
+                    val = min(1, val + flash / 16)
+                bevel_rectangle(
+                    DISP2,
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
+                    0,
+                    alpha=191,
+                )
+                rounded_bev_rect(
+                    DISP2,
+                    col,
+                    rect,
+                    4,
+                    alpha=255,
+                    filled=False,
+                )
                 if not entry.get("surf"):
                     entry.surf = message_display(
                         entry.name[:128],
@@ -1420,103 +1569,9 @@ def draw_menu():
                     cache=True,
                     font="Comic Sans MS",
                 )
-            if copies:
-                pyperclip.copy("\n".join(copies))
-            if pops:
-                r = range(base, base + maxitems + 1)
-                sidebar.particles.extend(queue[i] for i in pops if i in r)
-                skipping = 0 in pops
-                queue.pops(pops)
-                if skipping:
-                    mixer.clear()
-                    submit(start)
-            if not sidebar.get("dragging"):
-                for i, entry in enumerate(queue[base:base + maxitems], base):
-                    if not entry.get("selected"):
-                        continue
-                    x = 4 + offs
-                    y = round(Z + entry.get("pos", 0) * 32)
-                    sat = 0.875
-                    val = 1
-                    rect = (x, y, sidebar_width - 32, 32)
-                    entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
-                    sat = 0.875
-                    val = 0.5
-                    flash = entry.get("flash", 16)
-                    if flash:
-                        sat = max(0, sat - flash / 16)
-                        val = min(1, val + flash / 16)
-                    bevel_rectangle(
-                        DISP2,
-                        [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
-                        [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
-                        0,
-                        alpha=191,
-                    )
-                    rounded_bev_rect(
-                        DISP2,
-                        col,
-                        rect,
-                        4,
-                        alpha=255,
-                        filled=False,
-                    )
-                    if not entry.get("surf"):
-                        entry.surf = message_display(
-                            entry.name[:128],
-                            12,
-                            (0,) * 2,
-                            align=0,
-                            cache=True,
-                        )
-                    if not t:
-                        blit_complex(
-                            DISP2,
-                            entry.surf,
-                            (x + 6, y + 4),
-                            area=(0, 0, sidebar_width - 48, 24),
-                            colour=(t,) * 3,
-                        )
-                    else:
-                        DISP2.blit(
-                            entry.surf,
-                            (x + 6, y + 4),
-                            (0, 0, sidebar_width - 48, 24),
-                        )
-                    message_display(
-                        time_disp(entry.duration) if entry.duration else "N/A",
-                        10,
-                        [x + sidebar_width - 36, y + 28],
-                        (t,) * 3,
-                        surface=DISP2,
-                        align=2,
-                        cache=True,
-                        font="Comic Sans MS",
-                    )
-                    anima_rectangle(
-                        DISP2,
-                        [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
-                        [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
-                        frame=4,
-                        count=2,
-                        flash=1,
-                        ratio=pc() * 0.4,
-                        reduction=0.1,
-                    )
-            if sidebar.get("loading"):
-                x = 4 + offs
-                y = round(Z + (len(queue) - base) * 32)
-                rect = (x, y, sidebar_width - 32, 32)
-                rounded_bev_rect(
-                    DISP2,
-                    (191,) * 3,
-                    rect,
-                    4,
-                    alpha=255,
-                )
                 anima_rectangle(
                     DISP2,
-                    (255,) * 3,
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
                     [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
                     frame=4,
                     count=2,
@@ -1524,325 +1579,381 @@ def draw_menu():
                     ratio=pc() * 0.4,
                     reduction=0.1,
                 )
-                if not sidebar.get("loading_text"):
-                    sidebar.loading_text = message_display(
-                        "Loading...",
-                        12,
-                        [0] * 2,
-                        align=0,
-                        cache=True,
-                    )
-                DISP2.blit(
-                    sidebar.loading_text,
-                    (x + 6, y + 4),
-                    (0, 0, sidebar_width - 48, 24),
-                )
-            if swap:
-                orig = queue[0]
-                dest = deque()
-                targets = {}
-                for i, entry in enumerate(queue):
-                    if i + swap < 0 or i + swap >= len(queue):
-                        continue
-                    if entry.get("selected"):
-                        targets[i + swap] = entry
-                        entry.moved = True
-                i = 0
-                for entry in queue:
-                    while i in targets:
-                        dest.append(targets.pop(i))
-                        i += 1
-                    if not entry.get("moved"):
-                        dest.append(entry)
-                        i += 1
-                    else:
-                        entry.pop("moved", None)
-                if targets:
-                    dest.extend(targets.values())
-                    for entry in targets.values():
-                        entry.pop("moved", None)
-                queue[:] = dest
-                if queue[0] is not orig:
-                    submit(enqueue, queue[0])
-                try:
-                    if not sidebar.last_selected.selected:
-                        raise ValueError
-                    lq2 = queue.index(sidebar.last_selected)
-                except (AttributeError, ValueError, IndexError):
-                    sidebar.pop("last_selected", None)
-                    lq2 = nan
-            DISP.blit(
+        if sidebar.get("loading"):
+            x = 4 + offs
+            y = round(Z + (len(queue) - base) * 32)
+            rect = (x, y, sidebar_width - 32, 32)
+            rounded_bev_rect(
                 DISP2,
-                (screensize[0] - sidebar_width + 4, 52 + 16),
+                (191,) * 3,
+                rect,
+                4,
+                alpha=255,
             )
-        if offs <= -4 and offs > 4 - 2 * sidebar_width:
-            DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
-            DISP2.fill(sc)
-            DISP2.set_colorkey(sc)
-            in_sidebar = in_rect(mpos, sidebar.rect)
-            offs2 = offs + sidebar_width
-            for i, opt in enumerate(asettings):
-                message_display(
-                    opt.capitalize(),
-                    11,
-                    (offs2 + 8, i * 32),
-                    surface=DISP2,
+            anima_rectangle(
+                DISP2,
+                (255,) * 3,
+                [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
+                frame=4,
+                count=2,
+                flash=1,
+                ratio=pc() * 0.4,
+                reduction=0.1,
+            )
+            if not sidebar.get("loading_text"):
+                sidebar.loading_text = message_display(
+                    "Loading...",
+                    12,
+                    [0] * 2,
                     align=0,
                     cache=True,
-                    font="Comic Sans MS",
                 )
-                # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
-                s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
-                message_display(
-                    s,
-                    11,
-                    (offs2 + sidebar_width - 8, 16 + i * 32),
-                    surface=DISP2,
-                    align=2,
-                    cache=True,
-                    font="Comic Sans MS",
-                )
-                srange = asettings[opt]
-                w = (sidebar_width - 16)
-                x = (options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
-                if opt in ("speed", "pitch", "nightcore"):
-                    x = min(1, max(0, x))
+            DISP2.blit(
+                sidebar.loading_text,
+                (x + 6, y + 4),
+                (0, 0, sidebar_width - 48, 24),
+            )
+        if swap:
+            orig = queue[0]
+            dest = deque()
+            targets = {}
+            for i, entry in enumerate(queue):
+                if i + swap < 0 or i + swap >= len(queue):
+                    continue
+                if entry.get("selected"):
+                    targets[i + swap] = entry
+                    entry.moved = True
+            i = 0
+            for entry in queue:
+                while i in targets:
+                    dest.append(targets.pop(i))
+                    i += 1
+                if not entry.get("moved"):
+                    dest.append(entry)
+                    i += 1
                 else:
-                    x = min(1, abs(x))
-                x = round(x * w)
-                brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
-                brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
-                hovered = in_sidebar and in_rect(mpos, brect) or aediting[opt]
-                crosshair |= bool(hovered) << 1
-                v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
-                if len(srange) > 2:
-                    v = round_min(math.round(v / srange[2]) * srange[2])
-                else:
-                    rv = round_min(math.round(v * 32) / 32)
-                    if type(rv) is int and rv not in srange:
-                        v = rv
-                if hovered and not hovertext:
-                    hovertext = str(round(v * 100, 2)) + "%"
-                    if aediting[opt]:
-                        if not mheld[0]:
-                            aediting[opt] = False
-                    elif mclick[0]:
+                    entry.pop("moved", None)
+            if targets:
+                dest.extend(targets.values())
+                for entry in targets.values():
+                    entry.pop("moved", None)
+            queue[:] = dest
+            if queue[0] is not orig:
+                submit(enqueue, queue[0])
+            try:
+                if not sidebar.last_selected.selected:
+                    raise ValueError
+                lq2 = queue.index(sidebar.last_selected)
+            except (AttributeError, ValueError, IndexError):
+                sidebar.pop("last_selected", None)
+                lq2 = nan
+        DISP.blit(
+            DISP2,
+            (screensize[0] - sidebar_width + 4, 52 + 16),
+        )
+    if offs <= -4 and offs > 4 - 2 * sidebar_width:
+        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
+        DISP2.fill(sc)
+        DISP2.set_colorkey(sc)
+        in_sidebar = in_rect(mpos, sidebar.rect)
+        offs2 = offs + sidebar_width
+        for i, opt in enumerate(asettings):
+            message_display(
+                opt.capitalize(),
+                11,
+                (offs2 + 8, i * 32),
+                surface=DISP2,
+                align=0,
+                cache=True,
+                font="Comic Sans MS",
+            )
+            # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
+            s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
+            message_display(
+                s,
+                11,
+                (offs2 + sidebar_width - 8, 16 + i * 32),
+                surface=DISP2,
+                align=2,
+                cache=True,
+                font="Comic Sans MS",
+            )
+            srange = asettings[opt]
+            w = (sidebar_width - 16)
+            x = (options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
+            if opt in ("speed", "pitch", "nightcore"):
+                x = min(1, max(0, x))
+            else:
+                x = min(1, abs(x))
+            x = round(x * w)
+            brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
+            brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
+            hovered = in_sidebar and in_rect(mpos, brect) or aediting[opt]
+            crosshair |= bool(hovered) << 1
+            v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
+            if len(srange) > 2:
+                v = round_min(math.round(v / srange[2]) * srange[2])
+            else:
+                rv = round_min(math.round(v * 32) / 32)
+                if type(rv) is int and rv not in srange:
+                    v = rv
+            if hovered and not hovertext:
+                hovertext = str(round(v * 100, 2)) + "%"
+                if aediting[opt]:
+                    if not mheld[0]:
+                        aediting[opt] = False
+                elif mclick[0]:
+                    aediting[opt] = True
+                elif mclick[1]:
+                    enter = easygui.get_string(
+                        opt.capitalize(),
+                        "Miza Player",
+                        str(round_min(options.audio[opt] * 100)),
+                    )
+                    if enter:
+                        v = round_min(float(eval(enter, {}, {})) / 100)
                         aediting[opt] = True
-                    elif mclick[1]:
-                        enter = easygui.get_string(
-                            opt.capitalize(),
-                            "Miza Player",
-                            str(round_min(options.audio[opt] * 100)),
-                        )
-                        if enter:
-                            v = round_min(float(eval(enter, {}, {})) / 100)
-                            aediting[opt] = True
-                    if aediting[opt]:
-                        orig, options.audio[opt] = options.audio[opt], v
-                        if orig != v:
-                            mixer.submit(f"~setting {opt} {v}", force=opt == "volume" or not queue)
-                z = max(0, x - 4)
-                rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
-                col = (48 if hovered else 32,) * 3
-                bevel_rectangle(
-                    DISP2,
-                    col,
-                    rect,
-                    3,
-                )
-                rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
-                DISP2.blit(
-                    rainbow,
-                    (offs2 + 8 + x, 17 + i * 32),
-                    (x, 0, w - x, 9),
-                    special_flags=BLEND_RGB_MULT,
-                )
-                rect = (offs2 + 8, 17 + i * 32, x, 9)
-                col = (223 if hovered else 191,) * 3
-                bevel_rectangle(
-                    DISP2,
-                    col,
-                    rect,
-                    3,
-                )
-                rainbow = quadratic_gradient((w, 9), pc() + i / 4)
-                DISP2.blit(
-                    rainbow,
-                    (offs2 + 8, 17 + i * 32),
-                    (0, 0, x, 9),
-                    special_flags=BLEND_RGB_MULT,
-                )
-                if hovered:
-                    bevel_rectangle(
-                        DISP2,
-                        (191, 127, 255),
-                        brect2,
-                        2,
-                        filled=False,
-                    )
-            DISP.blit(
+                if aediting[opt]:
+                    orig, options.audio[opt] = options.audio[opt], v
+                    if orig != v:
+                        mixer.submit(f"~setting {opt} {v}", force=opt == "volume" or not queue)
+            z = max(0, x - 4)
+            rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
+            col = (48 if hovered else 32,) * 3
+            bevel_rectangle(
                 DISP2,
-                (screensize[0] - sidebar_width, 52),
+                col,
+                rect,
+                3,
             )
-        if offs <= -4 - sidebar_width:
-            DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
-            DISP2.fill(sc)
-            DISP2.set_colorkey(sc)
-            in_sidebar = in_rect(mpos, sidebar.rect)
-            offs2 = offs + sidebar_width * 2
-            for i, opt in enumerate(ssettings):
-                message_display(
-                    opt.capitalize(),
-                    11,
-                    (offs2 + 8, i * 32),
-                    surface=DISP2,
-                    align=0,
-                    cache=True,
-                    font="Comic Sans MS",
+            rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
+            DISP2.blit(
+                rainbow,
+                (offs2 + 8 + x, 17 + i * 32),
+                (x, 0, w - x, 9),
+                special_flags=BLEND_RGB_MULT,
+            )
+            rect = (offs2 + 8, 17 + i * 32, x, 9)
+            col = (223 if hovered else 191,) * 3
+            bevel_rectangle(
+                DISP2,
+                col,
+                rect,
+                3,
+            )
+            rainbow = quadratic_gradient((w, 9), pc() + i / 4)
+            DISP2.blit(
+                rainbow,
+                (offs2 + 8, 17 + i * 32),
+                (0, 0, x, 9),
+                special_flags=BLEND_RGB_MULT,
+            )
+            if hovered:
+                bevel_rectangle(
+                    DISP2,
+                    (191, 127, 255),
+                    brect2,
+                    2,
+                    filled=False,
                 )
-                # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
-                s = str(round(options.synth.get(opt, 0) * 100, 2)) + "%"
-                message_display(
-                    s,
-                    11,
-                    (offs2 + sidebar_width - 8, 16 + i * 32),
-                    surface=DISP2,
-                    align=2,
-                    cache=True,
-                    font="Comic Sans MS",
-                )
-                srange = ssettings[opt]
-                w = (sidebar_width - 16)
-                x = (options.synth.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
-                if opt in ("speed", "pitch", "nightcore"):
-                    x = min(1, max(0, x))
-                else:
-                    x = min(1, abs(x))
-                x = round(x * w)
-                brect = (screensize[0] + offs + sidebar_width + 6, 67 + i * 32, sidebar_width - 12, 13)
-                brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
-                hovered = in_sidebar and in_rect(mpos, brect) or sediting[opt]
-                crosshair |= bool(hovered) << 1
-                v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + sidebar_width + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
-                if len(srange) > 2:
-                    v = round_min(math.round(v / srange[2]) * srange[2])
-                else:
-                    rv = round_min(math.round(v * 32) / 32)
-                    if type(rv) is int and rv not in srange:
-                        v = rv
-                if hovered and not hovertext:
-                    hovertext = str(round(v * 100, 2)) + "%"
-                    if sediting[opt]:
-                        if not mheld[0]:
-                            sediting[opt] = False
-                    elif mclick[0]:
+        DISP.blit(
+            DISP2,
+            (screensize[0] - sidebar_width, 52),
+        )
+    if offs <= -4 - sidebar_width:
+        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
+        DISP2.fill(sc)
+        DISP2.set_colorkey(sc)
+        in_sidebar = in_rect(mpos, sidebar.rect)
+        offs2 = offs + sidebar_width * 2
+        for i, opt in enumerate(ssettings):
+            message_display(
+                opt.capitalize(),
+                11,
+                (offs2 + 8, i * 32),
+                surface=DISP2,
+                align=0,
+                cache=True,
+                font="Comic Sans MS",
+            )
+            # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
+            s = str(round(options.synth.get(opt, 0) * 100, 2)) + "%"
+            message_display(
+                s,
+                11,
+                (offs2 + sidebar_width - 8, 16 + i * 32),
+                surface=DISP2,
+                align=2,
+                cache=True,
+                font="Comic Sans MS",
+            )
+            srange = ssettings[opt]
+            w = (sidebar_width - 16)
+            x = (options.synth.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
+            if opt in ("speed", "pitch", "nightcore"):
+                x = min(1, max(0, x))
+            else:
+                x = min(1, abs(x))
+            x = round(x * w)
+            brect = (screensize[0] + offs + sidebar_width + 6, 67 + i * 32, sidebar_width - 12, 13)
+            brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
+            hovered = in_sidebar and in_rect(mpos, brect) or sediting[opt]
+            crosshair |= bool(hovered) << 1
+            v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + sidebar_width + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
+            if len(srange) > 2:
+                v = round_min(math.round(v / srange[2]) * srange[2])
+            else:
+                rv = round_min(math.round(v * 32) / 32)
+                if type(rv) is int and rv not in srange:
+                    v = rv
+            if hovered and not hovertext:
+                hovertext = str(round(v * 100, 2)) + "%"
+                if sediting[opt]:
+                    if not mheld[0]:
+                        sediting[opt] = False
+                elif mclick[0]:
+                    sediting[opt] = True
+                elif mclick[1]:
+                    enter = easygui.get_string(
+                        opt.capitalize(),
+                        "Miza Player",
+                        str(round_min(options.synth[opt] * 100)),
+                    )
+                    if enter:
+                        v = round_min(float(eval(enter, {}, {})) / 100)
                         sediting[opt] = True
-                    elif mclick[1]:
-                        enter = easygui.get_string(
-                            opt.capitalize(),
-                            "Miza Player",
-                            str(round_min(options.synth[opt] * 100)),
-                        )
-                        if enter:
-                            v = round_min(float(eval(enter, {}, {})) / 100)
-                            sediting[opt] = True
-                    if sediting[opt]:
-                        orig, options.synth[opt] = options.synth[opt], v
-                        if orig != v:
-                            if opt == "unison":
-                                mixer.submit(f"~setting unison {synth.setdefault('unison', 1)}", force=True)
-                            else:
-                                mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
-                z = max(0, x - 4)
-                rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
-                col = (48 if hovered else 32,) * 3
-                bevel_rectangle(
-                    DISP2,
-                    col,
-                    rect,
-                    3,
-                )
-                rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
-                DISP2.blit(
-                    rainbow,
-                    (offs2 + 8 + x, 17 + i * 32),
-                    (x, 0, w - x, 9),
-                    special_flags=BLEND_RGB_MULT,
-                )
-                rect = (offs2 + 8, 17 + i * 32, x, 9)
-                col = (223 if hovered else 191,) * 3
-                bevel_rectangle(
-                    DISP2,
-                    col,
-                    rect,
-                    3,
-                )
-                rainbow = quadratic_gradient((w, 9), pc() + i / 4)
-                DISP2.blit(
-                    rainbow,
-                    (offs2 + 8, 17 + i * 32),
-                    (0, 0, x, 9),
-                    special_flags=BLEND_RGB_MULT,
-                )
-                if hovered:
-                    bevel_rectangle(
-                        DISP2,
-                        (191, 127, 255),
-                        brect2,
-                        2,
-                        filled=False,
-                    )
-            DISP.blit(
+                if sediting[opt]:
+                    orig, options.synth[opt] = options.synth[opt], v
+                    if orig != v:
+                        if opt == "unison":
+                            mixer.submit(f"~setting unison {synth.setdefault('unison', 1)}", force=True)
+                        else:
+                            mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
+            z = max(0, x - 4)
+            rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
+            col = (48 if hovered else 32,) * 3
+            bevel_rectangle(
                 DISP2,
-                (screensize[0] - sidebar_width, 52),
+                col,
+                rect,
+                3,
             )
-        maxb = (sidebar_width - 12) // 44
-        for i, button in enumerate(sidebar.buttons[:maxb]):
-            if button.get("rect"):
-                lum = 223 if in_rect(mpos, button.rect) else 191
+            rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
+            DISP2.blit(
+                rainbow,
+                (offs2 + 8 + x, 17 + i * 32),
+                (x, 0, w - x, 9),
+                special_flags=BLEND_RGB_MULT,
+            )
+            rect = (offs2 + 8, 17 + i * 32, x, 9)
+            col = (223 if hovered else 191,) * 3
+            bevel_rectangle(
+                DISP2,
+                col,
+                rect,
+                3,
+            )
+            rainbow = quadratic_gradient((w, 9), pc() + i / 4)
+            DISP2.blit(
+                rainbow,
+                (offs2 + 8, 17 + i * 32),
+                (0, 0, x, 9),
+                special_flags=BLEND_RGB_MULT,
+            )
+            if hovered:
+                bevel_rectangle(
+                    DISP2,
+                    (191, 127, 255),
+                    brect2,
+                    2,
+                    filled=False,
+                )
+        DISP.blit(
+            DISP2,
+            (screensize[0] - sidebar_width, 52),
+        )
+    maxb = (sidebar_width - 12) // 44
+    for i, button in enumerate(sidebar.buttons[:maxb]):
+        if button.get("rect"):
+            lum = 223 if in_rect(mpos, button.rect) else 191
+            lum += button.get("flash", 0)
+            if not i:
+                lum -= 32
                 lum += button.get("flash", 0)
-                if not i:
-                    lum -= 32
-                    lum += button.get("flash", 0)
-                col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 1)]
-                bevel_rectangle(
-                    DISP,
-                    col,
-                    button.rect,
-                    4,
-                )
-                if not i:
-                    sprite = button.sprite[sidebar.abspos]
-                else:
-                    sprite = button.sprite
-                DISP.blit(
-                    sprite,
-                    (button.rect[0] + 5, button.rect[1] + 5),
-                    special_flags=BLEND_ALPHA_SDL2,
-                )
-        if offs > -sidebar_width + 4:
-            pops = set()
-            for i, entry in enumerate(sidebar.particles):
-                if entry.get("life") is None:
-                    entry.life = 1
-                else:
-                    entry.life -= dur
-                    if entry.life <= 0:
-                        pops.add(i)
-                col = [round(i * entry.life) for i in entry.get("colour", (223, 0, 0))]
-                y = round(Z + 52 + 16 + entry.get("pos", 0) * 32)
-                ext = round(32 - 32 * entry.life)
-                rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 - 16 + ext * 2, 32 + ext * 2)
-                bevel_rectangle(
-                    DISP,
-                    col,
-                    rect,
-                    4,
-                    alpha=round(255 * entry.life),
-                )
-            sidebar.particles.pops(pops)
-        else:
-            sidebar.particles.clear()
+            col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 1)]
+            bevel_rectangle(
+                DISP,
+                col,
+                button.rect,
+                4,
+            )
+            if not i:
+                sprite = button.sprite[sidebar.abspos]
+            else:
+                sprite = button.sprite
+            DISP.blit(
+                sprite,
+                (button.rect[0] + 5, button.rect[1] + 5),
+                special_flags=BLEND_ALPHA_SDL2,
+            )
+    if offs > -sidebar_width + 4:
+        pops = set()
+        for i, entry in enumerate(sidebar.particles):
+            if entry.get("life") is None:
+                entry.life = 1
+            else:
+                entry.life -= dur
+                if entry.life <= 0:
+                    pops.add(i)
+            col = [round(i * entry.life) for i in entry.get("colour", (223, 0, 0))]
+            y = round(Z + 52 + 16 + entry.get("pos", 0) * 32)
+            ext = round(32 - 32 * entry.life)
+            rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 - 16 + ext * 2, 32 + ext * 2)
+            bevel_rectangle(
+                DISP,
+                col,
+                rect,
+                4,
+                alpha=round(255 * entry.life),
+            )
+        sidebar.particles.pops(pops)
+    else:
+        sidebar.particles.clear()
+
+def draw_menu():
+    global crosshair, hovertext
+    ts = toolbar.progress.setdefault("timestamp", 0)
+    t = pc()
+    dur = max(0.001, min(t - ts, 0.125))
+    if not tick & 7:
+        toolbar.progress.timestamp = pc()
+        pops = set()
+        for i, ripple in enumerate(toolbar.ripples):
+            ripple.radius += dur * 128
+            ripple.alpha -= dur * 128
+            if ripple.alpha <= 2:
+                pops.add(i)
+        if pops:
+            toolbar.ripples.pops(pops)
+        pops = set()
+        for i, ripple in enumerate(sidebar.ripples):
+            ripple.radius += dur * 128
+            ripple.alpha -= dur * 128
+            if ripple.alpha <= 2:
+                pops.add(i)
+        if pops:
+            sidebar.ripples.pops(pops)
+    crosshair = False
+    hovertext = None
+    if any(mclick) and in_rect(mpos, sidebar.rect):
+        sidebar.ripples.append(cdict(
+            pos=mpos,
+            radius=0,
+            colour=ripple_colours[mclick.index(1)],
+            alpha=255,
+        ))
+    if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
+        render_sidebar(dur)
     if any(mclick) and in_rect(mpos, toolbar.rect):
         toolbar.ripples.append(cdict(
             pos=mpos,
@@ -1927,19 +2038,24 @@ def draw_menu():
             special_flags=BLEND_RGB_MULT,
         )
         for i, button in enumerate(toolbar.buttons):
+            if i and toolbar.editor:
+                break
             if button.get("rect"):
                 lum = 191 if in_rect(mpos, button.rect) else 127
                 lum += button.get("flash", 0)
-                col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 0.25)]
+                if i:
+                    col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 0.25)]
+                else:
+                    col = [round(i * 255) for i in colorsys.hls_to_rgb(0.5, lum / 255, 0.25)]
                 rounded_bev_rect(
                     DISP,
                     col,
                     button.rect,
                     3,
                 )
-                if i == 1:
+                if i == 2:
                     val = control.shuffle
-                elif i == 0:
+                elif i == 1:
                     val = control.loop
                 else:
                     val = -1
@@ -1974,6 +2090,19 @@ def draw_menu():
                         cache=True,
                         font="Comic Sans MS",
                     )
+        if downloading.target:
+            pgr = os.path.exists(downloading.fn) and os.path.getsize(downloading.fn) / 192000 * 8
+            ratio = min(1, pgr / max(1, downloading.target))
+            percentage = round(ratio * 100, 3)
+            message_display(
+                f"Downloading: {percentage}%",
+                16,
+                (screensize[0] / 2, screensize[1] - 16),
+                colour=[round(i * 255) for i in colorsys.hsv_to_rgb(ratio / 3, 1, 1)],
+                surface=DISP,
+                cache=True,
+                font="Rockwell",
+            )
         pos = toolbar.pause.pos
         radius = toolbar.pause.radius
         spl = max(4, radius >> 2)
@@ -2086,11 +2215,12 @@ def draw_menu():
                 4,
                 filled=False,
             )
+        bsize = min(40, toolbar_height // 3)
         s = f"{time_disp(player.pos)}/{time_disp(player.end)}"
         message_display(
             s,
             min(24, toolbar_height // 3),
-            (screensize[0] - 4, screensize[1] - 2),
+            (screensize[0] - 8 - bsize, screensize[1]),
             surface=DISP,
             align=2,
             font="Comic Sans MS",
@@ -2348,13 +2478,18 @@ try:
         else:
             minimised = is_minimised()
         if not tick & 15:
-            if player.paused:
-                colour = 4
-            elif is_active() and player.amp > 1 / 64:
-                colour = 2
+            if not downloading.target:
+                if player.paused:
+                    colour = 4
+                elif is_active() and player.amp > 1 / 64:
+                    colour = 2
+                else:
+                    colour = 8
+                submit(taskbar_progress_bar, player.pos / player.end, colour | (player.end >= inf))
             else:
-                colour = 8
-            submit(taskbar_progress_bar, player.pos / player.end, colour | (player.end >= inf))
+                pgr = os.path.exists(downloading.fn) and os.path.getsize(downloading.fn) / 192000 * 8
+                ratio = min(1, pgr / max(1, downloading.target))
+                submit(taskbar_progress_bar, ratio, 4 if ratio < 1 / 3 else 8 if ratio < 2 / 3 else 2)
             if minimised:
                 toolbar.ripples.clear()
                 sidebar.ripples.clear()

@@ -890,13 +890,13 @@ def play(pos):
                     b = bytes(b)
                     fut = submit(channel2.write, b)
                     try:
-                        fut.result(timeout=0.12)
+                        fut.result(timeout=0.24)
                     except:
                         print("Pyaudio timed out.")
-                        try:
-                            channel2.stop_stream()
-                        except:
-                            pass
+                        # try:
+                        #     channel2.stop_stream()
+                        # except:
+                        #     pass
                         submit(channel2.close)
                         globals()["aout"] = submit(pya_init)
                         globals()["channel2"] = None
@@ -904,7 +904,7 @@ def play(pos):
                     buffer = sample.reshape((1600, 2))
                     sound = pygame.sndarray.make_sound(buffer)
                     channel = pygame.mixer.Channel(0)
-                    for i in range(12):
+                    for i in range(24):
                         if not channel.get_queue():
                             break
                         time.sleep(0.005)
@@ -1266,10 +1266,15 @@ while not sys.stdin.closed and failed < 8:
                 ssize = tuple(map(int, command[7:].split()))
                 continue
             if command.startswith("~download"):
-                st, h = command[10:].split()
-                fn2 = "cache/~" + h + ".pcm"
+                st, fn2 = command[10:].split(" ", 1)
+                # fn2 = "cache/~" + h + ".pcm"
                 if not os.path.exists(fn2):
-                    cmd = ffmpeg_start + ("-nostdin", "-i", st, "-f", "s16le", "-ar", "48k", "-ac", "2", fn2)
+                    cmd = ffmpeg_start + ("-nostdin", "-i", st)
+                    if fn2.endswith(".pcm"):
+                        cmd += ("-f", "s16le")
+                    else:
+                        cmd += ("-b:a", "192k")
+                    cmd += ("-ar", "48k", "-ac", "2", fn2)
                     print(cmd)
                     subprocess.Popen(cmd)
                 continue

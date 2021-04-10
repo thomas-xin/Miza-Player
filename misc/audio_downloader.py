@@ -1250,8 +1250,8 @@ class AudioDownloader:
                 raise LookupError(f"No results for {item}")
             # Check if result is a playlist
             if resp.get("_type", None) == "playlist":
-                entries = list(resp["entries"])
-                if force or len(entries) <= 1:
+                entries = resp["entries"]
+                if force:
                     for entry in entries:
                         # Extract full data if playlist only contains 1 item
                         data = self.extract_from(entry["url"])
@@ -1279,7 +1279,7 @@ class AudioDownloader:
                                     if "." in title:
                                         title = title[:title.rindex(".")]
                                     found = False
-                                if "duration" in entry:
+                                if entry.get("duration") is not None:
                                     dur = float(entry["duration"])
                                 else:
                                     dur = None
@@ -1296,7 +1296,7 @@ class AudioDownloader:
                                         temp["url"] = f"https://www.youtube.com/watch?v={url}"
                                 temp["research"] = True
                             except:
-                                pass
+                                print_exc()
                         output.append(cdict(temp))
             else:
                 # Single item results must contain full data, we take advantage of that here

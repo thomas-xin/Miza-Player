@@ -1385,7 +1385,6 @@ def render_sidebar(dur=0):
             x = 4 + offs
             y = round(Z + entry.get("pos", 0) * 32)
             rect = (x, y, sidebar_width - 32, 32)
-            t = 255
             selectable = i == etarget
             if not selectable and sidebar.get("last_selected") and (kheld[K_LSHIFT] or kheld[K_RSHIFT]):
                 b = lq
@@ -1478,7 +1477,7 @@ def render_sidebar(dur=0):
                     entry.surf,
                     (x + 6, y + 4),
                     area=(0, 0, sidebar_width - 48, 24),
-                    colour=(t,) * 3,
+                    colour=(255,) * 3,
                 )
             else:
                 DISP2.blit(
@@ -1490,7 +1489,7 @@ def render_sidebar(dur=0):
                 time_disp(entry.duration) if entry.duration else "N/A",
                 10,
                 [x + sidebar_width - 36, y + 28],
-                (t,) * 3,
+                (255,) * 3,
                 surface=DISP2,
                 align=2,
                 cache=True,
@@ -1551,7 +1550,7 @@ def render_sidebar(dur=0):
                         entry.surf,
                         (x + 6, y + 4),
                         area=(0, 0, sidebar_width - 48, 24),
-                        colour=(t,) * 3,
+                        colour=(255,) * 3,
                     )
                 else:
                     DISP2.blit(
@@ -1563,7 +1562,7 @@ def render_sidebar(dur=0):
                     time_disp(entry.duration) if entry.duration else "N/A",
                     10,
                     [x + sidebar_width - 36, y + 28],
-                    (t,) * 3,
+                    (255,) * 3,
                     surface=DISP2,
                     align=2,
                     cache=True,
@@ -2358,7 +2357,7 @@ def draw_menu():
                     entry.surf,
                     (x + 6, y + 4),
                     area=(0, 0, sidebar_width - 48, 24),
-                    colour=(t,) * 3,
+                    colour=(255,) * 3,
                 )
             else:
                 DISP.blit(
@@ -2370,7 +2369,7 @@ def draw_menu():
                 time_disp(entry.duration) if entry.duration else "N/A",
                 10,
                 [x + sidebar_width - 36, y + 28],
-                (t,) * 3,
+                (255,) * 3,
                 surface=DISP,
                 align=2,
                 cache=True,

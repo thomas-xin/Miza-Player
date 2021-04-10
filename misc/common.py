@@ -2425,14 +2425,14 @@ def _get_duration_2(filename, _timeout=12):
         print_exc()
     try:
         cdc = as_str(resp[0].rstrip())
-    except (IndexError, ValueError):
+    except (IndexError, ValueError, TypeError):
         cdc = "auto"
     try:
         dur = float(resp[1])
-    except (IndexError, ValueError):
+    except (IndexError, ValueError, TypeError):
         dur = None
     bps = None
-    if len(resp) > 2:
+    if resp and len(resp) > 2:
         with suppress(ValueError):
             bps = float(resp[2])
     return dur, bps, cdc

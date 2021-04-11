@@ -243,13 +243,11 @@ else:
         toolbar_height=64,
         audio=cdict(audio_default),
         control=cdict(control_default),
-        synth=cdict(synth_default),
         spectrogram=1,
         oscilloscope=1,
     )
 options.audio = cdict(options.get("audio", audio_default))
 options.control = cdict(options.get("control", control_default))
-options.synth = cdict(options.get("synth", synth_default))
 orig_options = copy.deepcopy(options)
 globals().update(options)
 
@@ -324,9 +322,6 @@ if hasmisc:
     s.write(f"~setting #shuffle {control.setdefault('shuffle', 0)}\n")
     s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
     s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
-    s.write(f"~setting unison {synth.setdefault('unison', 1)}\n")
-    s.write(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}\n")
-    # s.write(f"~synth 0.8\n")
     s.seek(0)
     mixer.stdin.write(s.read().encode("utf-8"))
     try:
@@ -461,6 +456,12 @@ def taskbar_progress_bar(ratio=1, colour=0):
 
 
 import PIL, easygui, easygui_qt, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, hashlib, base64, urllib
+import PyQt5
+from PyQt5 import QtCore, QtWidgets
+if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
+    PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+    PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
 from PIL import Image, ImageChops
 from math import *
 np = numpy

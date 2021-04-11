@@ -18,6 +18,16 @@ if not os.path.exists("playlists"):
 
 teapot_fut = submit(load_surface, "misc/teapot.png")
 
+project = cdict(
+    settings=cdict(
+        time=(4, 4),
+        speed=144,
+    ),
+    instruments=alist(),
+    measures=alist(),
+)
+instruments = project.instruments
+measures = project.measures
 
 player = cdict(
     paused=False,
@@ -74,6 +84,7 @@ button_sources = (
     "folder",
     "hyperlink",
     "playlist",
+    "plus",
     "edit",
     "repeat",
     "shuffle",
@@ -111,15 +122,28 @@ def setup_buttons():
         ))
         reset_menu(full=False)
         folder = button_images.folder.result()
+        def load_project():
+            raise BaseException
         sidebar.buttons.append(cdict(
             sprite=folder,
             click=enqueue_local,
+            click2=load_project,
         ))
         reset_menu(full=False)
         hyperlink = button_images.hyperlink.result()
+        plus = button_images.plus.result()
+        def add_instrument():
+            x = len(instruments)
+            project.instruments.append(cdict(
+                name=f"Instrument {x}",
+                colour=tuple(round(i * 255) for i in hsv_to_rgb(x / 12 % 1, 1, 1)),
+                wave=cdict(synth_default),
+            ))
         sidebar.buttons.append(cdict(
             sprite=hyperlink,
             click=enqueue_search,
+            sprite2=plus,
+            click2=add_instrument,
         ))
         reset_menu(full=False)
         playlist = button_images.playlist.result()
@@ -233,6 +257,10 @@ def setup_buttons():
         edit = button_images.edit.result()
         def edit_1():
             toolbar.editor ^= 1
+            if toolbar.editor:
+                mixer.submit(f"~setting spectrogram 0", force=True)
+            else:
+                mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
         toolbar.buttons.append(cdict(
             image=edit,
             click=edit_1,
@@ -1152,6 +1180,8 @@ def update_menu():
                     button.click()
                 else:
                     button.click[min(mclick.index(1), len(button.click) - 1)]()
+            if toolbar.editor:
+                break
     else:
         for button in toolbar.buttons:
             if "flash" in button:
@@ -1161,10 +1191,11 @@ def update_menu():
         for button in sidebar.buttons[:maxb]:
             if in_rect(mpos, button.rect):
                 button.flash = 32
-                if callable(button.click):
-                    button.click()
+                click = button.click if not toolbar.editor else button.get("click2") or button.click
+                if callable(click):
+                    click()
                 else:
-                    button.click[min(mclick.index(1), len(button.click) - 1)]()
+                    click[min(mclick.index(1), len(click) - 1)]()
     else:
         for button in sidebar.buttons:
             if "flash" in button:
@@ -1886,10 +1917,9 @@ def render_sidebar(dur=0):
                 button.rect,
                 4,
             )
-            if not i:
-                sprite = button.sprite[sidebar.abspos]
-            else:
-                sprite = button.sprite
+            sprite = button.sprite if not toolbar.editor else button.get("sprite2") or button.sprite
+            if type(sprite) in (tuple, list, alist):
+                sprite = sprite[sidebar.abspos]
             DISP.blit(
                 sprite,
                 (button.rect[0] + 5, button.rect[1] + 5),

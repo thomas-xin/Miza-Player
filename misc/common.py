@@ -179,6 +179,55 @@ write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame
 sys.stdout.write = write
 
+# import arcade
+# key = arcade.key
+# mouse = cdict(
+#     LEFT=arcade.MOUSE_BUTTON_LEFT,
+#     RIGHT=arcade.MOUSE_BUTTON_RIGHT,
+#     MIDDLE=arcade.MOUSE_BUTTON_MIDDLE,
+# )
+
+# class Window(arcade.Window):
+
+#     kheld = set()
+#     mheld = set()
+#     mpos = [0, 0]
+
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.background = (0,) * 3
+
+#     def on_key_press(self, k, *_):
+#         kheld.add(k)
+#         if k in (key.LSHIFT, key.RSHIFT):
+#             kheld.add("SHIFT")
+#         elif k in (key.LCTRL, key.RCTRL):
+#             kheld.add("CTRL")
+#         elif k in (key.LALT, key.RALT):
+#             kheld.add("ALT")
+    
+#     def on_key_release(self, k, *_):
+#         kheld.discard(k)
+#         if k in (key.LSHIFT, key.RSHIFT):
+#             kheld.discard("SHIFT")
+#         elif k in (key.LCTRL, key.RCTRL):
+#             kheld.discard("CTRL")
+#         elif k in (key.LALT, key.RALT):
+#             kheld.discard("ALT")
+
+#     def on_mouse_motion(self, x, y, *_):
+#         self.mpos[:] = x, y
+
+#     def on_mouse_press(self, x, y, k, *_):
+#         self.mpos[:] = x, y
+#         mheld.add(k)
+    
+#     def on_mouse_release(self, x, y, k, *_):
+#         self.mpos[:] = x, y
+#         mheld.discard(k)
+
+# window = Window()
+
 
 asettings = cdict(
     volume=(0, 5),
@@ -288,7 +337,11 @@ def get_focused(replace=False):
     global mouse_pos_check
     if not pygame.mouse.get_focused():
         return
+    if is_unfocused():
+        return
     mpc = pygame.mouse.get_pos()
+    # if not in_rect(mpc, (0, 0, *window.get_size())):
+    #     return
     if replace and not mouse_pos_check:
         mouse_pos_check = mpc
     if mpc != mouse_pos_check:
@@ -375,6 +428,7 @@ def get_window_flags():
     return wp.showCmd
 
 is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
+is_unfocused = lambda: hwnd != ctypes.windll.user32.GetForegroundWindow(hwnd)
 
 if options.get("maximised"):
     ctypes.windll.user32.ShowWindow(hwnd, 3)

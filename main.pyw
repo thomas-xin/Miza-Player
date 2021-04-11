@@ -86,6 +86,7 @@ button_sources = (
     "playlist",
     "plus",
     "edit",
+    "waves",
     "repeat",
     "shuffle",
     "back",
@@ -136,7 +137,7 @@ def setup_buttons():
             x = len(instruments)
             project.instruments.append(cdict(
                 name=f"Instrument {x}",
-                colour=tuple(round(i * 255) for i in hsv_to_rgb(x / 12 % 1, 1, 1)),
+                colour=tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1)),
                 wave=cdict(synth_default),
             ))
         sidebar.buttons.append(cdict(
@@ -147,6 +148,7 @@ def setup_buttons():
         ))
         reset_menu(full=False)
         playlist = button_images.playlist.result()
+        waves = button_images.waves.result()
         def get_playlist():
             items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
             if not items:
@@ -249,9 +251,13 @@ def setup_buttons():
                         f"Playlist {repr(choice)} has been removed!",
                         "Success!",
                     )
+        def waves_1():
+            raise BaseException
         sidebar.buttons.append(cdict(
             sprite=playlist,
+            sprite2=waves,
             click=(get_playlist, edit_playlist),
+            click2=waves_1,
         ))
         reset_menu(full=False)
         edit = button_images.edit.result()
@@ -2504,8 +2510,10 @@ try:
         foc = get_focused()
         if foc:
             minimised = False
+            unfocused = False
         else:
             minimised = is_minimised()
+            unfocused = is_unfocused()
         if not tick & 15:
             if not downloading.target:
                 if player.paused:
@@ -2527,7 +2535,7 @@ try:
                 player.fut = submit(start)
         elif not queue:
             player.pop("fut").result()
-        if not minimised:
+        if not minimised and (not unfocused or not tick % 48):
             mclick = [x and not y for x, y in zip(mheld, mprev)]
             mrelease = [not x and y for x, y in zip(mheld, mprev)]
             mpos2 = mouse_rel_pos()

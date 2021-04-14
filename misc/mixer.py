@@ -907,7 +907,7 @@ def play(pos):
                         #     channel2.stop_stream()
                         # except:
                         #     pass
-                        submit(channel2.close)
+                        # submit(channel2.close)
                         globals()["aout"] = submit(pya_init)
                         globals()["channel2"] = None
                 if not channel2:

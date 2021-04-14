@@ -95,6 +95,7 @@ button_sources = (
     "microphone",
 )
 button_images = cdict((i, submit(load_surface, "misc/" + i + ".png")) for i in button_sources)
+pencil = submit(load_surface, "misc/pencil.png")
 
 def setup_buttons():
     try:
@@ -118,6 +119,7 @@ def setup_buttons():
             mixer.stdin.write(s.read().encode("utf-8"))
             mixer.stdin.flush()
         sidebar.buttons.append(cdict(
+            name="Settings",
             sprite=(gears, notes),
             click=(settings_toggle, settings_reset),
         ))
@@ -126,6 +128,7 @@ def setup_buttons():
         def load_project():
             raise BaseException
         sidebar.buttons.append(cdict(
+            name="Open",
             sprite=folder,
             click=enqueue_local,
             click2=load_project,
@@ -141,9 +144,11 @@ def setup_buttons():
                 wave=cdict(synth_default),
             ))
         sidebar.buttons.append(cdict(
+            name="Search",
+            name2="New instrument",
             sprite=hyperlink,
-            click=enqueue_search,
             sprite2=plus,
+            click=enqueue_search,
             click2=add_instrument,
         ))
         reset_menu(full=False)
@@ -254,6 +259,8 @@ def setup_buttons():
         def waves_1():
             raise BaseException
         sidebar.buttons.append(cdict(
+            name="Playlist",
+            name2="Audio Clip",
             sprite=playlist,
             sprite2=waves,
             click=(get_playlist, edit_playlist),
@@ -268,6 +275,7 @@ def setup_buttons():
             else:
                 mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
         toolbar.buttons.append(cdict(
+            name="Editor",
             image=edit,
             click=edit_1,
         ))
@@ -278,6 +286,7 @@ def setup_buttons():
         def repeat_2():
             control.loop = (control.loop - 1) % 3
         toolbar.buttons.append(cdict(
+            name="Repeat",
             image=repeat,
             click=(repeat_1, repeat_2),
         ))
@@ -296,6 +305,7 @@ def setup_buttons():
             if control.shuffle == 2 and player.get("needs_shuffle"):
                 seek_abs(player.pos)
         toolbar.buttons.append(cdict(
+            name="Shuffle",
             image=shuffle,
             click=(shuffle_1, shuffle_2),
         ))
@@ -306,6 +316,7 @@ def setup_buttons():
             queue.rotate(1)
             start()
         toolbar.buttons.append(cdict(
+            name="Back",
             image=back,
             click=rleft,
         ))
@@ -315,6 +326,7 @@ def setup_buttons():
             queue.rotate(-1)
             start()
         toolbar.buttons.append(cdict(
+            name="Next",
             image=front,
             click=rright,
         ))
@@ -325,6 +337,7 @@ def setup_buttons():
             queue.__init__(queue.view[::-1], fromarray=True)
             start()
         toolbar.buttons.append(cdict(
+            name="Flip",
             image=flip,
             click=flip_1,
         ))
@@ -335,6 +348,7 @@ def setup_buttons():
             random.shuffle(queue.view)
             start()
         toolbar.buttons.append(cdict(
+            name="Scramble",
             image=scramble,
             click=scramble_1,
         ))
@@ -342,6 +356,7 @@ def setup_buttons():
         microphone = button_images.microphone.result()
         globals()["pya"] = afut.result()
         sidebar.buttons.append(cdict(
+            name="Audio input",
             sprite=microphone,
             click=enqueue_device,
         ))
@@ -1336,9 +1351,9 @@ def render_sidebar(dur=0):
             if fn:
                 submit(download, entries, fn)
         Z = -sidebar.scroll.pos
-        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16))
-        DISP2.fill(sc)
-        DISP2.set_colorkey(sc)
+        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), SRCALPHA)
+        DISP2.fill((0, 0, 0, 0))
+        # DISP2.set_colorkey(sc)
         if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
             submit(enqueue_auto, *pyperclip.paste().splitlines())
         if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
@@ -1508,20 +1523,11 @@ def render_sidebar(dur=0):
                     align=0,
                     cache=True,
                 )
-            if not t:
-                blit_complex(
-                    DISP2,
-                    entry.surf,
-                    (x + 6, y + 4),
-                    area=(0, 0, sidebar_width - 48, 24),
-                    colour=(255,) * 3,
-                )
-            else:
-                DISP2.blit(
-                    entry.surf,
-                    (x + 6, y + 4),
-                    (0, 0, sidebar_width - 48, 24),
-                )
+            DISP2.blit(
+                entry.surf,
+                (x + 6, y + 4),
+                (0, 0, sidebar_width - 48, 24),
+            )
             message_display(
                 time_disp(entry.duration) if entry.duration else "N/A",
                 10,
@@ -1581,20 +1587,11 @@ def render_sidebar(dur=0):
                         align=0,
                         cache=True,
                     )
-                if not t:
-                    blit_complex(
-                        DISP2,
-                        entry.surf,
-                        (x + 6, y + 4),
-                        area=(0, 0, sidebar_width - 48, 24),
-                        colour=(255,) * 3,
-                    )
-                else:
-                    DISP2.blit(
-                        entry.surf,
-                        (x + 6, y + 4),
-                        (0, 0, sidebar_width - 48, 24),
-                    )
+                DISP2.blit(
+                    entry.surf,
+                    (x + 6, y + 4),
+                    (0, 0, sidebar_width - 48, 24),
+                )
                 message_display(
                     time_disp(entry.duration) if entry.duration else "N/A",
                     10,
@@ -1604,6 +1601,559 @@ def render_sidebar(dur=0):
                     align=2,
                     cache=True,
                     font="Comic Sans MS",
+                )
+                anima_rectangle(
+                    DISP2,
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
+                    [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
+                    frame=4,
+                    count=2,
+                    flash=1,
+                    ratio=pc() * 0.4,
+                    reduction=0.1,
+                )
+        if sidebar.get("loading"):
+            x = 4 + offs
+            y = round(Z + (len(queue) - base) * 32)
+            rect = (x, y, sidebar_width - 32, 32)
+            rounded_bev_rect(
+                DISP2,
+                (191,) * 3,
+                rect,
+                4,
+                alpha=255,
+            )
+            anima_rectangle(
+                DISP2,
+                (255,) * 3,
+                [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
+                frame=4,
+                count=2,
+                flash=1,
+                ratio=pc() * 0.4,
+                reduction=0.1,
+            )
+            if not sidebar.get("loading_text"):
+                sidebar.loading_text = message_display(
+                    "Loading...",
+                    12,
+                    [0] * 2,
+                    align=0,
+                    cache=True,
+                )
+            DISP2.blit(
+                sidebar.loading_text,
+                (x + 6, y + 4),
+                (0, 0, sidebar_width - 48, 24),
+            )
+        if swap:
+            orig = queue[0]
+            dest = deque()
+            targets = {}
+            for i, entry in enumerate(queue):
+                if i + swap < 0 or i + swap >= len(queue):
+                    continue
+                if entry.get("selected"):
+                    targets[i + swap] = entry
+                    entry.moved = True
+            i = 0
+            for entry in queue:
+                while i in targets:
+                    dest.append(targets.pop(i))
+                    i += 1
+                if not entry.get("moved"):
+                    dest.append(entry)
+                    i += 1
+                else:
+                    entry.pop("moved", None)
+            if targets:
+                dest.extend(targets.values())
+                for entry in targets.values():
+                    entry.pop("moved", None)
+            queue[:] = dest
+            if queue[0] is not orig:
+                submit(enqueue, queue[0])
+            try:
+                if not sidebar.last_selected.selected:
+                    raise ValueError
+                lq2 = queue.index(sidebar.last_selected)
+            except (AttributeError, ValueError, IndexError):
+                sidebar.pop("last_selected", None)
+                lq2 = nan
+        DISP.blit(
+            DISP2,
+            (screensize[0] - sidebar_width + 4, 52 + 16),
+        )
+    if offs <= -4:
+        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
+        DISP2.fill(sc)
+        DISP2.set_colorkey(sc)
+        in_sidebar = in_rect(mpos, sidebar.rect)
+        offs2 = offs + sidebar_width
+        for i, opt in enumerate(asettings):
+            message_display(
+                opt.capitalize(),
+                11,
+                (offs2 + 8, i * 32),
+                surface=DISP2,
+                align=0,
+                cache=True,
+                font="Comic Sans MS",
+            )
+            # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
+            s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
+            message_display(
+                s,
+                11,
+                (offs2 + sidebar_width - 8, 16 + i * 32),
+                surface=DISP2,
+                align=2,
+                cache=True,
+                font="Comic Sans MS",
+            )
+            srange = asettings[opt]
+            w = (sidebar_width - 16)
+            x = (options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
+            if opt in ("speed", "pitch", "nightcore"):
+                x = min(1, max(0, x))
+            else:
+                x = min(1, abs(x))
+            x = round(x * w)
+            brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
+            brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
+            hovered = in_sidebar and in_rect(mpos, brect) or aediting[opt]
+            crosshair |= bool(hovered) << 1
+            v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
+            if len(srange) > 2:
+                v = round_min(math.round(v / srange[2]) * srange[2])
+            else:
+                rv = round_min(math.round(v * 32) / 32)
+                if type(rv) is int and rv not in srange:
+                    v = rv
+            if hovered and not hovertext:
+                hovertext = cdict(
+                    text=str(round(v * 100, 2)) + "%",
+                    size=10,
+                    colour=(255, 255, 127),
+                )
+                if aediting[opt]:
+                    if not mheld[0]:
+                        aediting[opt] = False
+                elif mclick[0]:
+                    aediting[opt] = True
+                elif mclick[1]:
+                    enter = easygui.get_string(
+                        opt.capitalize(),
+                        "Miza Player",
+                        str(round_min(options.audio[opt] * 100)),
+                    )
+                    if enter:
+                        v = round_min(float(eval(enter, {}, {})) / 100)
+                        aediting[opt] = True
+                if aediting[opt]:
+                    orig, options.audio[opt] = options.audio[opt], v
+                    if orig != v:
+                        mixer.submit(f"~setting {opt} {v}", force=opt == "volume" or not queue)
+            z = max(0, x - 4)
+            rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
+            col = (48 if hovered else 32,) * 3
+            bevel_rectangle(
+                DISP2,
+                col,
+                rect,
+                3,
+            )
+            rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
+            DISP2.blit(
+                rainbow,
+                (offs2 + 8 + x, 17 + i * 32),
+                (x, 0, w - x, 9),
+                special_flags=BLEND_RGB_MULT,
+            )
+            rect = (offs2 + 8, 17 + i * 32, x, 9)
+            col = (223 if hovered else 191,) * 3
+            bevel_rectangle(
+                DISP2,
+                col,
+                rect,
+                3,
+            )
+            rainbow = quadratic_gradient((w, 9), pc() + i / 4)
+            DISP2.blit(
+                rainbow,
+                (offs2 + 8, 17 + i * 32),
+                (0, 0, x, 9),
+                special_flags=BLEND_RGB_MULT,
+            )
+            if hovered:
+                bevel_rectangle(
+                    DISP2,
+                    (191, 127, 255),
+                    brect2,
+                    2,
+                    filled=False,
+                )
+        DISP.blit(
+            DISP2,
+            (screensize[0] - sidebar_width, 52),
+        )
+
+def render_dragging():
+    base, maxitems = sidebar.base, sidebar.maxitems
+    for i, entry in enumerate(queue[base:base + maxitems], base):
+        if not entry.get("selected"):
+            continue
+        sat = 0.875
+        val = 1
+        entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+        x, y = mpos2 - sidebar.selection_offset
+        y += 52 + 16
+        x += screensize[0] - sidebar_width + 4
+        if isfinite(lq2):
+            y += (i - lq2) * 32
+        rect = (x, y, sidebar_width - 32, 32)
+        sat = 0.875
+        val = 0.5
+        flash = entry.get("flash", 16)
+        if flash:
+            sat = max(0, sat - flash / 16)
+            val = min(1, val + flash / 16)
+        bevel_rectangle(
+            DISP,
+            [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+            [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
+            0,
+            alpha=191,
+        )
+        rounded_bev_rect(
+            DISP,
+            col,
+            rect,
+            4,
+            alpha=255,
+            filled=False,
+        )
+        if not entry.get("surf"):
+            entry.surf = message_display(
+                entry.name[:128],
+                12,
+                (0,) * 2,
+                align=0,
+                cache=True,
+            )
+        DISP.blit(
+            entry.surf,
+            (x + 6, y + 4),
+            (0, 0, sidebar_width - 48, 24),
+        )
+        message_display(
+            time_disp(entry.duration) if entry.duration else "N/A",
+            10,
+            [x + sidebar_width - 36, y + 28],
+            (255,) * 3,
+            surface=DISP,
+            align=2,
+            cache=True,
+            font="Comic Sans MS",
+        )
+        anima_rectangle(
+            DISP,
+            [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
+            [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
+            frame=4,
+            count=2,
+            flash=1,
+            ratio=pc() * 0.4,
+            reduction=0.1,
+        )
+
+def render_sidebar_2(dur=0):
+    global crosshair, hovertext, lq2
+    modified.add(sidebar.rect)
+    offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
+    sc = sidebar.colour or (64, 0, 96)
+    if sidebar.ripples or offs > -sidebar_width + 4:
+        DISP2 = pygame.Surface((sidebar.rect[2], sidebar.rect[3] + 4), SRCALPHA)
+        bevel_rectangle(
+            DISP2,
+            sc,
+            (0, 0) + sidebar.rect2[2:],
+            4,
+        )
+        for ripple in sidebar.ripples:
+            concentric_circle(
+                DISP2,
+                ripple.colour,
+                (ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
+                ripple.radius,
+                fill_ratio=1 / 3,
+                alpha=sqrt(max(0, ripple.alpha)) * 16,
+            )
+        if offs > -sidebar_width + 4:
+            n = len(instruments)
+            message_display(
+                f"{n} instruments",
+                12,
+                (6 + offs, 48),
+                surface=DISP2,
+                align=0,
+                font="Comic Sans MS",
+            )
+        if instruments and sidebar.scroll.get("colour"):
+            rounded_bev_rect(
+                DISP2,
+                sidebar.scroll.background,
+                (sidebar.scroll.rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
+                4,
+            )
+            rounded_bev_rect(
+                DISP2,
+                sidebar.scroll.colour,
+                (sidebar.scroll.select_rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
+                4,
+            )
+        DISP.blit(
+            DISP2,
+            sidebar.rect[:2],
+        )
+    else:
+        bevel_rectangle(
+            DISP,
+            sc,
+            sidebar.rect2,
+            4,
+        )
+    if offs > 4 - sidebar_width:
+        queue = instruments
+        if queue and (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_s]:
+            save_project()
+        Z = -sidebar.scroll.pos
+        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), SRCALPHA)
+        DISP2.fill((0, 0, 0, 0))
+        # DISP2.set_colorkey(sc)
+        if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
+            submit(enqueue_auto, *pyperclip.paste().splitlines())
+        if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
+            sidebar.pop("dragging", None)
+        if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue):
+            sidebar.pop("last_selected")
+        copies = deque()
+        pops = set()
+        try:
+            if not sidebar.last_selected.selected:
+                raise ValueError
+            lq = queue.index(sidebar.last_selected)
+        except (AttributeError, ValueError, IndexError):
+            sidebar.pop("last_selected", None)
+            lq = nan
+        lq2 = lq
+        swap = None
+        base, maxitems = sidebar.base, sidebar.maxitems
+        otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
+        etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
+        target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
+        if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
+            if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
+                for entry in queue:
+                    entry.pop("selected", None)
+                sidebar.pop("last_selected", None)
+                lq = nan
+        for i, entry in enumerate(queue[base:base + maxitems], base):
+            if entry.get("selected") and sidebar.get("dragging"):
+                x = 4 + offs
+                y = round(Z + entry.get("pos", 0) * 32)
+                rect = (x, y, sidebar_width - 32, 32)
+                sat = 0.875
+                val = 1
+                secondary = True
+                if pc() % 0.25 < 0.125:
+                    entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                else:
+                    col = (255,) * 3
+                rounded_bev_rect(
+                    DISP2,
+                    col,
+                    rect,
+                    4,
+                    alpha=round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
+                    filled=False,
+                )
+                if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL] and sidebar.get("last_selected") is entry:
+                    if target != i:
+                        swap = target - i
+        for i, entry in enumerate(queue):
+            if not entry.name:
+                pops.add(i)
+                continue
+            if entry.get("selected"):
+                if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
+                    pops.add(i)
+                    if sidebar.get("last_selected") == entry:
+                        sidebar.pop("last_selected", None)
+                if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
+                    entry.flash = 16
+                    copies.append(entry.url)
+            elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a]:
+                entry.selected = True
+                sidebar.last_selected = entry
+                lq = i
+            if i < base or i >= base + maxitems:
+                entry.flash = 8
+                entry.pos = i
+                continue
+            if not isfinite(lq):
+                lq2 = nan
+            x = 4 + offs
+            y = round(Z + entry.get("pos", 0) * 32)
+            rect = (x, y, sidebar_width - 32, 32)
+            selectable = i == etarget
+            if not selectable and sidebar.get("last_selected") and (kheld[K_LSHIFT] or kheld[K_RSHIFT]):
+                b = lq
+                if b >= 0:
+                    a = target
+                    a, b = sorted((a, b))
+                    if a <= i <= b:
+                        selectable = True
+            if selectable or entry.get("selected"):
+                if mclick[0] and selectable:
+                    if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
+                        entry.selected = False
+                        sidebar.dragging = False
+                        sidebar.pop("last_selected", None)
+                        lq = nan
+                    else:
+                        entry.selected = True
+                        sidebar.dragging = True
+                        if i == target:
+                            sidebar.last_selected = entry
+                            lq2 = i
+                            sidebar.selection_offset = np.array(mpos2) - rect[:2]
+                elif mclick[1] and i == etarget:
+                    entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
+                    playlists = os.listdir("playlists")
+                    text = (easygui.get_string(
+                        "Enter a name for your new playlist!",
+                        "Miza Player",
+                        f"Custom List {len(entries)}",
+                    ) or "").strip()
+                    if text:
+                        with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
+                            json.dump(dict(queue=entries, stats={}), f)
+                        easygui.show_message(
+                            f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+                        )
+                if entry.get("selected"):
+                    flash = entry.get("flash", 16)
+                    if flash >= 0:
+                        entry.flash = flash - 1
+                    continue
+                sat = 0.875
+                val = 1
+                secondary = True
+            else:
+                sat = 1
+                val = 0.75
+                secondary = False
+            flash = entry.get("flash", 16)
+            if flash:
+                if flash < 0:
+                    entry.flash = 0
+                else:
+                    sat = max(0, sat - flash / 16)
+                    val = min(1, val + flash / 16)
+                    entry.flash = flash - 1
+            entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+            rounded_bev_rect(
+                DISP2,
+                col,
+                rect,
+                4,
+                alpha=255 if secondary else round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
+                filled=not secondary,
+            )
+            if secondary:
+                sat = 0.875
+                val = 0.5
+                if flash:
+                    sat = max(0, sat - flash / 16)
+                    val = min(1, val + flash / 16)
+                bevel_rectangle(
+                    DISP2,
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
+                    0,
+                    alpha=191,
+                )
+            if not entry.get("surf"):
+                entry.surf = message_display(
+                    entry.name[:128],
+                    12,
+                    (0,) * 2,
+                    align=0,
+                    cache=True,
+                )
+            DISP2.blit(
+                entry.surf,
+                (x + 6, y + 4),
+                (0, 0, sidebar_width - 48, 24),
+            )
+            DISP2.blit(
+                pencil.result(),
+                (x + sidebar_width - 56, y + 8),
+            )
+        if copies:
+            pyperclip.copy("\n".join(copies))
+        if pops:
+            r = range(base, base + maxitems + 1)
+            sidebar.particles.extend(queue[i] for i in pops if i in r)
+            skipping = 0 in pops
+            queue.pops(pops)
+            if skipping:
+                mixer.clear()
+                submit(start)
+        if not sidebar.get("dragging"):
+            for i, entry in enumerate(queue[base:base + maxitems], base):
+                if not entry.get("selected"):
+                    continue
+                x = 4 + offs
+                y = round(Z + entry.get("pos", 0) * 32)
+                sat = 0.875
+                val = 1
+                rect = (x, y, sidebar_width - 32, 32)
+                entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                sat = 0.875
+                val = 0.5
+                flash = entry.get("flash", 16)
+                if flash:
+                    sat = max(0, sat - flash / 16)
+                    val = min(1, val + flash / 16)
+                bevel_rectangle(
+                    DISP2,
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
+                    0,
+                    alpha=191,
+                )
+                rounded_bev_rect(
+                    DISP2,
+                    col,
+                    rect,
+                    4,
+                    alpha=255,
+                    filled=False,
+                )
+                if not entry.get("surf"):
+                    entry.surf = message_display(
+                        entry.name[:128],
+                        12,
+                        (0,) * 2,
+                        align=0,
+                        cache=True,
+                    )
+                DISP2.blit(
+                    entry.surf,
+                    (x + 6, y + 4),
+                    (0, 0, sidebar_width - 48, 24),
                 )
                 anima_rectangle(
                     DISP2,
@@ -1734,7 +2284,11 @@ def render_sidebar(dur=0):
                 if type(rv) is int and rv not in srange:
                     v = rv
             if hovered and not hovertext:
-                hovertext = str(round(v * 100, 2)) + "%"
+                hovertext = cdict(
+                    text=str(round(v * 100, 2)) + "%",
+                    size=10,
+                    colour=(255, 255, 127),
+                )
                 if aediting[opt]:
                     if not mheld[0]:
                         aediting[opt] = False
@@ -1843,7 +2397,11 @@ def render_sidebar(dur=0):
                 if type(rv) is int and rv not in srange:
                     v = rv
             if hovered and not hovertext:
-                hovertext = str(round(v * 100, 2)) + "%"
+                hovertext = cdict(
+                    text=str(round(v * 100, 2)) + "%",
+                    size=10,
+                    colour=(255, 255, 127),
+                )
                 if sediting[opt]:
                     if not mheld[0]:
                         sediting[opt] = False
@@ -1908,52 +2466,66 @@ def render_sidebar(dur=0):
             DISP2,
             (screensize[0] - sidebar_width, 52),
         )
-    maxb = (sidebar_width - 12) // 44
-    for i, button in enumerate(sidebar.buttons[:maxb]):
-        if button.get("rect"):
-            lum = 223 if in_rect(mpos, button.rect) else 191
-            lum += button.get("flash", 0)
-            if not i:
-                lum -= 32
-                lum += button.get("flash", 0)
-            col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 1)]
-            bevel_rectangle(
-                DISP,
-                col,
-                button.rect,
-                4,
+
+def render_dragging_2():
+    queue = instruments
+    base, maxitems = sidebar.base, sidebar.maxitems
+    for i, entry in enumerate(queue[base:base + maxitems], base):
+        if not entry.get("selected"):
+            continue
+        sat = 0.875
+        val = 1
+        entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+        x, y = mpos2 - sidebar.selection_offset
+        y += 52 + 16
+        x += screensize[0] - sidebar_width + 4
+        if isfinite(lq2):
+            y += (i - lq2) * 32
+        rect = (x, y, sidebar_width - 32, 32)
+        sat = 0.875
+        val = 0.5
+        flash = entry.get("flash", 16)
+        if flash:
+            sat = max(0, sat - flash / 16)
+            val = min(1, val + flash / 16)
+        bevel_rectangle(
+            DISP,
+            [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+            [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
+            0,
+            alpha=191,
+        )
+        rounded_bev_rect(
+            DISP,
+            col,
+            rect,
+            4,
+            alpha=255,
+            filled=False,
+        )
+        if not entry.get("surf"):
+            entry.surf = message_display(
+                entry.name[:128],
+                12,
+                (0,) * 2,
+                align=0,
+                cache=True,
             )
-            sprite = button.sprite if not toolbar.editor else button.get("sprite2") or button.sprite
-            if type(sprite) in (tuple, list, alist):
-                sprite = sprite[sidebar.abspos]
-            DISP.blit(
-                sprite,
-                (button.rect[0] + 5, button.rect[1] + 5),
-                special_flags=BLEND_ALPHA_SDL2,
-            )
-    if offs > -sidebar_width + 4:
-        pops = set()
-        for i, entry in enumerate(sidebar.particles):
-            if entry.get("life") is None:
-                entry.life = 1
-            else:
-                entry.life -= dur
-                if entry.life <= 0:
-                    pops.add(i)
-            col = [round(i * entry.life) for i in entry.get("colour", (223, 0, 0))]
-            y = round(Z + 52 + 16 + entry.get("pos", 0) * 32)
-            ext = round(32 - 32 * entry.life)
-            rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 - 16 + ext * 2, 32 + ext * 2)
-            bevel_rectangle(
-                DISP,
-                col,
-                rect,
-                4,
-                alpha=round(255 * entry.life),
-            )
-        sidebar.particles.pops(pops)
-    else:
-        sidebar.particles.clear()
+        DISP.blit(
+            entry.surf,
+            (x + 6, y + 4),
+            (0, 0, sidebar_width - 48, 24),
+        )
+        anima_rectangle(
+            DISP,
+            [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
+            [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
+            frame=4,
+            count=2,
+            flash=1,
+            ratio=pc() * 0.4,
+            reduction=0.1,
+        )
 
 def draw_menu():
     global crosshair, hovertext
@@ -1988,7 +2560,71 @@ def draw_menu():
             alpha=255,
         ))
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
-        render_sidebar(dur)
+        if toolbar.editor:
+            render_sidebar_2(dur)
+        else:
+            render_sidebar(dur)
+        offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
+        Z = -sidebar.scroll.pos
+        maxb = (sidebar_width - 12) // 44
+        for i, button in enumerate(sidebar.buttons[:maxb]):
+            if button.get("rect"):
+                if in_rect(mpos, button.rect):
+                    lum = 223
+                    cm = abs(pc() % 1 - 0.5) * 0.328125
+                    c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
+                    hovertext = cdict(
+                        text=button.name,
+                        size=15,
+                        colour=c,
+                        offset=19,
+                        font="Rockwell",
+                    )
+                    crosshair |= 4
+                else:
+                    lum = 191
+                lum += button.get("flash", 0)
+                if not i:
+                    lum -= 32
+                    lum += button.get("flash", 0)
+                col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 1)]
+                bevel_rectangle(
+                    DISP,
+                    col,
+                    button.rect,
+                    4,
+                )
+                sprite = button.sprite if not toolbar.editor else button.get("sprite2") or button.sprite
+                if type(sprite) in (tuple, list, alist):
+                    sprite = sprite[bool(sidebar.abspos)]
+                DISP.blit(
+                    sprite,
+                    (button.rect[0] + 5, button.rect[1] + 5),
+                    special_flags=BLEND_ALPHA_SDL2,
+                )
+        if offs > -sidebar_width + 4:
+            pops = set()
+            for i, entry in enumerate(sidebar.particles):
+                if entry.get("life") is None:
+                    entry.life = 1
+                else:
+                    entry.life -= dur
+                    if entry.life <= 0:
+                        pops.add(i)
+                col = [round(i * entry.life) for i in entry.get("colour", (223, 0, 0))]
+                y = round(Z + 52 + 16 + entry.get("pos", 0) * 32)
+                ext = round(32 - 32 * entry.life)
+                rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 - 16 + ext * 2, 32 + ext * 2)
+                bevel_rectangle(
+                    DISP,
+                    col,
+                    rect,
+                    4,
+                    alpha=round(255 * entry.life),
+                )
+            sidebar.particles.pops(pops)
+        else:
+            sidebar.particles.clear()
     if any(mclick) and in_rect(mpos, toolbar.rect):
         toolbar.ripples.append(cdict(
             pos=mpos,
@@ -2076,12 +2712,22 @@ def draw_menu():
             if i and toolbar.editor:
                 break
             if button.get("rect"):
-                lum = 191 if in_rect(mpos, button.rect) else 127
-                lum += button.get("flash", 0)
-                if i:
-                    col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 0.25)]
+                if in_rect(mpos, button.rect):
+                    lum = 191
+                    cm = abs(pc() % 1 - 0.5) * 0.328125
+                    c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
+                    hovertext = cdict(
+                        text=button.name,
+                        size=15,
+                        colour=c,
+                        font="Rockwell",
+                        offset=-19,
+                    )
+                    crosshair |= 4
                 else:
-                    col = [round(i * 255) for i in colorsys.hls_to_rgb(0.5, lum / 255, 0.25)]
+                    lum = 127
+                lum += button.get("flash", 0)
+                col = [round(i * 255) for i in colorsys.hls_to_rgb(0.5 + bool(i) / 4, lum / 255, 0.25)]
                 rounded_bev_rect(
                     DISP,
                     col,
@@ -2272,36 +2918,46 @@ def draw_menu():
                 fill_ratio=0.5,
             )
         pops = set()
-        for i, p in enumerate(progress.particles):
-            ri = round(p.life)
-            p.hsv[0] = (p.hsv[0] + dur / 12) % 1
-            p.hsv[1] = max(p.hsv[0] - dur / 12, 1)
+        for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
+            ri = max(1, round(p.life ** 1.2 / 7 ** 0.2))
             col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
             a = round(min(255, (p.life - 2) * 20))
             point = [cos(p.angle) * p.rad, sin(p.angle) * p.rad]
             pos = (p.centre[0] + point[0], p.centre[1] + point[1])
-            reg_polygon_complex(
-                DISP,
-                pos,
-                col,
-                0,
-                ri,
-                ri,
-                alpha=a,
-                thickness=2,
-                repetition=ri - 2,
-                soft=True,
-            )
+            if ri > 2:
+                reg_polygon_complex(
+                    DISP,
+                    pos,
+                    col,
+                    0,
+                    ri,
+                    ri,
+                    alpha=a,
+                    thickness=2,
+                    repetition=ri - 2,
+                    soft=True,
+                )
+            else:
+                pygame.draw.circle(
+                    DISP,
+                    col + [a],
+                    pos,
+                    ri,
+                )
             p.life -= dur * 2.5
             if p.life <= 6:
                 p.angle += dur
-                p.rad = max(0, p.rad - 16 * dur)
+                p.rad = max(0, p.rad - 12 * dur)
+                # p.hsv[0] = (p.hsv[0] + dur / 24) % 1
+                # p.hsv[1] = max(p.hsv[1] - dur / 6, 0)
+                p.hsv[2] = max(p.hsv[2] - dur / 5, 0)
             if p.life < 3:
                 pops.add(i)
         progress.particles.pops(pops)
+        d = abs(pc() % 2 - 1)
+        hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
+        col = [round(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
         for i in shuffle(range(3)):
-            hsv = [0.5, 1, 1]
-            col = [round(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
             a = progress.angle + i / 3 * tau
             point = [cos(a) * r, sin(a) * r]
             p = (x + point[0], progress.pos[1] + point[1])
@@ -2345,82 +3001,10 @@ def draw_menu():
                 font="Comic Sans MS",
             )
     if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
-        base, maxitems = sidebar.base, sidebar.maxitems
-        for i, entry in enumerate(queue[base:base + maxitems], base):
-            if not entry.get("selected"):
-                continue
-            sat = 0.875
-            val = 1
-            entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
-            x, y = mpos2 - sidebar.selection_offset
-            y += 52 + 16
-            x += screensize[0] - sidebar_width + 4
-            if isfinite(lq2):
-                y += (i - lq2) * 32
-            rect = (x, y, sidebar_width - 32, 32)
-            sat = 0.875
-            val = 0.5
-            flash = entry.get("flash", 16)
-            if flash:
-                sat = max(0, sat - flash / 16)
-                val = min(1, val + flash / 16)
-            bevel_rectangle(
-                DISP,
-                [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
-                [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
-                0,
-                alpha=191,
-            )
-            rounded_bev_rect(
-                DISP,
-                col,
-                rect,
-                4,
-                alpha=255,
-                filled=False,
-            )
-            if not entry.get("surf"):
-                entry.surf = message_display(
-                    entry.name[:128],
-                    12,
-                    (0,) * 2,
-                    align=0,
-                    cache=True,
-                )
-            if not t:
-                blit_complex(
-                    DISP,
-                    entry.surf,
-                    (x + 6, y + 4),
-                    area=(0, 0, sidebar_width - 48, 24),
-                    colour=(255,) * 3,
-                )
-            else:
-                DISP.blit(
-                    entry.surf,
-                    (x + 6, y + 4),
-                    (0, 0, sidebar_width - 48, 24),
-                )
-            message_display(
-                time_disp(entry.duration) if entry.duration else "N/A",
-                10,
-                [x + sidebar_width - 36, y + 28],
-                (255,) * 3,
-                surface=DISP,
-                align=2,
-                cache=True,
-                font="Comic Sans MS",
-            )
-            anima_rectangle(
-                DISP,
-                [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
-                [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
-                frame=4,
-                count=2,
-                flash=1,
-                ratio=pc() * 0.4,
-                reduction=0.1,
-            )
+        if toolbar.editor:
+            render_dragging_2()
+        else:
+            render_dragging()
     if not tick & 7 or toolbar.rect in modified:
         if toolbar.resizing:
             pygame.draw.rect(DISP, (255, 0, 0), toolbar.rect[:3] + (4,))
@@ -2452,10 +3036,11 @@ def draw_menu():
             player.flash_o = 32
             options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
             mixer.submit(f"~setting oscilloscope {options.oscilloscope}", force=True)
-    if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified):
-        pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
-        pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
-        pygame.draw.circle(DISP, (255, 0, 0), mpos2, 9, width=2)
+    if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
+        if crosshair & 3:
+            pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
+            pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
+            pygame.draw.circle(DISP, (255, 0, 0), mpos2, 9, width=2)
         if crosshair & 1:
             p = max(0, min(1, (mpos2[0] - progress.pos[0] + progress.width // 2) / progress.length) * player.end)
             s = time_disp(p)
@@ -2469,12 +3054,12 @@ def draw_menu():
             )
         if hovertext:
             message_display(
-                hovertext,
-                10,
-                (mpos2[0], mpos2[1] - 17),
-                (255, 255, 127),
+                hovertext.text,
+                hovertext.size,
+                (mpos2[0], mpos2[1] + hovertext.get("offset", -17)),
+                hovertext.colour,
                 surface=DISP,
-                font="Comic Sans MS",
+                font=hovertext.get("font", "Comic Sans MS"),
             )
 
 

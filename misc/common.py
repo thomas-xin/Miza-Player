@@ -305,6 +305,8 @@ if os.name != "nt":
     raise NotImplementedError("This program is currently implemented to use Windows API only.")
 
 import ctypes, struct, io
+user32 = ctypes.windll.user32
+user32.SetProcessDPIAware()
 appid = "Miza Player (" + str(os.getpid()) + ")"
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
 
@@ -322,7 +324,7 @@ mouse_pointer = POINT()
 
 def mouse_abs_pos():
     pt = mouse_pointer
-    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+    user32.GetCursorPos(ctypes.byref(pt))
     return (pt.x, pt.y)
 
 def mouse_rel_pos(force=True):
@@ -355,7 +357,7 @@ def get_focused(replace=False):
 def get_pressed():
     mheld = [None] * 5
     for i, n in enumerate((1, 2, 4, 5, 6)):
-        mheld[i] = bool(ctypes.windll.user32.GetAsyncKeyState(n) & 32768)
+        mheld[i] = bool(user32.GetAsyncKeyState(n) & 32768)
     return mheld
 
 if hasmisc:
@@ -364,6 +366,9 @@ if hasmisc:
 pygame.display.set_caption("Miza Player")
 DISP = pygame.display.set_mode(screensize, pygame.RESIZABLE, vsync=True)
 screensize2 = list(screensize)
+
+# displaysize = [user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)]
+# print(displaysize)
 
 hwnd = pygame.display.get_wm_info()["window"]
 pygame.display.set_allow_screensaver(True)
@@ -375,6 +380,7 @@ if hasmisc:
     s.write(f"~setting #shuffle {control.setdefault('shuffle', 0)}\n")
     s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
     s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
+    s.write(f"~synth 1.5 1 0 0.75 0 1\n")
     s.seek(0)
     mixer.stdin.write(s.read().encode("utf-8"))
     try:
@@ -397,7 +403,7 @@ class WR(ctypes.Structure):
 wr = WR()
 
 def get_window_rect():
-    ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(wr))
+    user32.GetWindowRect(hwnd, ctypes.byref(wr))
     return wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 class WP(ctypes.Structure):
@@ -424,22 +430,22 @@ wp.rcNormalPosition = ctypes.cast(ctypes.byref(rcNormalPosition), ctypes.c_void_
 wp.rcDevice = ctypes.cast(ctypes.byref(rcDevice), ctypes.c_void_p)
 
 def get_window_flags():
-    ctypes.windll.user32.GetWindowPlacement(hwnd, ctypes.byref(wp))
+    user32.GetWindowPlacement(hwnd, ctypes.byref(wp))
     return wp.showCmd
 
-is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
-is_unfocused = lambda: hwnd != ctypes.windll.user32.GetForegroundWindow(hwnd)
+is_minimised = lambda: user32.IsIconic(hwnd)
+is_unfocused = lambda: hwnd != user32.GetForegroundWindow(hwnd)
 
 if options.get("maximised"):
-    ctypes.windll.user32.ShowWindow(hwnd, 3)
+    user32.ShowWindow(hwnd, 3)
 elif options.get("screenpos"):# and not options.get("maximised"):
     x, y = screenpos
-    ctypes.windll.user32.SetWindowPos(hwnd, 0, x, y, -1, -1, 0x4561)
+    user32.SetWindowPos(hwnd, 0, x, y, -1, -1, 0x4561)
 # else:
-#     ctypes.windll.user32.SetWindowPos(hwnd, -1, -1, -1, -1, -1, 0x4563)
+#     user32.SetWindowPos(hwnd, -1, -1, -1, -1, -1, 0x4563)
 screenpos2 = get_window_rect()[:2]
 
-flash_window = lambda bInvert=True: ctypes.windll.user32.FlashWindow(hwnd, bInvert)
+flash_window = lambda bInvert=True: user32.FlashWindow(hwnd, bInvert)
 
 if win == "win32":
     spath = "misc/Shobjidl-32.dll"
@@ -475,12 +481,12 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     if h == hwnd:
 #         above = False
 #         return
-#     ctypes.windll.user32.GetWindowPlacement(h, ctypes.byref(wp))
+#     user32.GetWindowPlacement(h, ctypes.byref(wp))
 #     if wp.showCmd != 1 and wp.showCmd != 3:
 #         return
-#     if not ctypes.windll.user32.IsWindowVisible(h):
+#     if not user32.IsWindowVisible(h):
 #         return
-#     ctypes.windll.user32.GetWindowRect(h, ctypes.byref(wr))
+#     user32.GetWindowRect(h, ctypes.byref(wr))
 #     rect = (wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top)
 #     if not rect[2] or not rect[3]:
 #         return
@@ -495,17 +501,17 @@ def taskbar_progress_bar(ratio=1, colour=0):
 
 # def is_covered():
 #     global pts
-#     ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(wr))
+#     user32.GetWindowRect(hwnd, ctypes.byref(wr))
 #     rect = (wr.left, wr.top, wr.right, wr.bottom)
 #     pts = [(rect[:2]), (rect[2], rect[1]), (rect[0], rect[3]), rect[2:]]
 #     print(pts)
-#     ctypes.windll.user32.EnumWindows(callback, -1)
+#     user32.EnumWindows(callback, -1)
 #     print(pts)
 
 # def get_window_clip():
-#     hdc = ctypes.windll.user32.GetWindowDC(hwnd)
+#     hdc = user32.GetWindowDC(hwnd)
 #     clip = ctypes.windll.gdi32.GetClipBox(hdc, ctypes.byref(wr))
-#     ctypes.windll.user32.ReleaseDC(hdc)
+#     user32.ReleaseDC(hdc)
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
@@ -652,10 +658,12 @@ b = submit(pygame.font.init)
 a.result()
 b.result()
 
-def load_surface(fn):
+def load_surface(fn, size=None):
     im = image = Image.open(fn)
     if im.mode == "P":
         im = im.convert("RGBA")
+    if size:
+        im = im.resize(size)
     b = im.tobytes()
     surf = pygame.image.frombuffer(b, im.size, im.mode)
     image.close()

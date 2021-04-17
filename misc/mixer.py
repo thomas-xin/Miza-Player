@@ -1033,6 +1033,7 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent):
 wavecache = {}
 
 def waveget(period, offs=0):
+    period = round(period / 8) << 3
     if period not in wavecache:
         temp = wsmp
         rat = len(temp) / period
@@ -1042,6 +1043,8 @@ def waveget(period, offs=0):
         if rat != 1:
             temp = samplerate.resample(temp, 1 / rat, "sinc_fastest")
         wavecache[period] = temp
+        print(period)
+        print(len(wavecache))
     return wavecache[period]
 
 def synthesize():
@@ -1112,7 +1115,7 @@ def synthesize():
         m *= settings.get("volume", 1)
         s *= m
         s = np.round(s, out=s)
-        print(s)
+        # print(s)
         s = np.repeat(s, 2)
     else:
         globals()["buffoffs"] = 0

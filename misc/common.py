@@ -492,23 +492,23 @@ suppress = contextlib.suppress
 d2r = pi / 180
 utc = time.time
 
-alistf = "misc/alist.tmp"
+collections2f = "misc/collections2.tmp"
 
-def update_alist():
-    with requests.get("https://raw.githubusercontent.com/thomas-xin/Python-Array-List/main/alist.py") as resp:
+def update_collections2():
+    with requests.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py") as resp:
         b = resp.content
-    with open(alistf, "wb") as f:
+    with open(collections2f, "wb") as f:
         f.write(b)
-    exec(compile(b, "alist.tmp", "exec"), globals())
+    exec(compile(b, "collections2.tmp", "exec"), globals())
     print("alist.tmp updated.")
 
-if not os.path.exists(alistf):
-    update_alist()
-with open(alistf, "rb") as f:
+if not os.path.exists(collections2f):
+    update_collections2()
+with open(collections2f, "rb") as f:
     b = f.read()
-exec(compile(b, "alist.tmp", "exec"), globals())
-if utc() - os.path.getmtime(alistf) > 3600:
-    submit(update_alist)
+exec(compile(b, "collections2.tmp", "exec"), globals())
+if utc() - os.path.getmtime(collections2f) > 3600:
+    submit(update_collections2)
 
 options.history = alist(options.get("history", ()))
 globals().update(options)
@@ -1326,7 +1326,7 @@ def get_duration_2(filename):
         dur, bps, cdc = _get_duration_2(filename, 4)
         if not dur and is_url(filename):
             with requests.get(filename, stream=True) as resp:
-                head = {k.casefold(): v for k, v in resp.headers.items()}
+                head = fcdict(resp.headers)
                 if "content-length" not in head:
                     dur, bps, cdc = _get_duration_2(filename, 20)
                     return dur, cdc

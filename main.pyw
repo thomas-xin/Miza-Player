@@ -2190,6 +2190,8 @@ except Exception as ex:
     for fn in os.listdir("cache"):
         if fn[0] == "\x7f" and fn.endswith(".pcm"):
             futs.add(submit(os.remove, "cache/" + fn))
+    if os.path.exists("misc/temp.tmp"):
+        futs.add(submit(os.remove, "misc/temp.tmp"))
     for fut in futs:
         try:
             fut.result()

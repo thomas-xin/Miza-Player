@@ -1432,7 +1432,7 @@ def draw_menu():
                 y = round(Z + 52 + 16 + entry.get("pos", 0) * 32)
                 ext = round(32 - 32 * entry.life)
                 rect = (screensize[0] - sidebar_width + 8 - ext + offs, y - ext * 3, sidebar_width - 16 - 16 + ext * 2, 32 + ext * 2)
-                bevel_rectangle(
+                rounded_bev_rect(
                     DISP,
                     col,
                     rect,

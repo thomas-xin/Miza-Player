@@ -23,7 +23,8 @@ project = cdict(
         time=(4, 4),
         speed=144,
     ),
-    instruments=alist(),
+    instruments={},
+    instrument_layout=alist(),
     measures=alist(),
 )
 instruments = project.instruments
@@ -44,7 +45,7 @@ player = cdict(
 )
 sidebar = cdict(
     queue=alist(),
-    entries=alist(),
+    instruments=alist(),
     buttons=alist(),
     particles=alist(),
     ripples=alist(),
@@ -72,7 +73,6 @@ toolbar = cdict(
     editor=0,
 )
 queue = sidebar.queue
-entries = sidebar.entries
 progress = toolbar.progress
 downloading = toolbar.downloading
 modified = set()
@@ -143,12 +143,16 @@ def setup_buttons():
         hyperlink = button_images.hyperlink.result()
         plus = button_images.plus.result()
         def add_instrument():
-            x = len(instruments)
-            project.instruments.append(cdict(
+            x = 0
+            while x in project.instruments:
+                x += 1
+            project.instruments[x] = cdict(
                 name=f"Instrument {x}",
                 colour=tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1)),
-                wave=cdict(synth_default),
-            ))
+                synth=cdict(synth_default),
+            )
+            project.instrument_layout.append(x)
+            sidebar.instruments.append(cdict())
         sidebar.buttons.append(cdict(
             name="Search",
             name2="New instrument",
@@ -1166,8 +1170,12 @@ def update_menu():
     sidebar.maxitems = ceil(screensize[1] - options.toolbar_height - 36 + sidebar.scroll.pos % 32) // 32
     sidebar.base = max(0, int(sidebar.scroll.pos // 32))
     # print(sidebar.scroll.target, sidebar.scroll.pos, sidebar.maxitems, sidebar.base)
-    for i, entry in enumerate(queue[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base):
-        entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
+    if toolbar.editor:
+        for i, entry in enumerate(sidebar.instruments[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base):
+            entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
+    else:
+        for i, entry in enumerate(queue[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base):
+            entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
     if kspam[K_SPACE]:
         player.paused ^= True
         mixer.state(player.paused)
@@ -1738,7 +1746,7 @@ def draw_menu():
         for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
             ri = max(1, round(p.life ** 1.2 / 7 ** 0.2))
             col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-            a = round(min(255, (p.life - 2) * 20))
+            a = round(min(255, (p.life - 2) * 18))
             point = [cos(p.angle) * p.rad, sin(p.angle) * p.rad]
             pos = (p.centre[0] + point[0], p.centre[1] + point[1])
             if ri > 2:
@@ -1794,7 +1802,7 @@ def draw_menu():
                 0,
                 ri,
                 ri,
-                alpha=127 if r else 255,
+                alpha=191 if r else 255,
                 thickness=2,
                 repetition=ri - 2,
                 soft=True,

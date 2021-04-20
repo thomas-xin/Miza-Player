@@ -21,7 +21,7 @@ def render_sidebar_2(dur=0):
                 alpha=sqrt(max(0, ripple.alpha)) * 16,
             )
         if offs > -sidebar_width + 4:
-            n = len(instruments)
+            n = len(project.instruments)
             message_display(
                 f"{n} instruments",
                 12,
@@ -30,7 +30,7 @@ def render_sidebar_2(dur=0):
                 align=0,
                 font="Comic Sans MS",
             )
-        if instruments and sidebar.scroll.get("colour"):
+        if project.instruments and sidebar.scroll.get("colour"):
             rounded_bev_rect(
                 DISP2,
                 sidebar.scroll.background,
@@ -55,7 +55,7 @@ def render_sidebar_2(dur=0):
             4,
         )
     if offs > 4 - sidebar_width:
-        queue = instruments
+        queue = sidebar.instruments
         if queue and (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_s]:
             save_project()
         Z = -sidebar.scroll.pos
@@ -94,11 +94,12 @@ def render_sidebar_2(dur=0):
                 x = 4 + offs
                 y = round(Z + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 32, 32)
-                sat = 0.875
-                val = 1
+                col = project.instruments[project.instrument_layout[i]].colour
+                hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
+                sat -= 0.125
                 secondary = True
                 if pc() % 0.25 < 0.125:
-                    entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                    entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(hue, sat, val)]
                 else:
                     col = (255,) * 3
                 rounded_bev_rect(
@@ -114,6 +115,7 @@ def render_sidebar_2(dur=0):
                         swap = target - i
         
         for i, entry in enumerate(queue):
+            entry.name = project.instruments[project.instrument_layout[i]].name
             if not entry.name:
                 pops.add(i)
                 continue
@@ -147,6 +149,8 @@ def render_sidebar_2(dur=0):
                     a, b = sorted((a, b))
                     if a <= i <= b:
                         selectable = True
+            col = project.instruments[project.instrument_layout[i]].colour
+            hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
             if selectable or entry.get("selected"):
                 d = hypot(*(np.array(mpos) - (screensize[0] + x - 32 - 16, y + 52 + 16 + 16)))
                 entry.pencil = d < 10
@@ -160,6 +164,7 @@ def render_sidebar_2(dur=0):
                         entry.selected = True
                         if entry.pencil:
                             sidebar.abspos = 2
+                            sidebar.editing = i
                         else:
                             sidebar.dragging = True
                         sidebar.dragging = not entry.pencil
@@ -172,12 +177,10 @@ def render_sidebar_2(dur=0):
                     if flash >= 0:
                         entry.flash = flash - 1
                     continue
-                sat = 0.875
-                val = 1
+                sat -= 0.125
                 secondary = True
             else:
-                sat = 1
-                val = 0.75
+                val *= 0.75
                 secondary = False
             flash = entry.get("flash", 16)
             if flash:
@@ -187,7 +190,7 @@ def render_sidebar_2(dur=0):
                     sat = max(0, sat - flash / 16)
                     val = min(1, val + flash / 16)
                     entry.flash = flash - 1
-            entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+            entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(hue, sat, val)]
             rounded_bev_rect(
                 DISP2,
                 col,
@@ -197,14 +200,16 @@ def render_sidebar_2(dur=0):
                 filled=not secondary,
             )
             if secondary:
-                sat = 0.875
-                val = 0.5
+                col = project.instruments[project.instrument_layout[i]].colour
+                hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
+                sat -= 0.125
+                val /= 2
                 if flash:
                     sat = max(0, sat - flash / 16)
                     val = min(1, val + flash / 16)
                 bevel_rectangle(
                     DISP2,
-                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(hue, sat, val)],
                     [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
                     0,
                     alpha=191,
@@ -232,30 +237,29 @@ def render_sidebar_2(dur=0):
         if pops:
             r = range(base, base + maxitems + 1)
             sidebar.particles.extend(queue[i] for i in pops if i in r)
-            skipping = 0 in pops
             queue.pops(pops)
-            if skipping:
-                mixer.clear()
-                submit(start)
+            instrument_ids = project.instrument_layout.pops(pops, keep=True)
+            for i in instrument_ids:
+                project.instruments.pop(i, None)
         if not sidebar.get("dragging"):
             for i, entry in enumerate(queue[base:base + maxitems], base):
                 if not entry.get("selected"):
                     continue
                 x = 4 + offs
                 y = round(Z + entry.get("pos", 0) * 32)
-                sat = 0.875
-                val = 1
+                col = project.instruments[project.instrument_layout[i]].colour
+                hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
+                sat -= 0.125
                 rect = (x, y, sidebar_width - 32, 32)
-                entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
-                sat = 0.875
-                val = 0.5
+                entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(hue, sat, val)]
+                val /= 2
                 flash = entry.get("flash", 16)
                 if flash:
                     sat = max(0, sat - flash / 16)
                     val = min(1, val + flash / 16)
                 bevel_rectangle(
                     DISP2,
-                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(hue, sat, val)],
                     [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
                     0,
                     alpha=191,
@@ -281,9 +285,11 @@ def render_sidebar_2(dur=0):
                     (x + 6, y + 4),
                     (0, 0, sidebar_width - 48, 24),
                 )
+                col = project.instruments[project.instrument_layout[i]].colour
+                hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
                 anima_rectangle(
                     DISP2,
-                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(hue + 1 / 12, sat - 0.0625, val)],
                     [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
                     frame=4,
                     count=2,
@@ -326,32 +332,36 @@ def render_sidebar_2(dur=0):
                 (0, 0, sidebar_width - 48, 24),
             )
         if swap:
-            orig = queue[0]
             dest = deque()
+            dest2 = deque()
             targets = {}
+            positionals = {}
             for i, entry in enumerate(queue):
                 if i + swap < 0 or i + swap >= len(queue):
                     continue
                 if entry.get("selected"):
                     targets[i + swap] = entry
+                    positionals[i + swap] = project.instrument_layout[i]
                     entry.moved = True
             i = 0
-            for entry in queue:
+            for pos, entry in zip(project.instrument_layout, queue):
                 while i in targets:
                     dest.append(targets.pop(i))
+                    dest2.append(positionals.pop(i))
                     i += 1
                 if not entry.get("moved"):
                     dest.append(entry)
+                    dest2.append(pos)
                     i += 1
                 else:
                     entry.pop("moved", None)
             if targets:
                 dest.extend(targets.values())
+                dest2.extend(positionals.values())
                 for entry in targets.values():
                     entry.pop("moved", None)
             queue[:] = dest
-            if queue[0] is not orig:
-                submit(enqueue, queue[0])
+            project.instrument_layout[:] = dest2
             try:
                 if not sidebar.last_selected.selected:
                     raise ValueError
@@ -477,6 +487,7 @@ def render_sidebar_2(dur=0):
             (screensize[0] - sidebar_width, 52),
         )
     if offs <= -4 - sidebar_width:
+        instrument = project.instruments[project.instrument_layout[sidebar.editing]]
         DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
         DISP2.fill(sc)
         DISP2.set_colorkey(sc)
@@ -493,7 +504,7 @@ def render_sidebar_2(dur=0):
                 font="Comic Sans MS",
             )
             # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
-            s = str(round(options.synth.get(opt, 0) * 100, 2)) + "%"
+            s = str(round(instrument.synth.get(opt, 0) * 100, 2)) + "%"
             message_display(
                 s,
                 11,
@@ -505,7 +516,7 @@ def render_sidebar_2(dur=0):
             )
             srange = ssettings[opt]
             w = (sidebar_width - 16)
-            x = (options.synth.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
+            x = (instrument.synth.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
             if opt in ("speed", "pitch", "nightcore"):
                 x = min(1, max(0, x))
             else:
@@ -537,13 +548,13 @@ def render_sidebar_2(dur=0):
                     enter = easygui.get_string(
                         opt.capitalize(),
                         "Miza Player",
-                        str(round_min(options.synth[opt] * 100)),
+                        str(round_min(instrument.synth[opt] * 100)),
                     )
                     if enter:
                         v = round_min(float(eval(enter, {}, {})) / 100)
                         sediting[opt] = True
                 if sediting[opt]:
-                    orig, options.synth[opt] = options.synth[opt], v
+                    orig, instrument.synth[opt] = instrument.synth[opt], v
                     if orig != v:
                         if opt == "unison":
                             mixer.submit(f"~setting unison {synth.setdefault('unison', 1)}", force=True)
@@ -594,29 +605,29 @@ def render_sidebar_2(dur=0):
         )
 
 def render_dragging_2():
-    queue = instruments
+    queue = sidebar.instruments
     base, maxitems = sidebar.base, sidebar.maxitems
     for i, entry in enumerate(queue[base:base + maxitems], base):
         if not entry.get("selected"):
             continue
-        sat = 0.875
-        val = 1
-        entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+        col = project.instruments[project.instrument_layout[i]].colour
+        hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
+        sat -= 0.125
+        entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(hue, sat, val)]
         x, y = mpos2 - sidebar.selection_offset
         y += 52 + 16
         x += screensize[0] - sidebar_width + 4
         if isfinite(lq2):
             y += (i - lq2) * 32
         rect = (x, y, sidebar_width - 32, 32)
-        sat = 0.875
-        val = 0.5
+        val /= 2
         flash = entry.get("flash", 16)
         if flash:
             sat = max(0, sat - flash / 16)
             val = min(1, val + flash / 16)
         bevel_rectangle(
             DISP,
-            [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+            [round(x * 255) for x in colorsys.hsv_to_rgb(hue, sat, val)],
             [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
             0,
             alpha=191,
@@ -642,9 +653,11 @@ def render_dragging_2():
             (x + 6, y + 4),
             (0, 0, sidebar_width - 48, 24),
         )
+        col = project.instruments[project.instrument_layout[i]].colour
+        hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
         anima_rectangle(
             DISP,
-            [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
+            [round(x * 255) for x in colorsys.hsv_to_rgb(hue + 1 / 12, sat - 0.0625, val)],
             [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
             frame=4,
             count=2,

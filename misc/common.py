@@ -500,7 +500,7 @@ def update_collections2():
     with open(collections2f, "wb") as f:
         f.write(b)
     exec(compile(b, "collections2.tmp", "exec"), globals())
-    print("alist.tmp updated.")
+    print("collections2.tmp updated.")
 
 if not os.path.exists(collections2f):
     update_collections2()

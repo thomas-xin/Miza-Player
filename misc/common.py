@@ -47,7 +47,7 @@ lyrics_scraper = concurrent.futures.Future()
 def import_audio_downloader():
     try:
         audio_downloader = __import__("audio_downloader")
-        globals().update(audio_downloader.__dict__)
+        # globals().update(audio_downloader.__dict__)
         globals()["ytdl"] = ytdl = audio_downloader.AudioDownloader()
         downloader.set_result(ytdl)
         lyrics_scraper.set_result(audio_downloader.get_lyrics)
@@ -476,7 +476,7 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import PIL, easygui, easygui_qt, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, hashlib, base64, urllib, requests
+import PIL, easygui, easygui_qt, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, zipfile, pickle, hashlib, base64, urllib, requests
 import PyQt5
 from PyQt5 import QtCore, QtWidgets
 if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):

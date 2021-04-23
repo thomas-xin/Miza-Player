@@ -27,6 +27,7 @@ project = cdict(
     instrument_layout=alist(),
     measures=alist(),
 )
+project_name = "untitled"
 instruments = project.instruments
 measures = project.measures
 
@@ -85,6 +86,7 @@ button_sources = (
     "hyperlink",
     "playlist",
     "history",
+    "save",
     "plus",
     "edit",
     "waves",
@@ -113,7 +115,7 @@ def setup_buttons():
         # R = Image.new("L", I.size, 0)
         # inv = pygame.image.frombuffer(Image.merge("RGBA", (R, I, I, A)).tobytes(), I.size, "RGBA")
         def settings_toggle():
-            sidebar.abspos ^= 1#= (sidebar.abspos + 1) % 3
+            sidebar.abspos = not bool(sidebar.abspos)
         def settings_reset():
             sidebar.abspos = 1
             options.audio.update(audio_default)
@@ -131,17 +133,49 @@ def setup_buttons():
         ))
         reset_menu(full=False)
         folder = button_images.folder.result()
-        def load_project():
-            raise BaseException
+        def enqueue_local():
+            default = None
+            if options.get("path"):
+                default = options.path.rstrip("/") + "/"
+            files = easygui.fileopenbox(
+                "Open an audio or video file here!",
+                "Miza Player",
+                default=default,
+                filetypes=ftypes,
+                multiple=True,
+            )
+            if files:
+                submit(_enqueue_local, *files)
+        def load_project_file():
+            default = None
+            if options.get("path2"):
+                default = options.path.rstrip("/") + "/"
+            file = easygui.fileopenbox(
+                "Open a music project file here!",
+                "Miza Player",
+                default=default,
+                filetypes=(".mpp",),
+                multiple=False,
+            )
+            if file:
+                submit(load_project, file)
         sidebar.buttons.append(cdict(
             name="Open",
             sprite=folder,
             click=enqueue_local,
-            click2=load_project,
+            click2=load_project_file,
         ))
         reset_menu(full=False)
         hyperlink = button_images.hyperlink.result()
         plus = button_images.plus.result()
+        def enqueue_search():
+            query = easygui.get_string(
+                "Search for one or more songs online!",
+                "Miza Player",
+                "",
+            )
+            if query:
+                submit(_enqueue_search, query)
         def add_instrument():
             x = 0
             while x in project.instruments:
@@ -324,7 +358,7 @@ def setup_buttons():
         def edit_1():
             toolbar.editor ^= 1
             if toolbar.editor:
-                mixer.submit(f"~setting spectrogram 0", force=True)
+                mixer.submit(f"~setting spectrogram -1", force=True)
             else:
                 mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
         toolbar.buttons.append(cdict(
@@ -407,7 +441,42 @@ def setup_buttons():
         ))
         reset_menu(full=False)
         microphone = button_images.microphone.result()
-        globals()["pya"] = afut.result()
+        def enqueue_device():
+            globals()["pya"] = afut.result()
+            count = pya.get_device_count()
+            devices = alist()
+            for i in range(count):
+                d = cdict(pya.get_device_info_by_index(i))
+                if d.maxInputChannels > 0 and d.get("hostAPI", 0) >= 0:
+                    try:
+                        if not pya.is_format_supported(
+                            48000,
+                            i,
+                            2,
+                            pyaudio.paInt16,
+                        ):
+                            continue
+                        pya.open(
+                            48000,
+                            2,
+                            pyaudio.paInt16,
+                            input=True,
+                            frames_per_buffer=48000 >> 2,
+                            input_device_index=i,
+                            start=False,
+                        ).close()
+                    except:
+                        continue
+                    d.id = i
+                    devices.add(d)
+            f = f"%0{len(str(len(devices)))}d"
+            selected = easygui.get_choice(
+                "Transfer audio from a sound input device!",
+                "Miza Player",
+                sorted(f % d.id + ": " + d.name for d in devices),
+            )
+            if selected:
+                submit(_enqueue_local, "<" + selected.split(":", 1)[0].lstrip("0") + ">")
         sidebar.buttons.append(cdict(
             name="Audio input",
             sprite=microphone,
@@ -473,20 +542,6 @@ def _enqueue_local(*files, probe=True):
         sidebar.loading = False
         print_exc()
 
-def enqueue_local():
-    default = None
-    if options.get("path"):
-        default = options.path.rstrip("/") + "/"
-    files = easygui.fileopenbox(
-        "Open an audio or video file here!",
-        "Miza Player",
-        default=default,
-        filetypes=ftypes,
-        multiple=True,
-    )
-    if files:
-        submit(_enqueue_local, *files)
-
 eparticle = dict(colour=(255,) * 3)
 def _enqueue_search(query):
     try:
@@ -519,52 +574,6 @@ def _enqueue_search(query):
         sidebar.loading = False
         print_exc()
 
-def enqueue_search():
-    query = easygui.get_string(
-        "Search for one or more songs online!",
-        "Miza Player",
-        "",
-    )
-    if query:
-        submit(_enqueue_search, query)
-
-def enqueue_device():
-    globals()["pya"] = afut.result()
-    count = pya.get_device_count()
-    devices = alist()
-    for i in range(count):
-        d = cdict(pya.get_device_info_by_index(i))
-        if d.maxInputChannels > 0 and d.get("hostAPI", 0) >= 0:
-            try:
-                if not pya.is_format_supported(
-                    48000,
-                    i,
-                    2,
-                    pyaudio.paInt16,
-                ):
-                    continue
-                pya.open(
-                    48000,
-                    2,
-                    pyaudio.paInt16,
-                    input=True,
-                    frames_per_buffer=48000 >> 2,
-                    input_device_index=i,
-                    start=False,
-                ).close()
-            except:
-                continue
-            d.id = i
-            devices.add(d)
-    f = f"%0{len(str(len(devices)))}d"
-    selected = easygui.get_choice(
-        "Transfer audio from a sound input device!",
-        "Miza Player",
-        sorted(f % d.id + ": " + d.name for d in devices),
-    )
-    if selected:
-        submit(_enqueue_local, "<" + selected.split(":", 1)[0].lstrip("0") + ">")
-
 def enqueue_auto(*queries):
     futs = deque()
     start = len(queue)
@@ -582,9 +591,57 @@ def enqueue_auto(*queries):
             else:
                 futs.append(submit(_enqueue_local, q, probe=i < 1))
 
+def load_project(fn):
+    if not toolbar.editor:
+        toolbar.editor = 1
+        mixer.submit(f"~setting spectrogram -1", force=True)
+    try:
+        with open(fn, "rb") as f:
+            b = f.read(7)
+            if b != b">~MPP~>":
+                raise TypeError("Invalid project file header.")
+            b2 = f.read()
+        with zipfile.ZipFile(io.BytesIO(b2), allowZip64=True, strict_timestamps=False) as z:
+            with z.open("<~MPP~<", force_zip64=True) as f:
+                b3 = f.read()
+        pdata = pickle.loads(b3)
+        project.update(pdata)
+        sidebar.instruments.__init__(cdict() for _ in range(len(project.instrument_layout)))
+        globals()["instruments"] = project.instruments
+        globals()["measures"] = project.measures
+        globals()["project_name"] = fn.rsplit(".", 1)[0]
+    except:
+        print_exc()
+
+def save_project(fn):
+    if not toolbar.editor:
+        toolbar.editor = 1
+        mixer.submit(f"~setting spectrogram -1", force=True)
+    try:
+        b = pickle.dumps(project)
+        pdata = io.BytesIO()
+        with zipfile.ZipFile(pdata, mode="w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+            z.writestr("<~MPP~<", b)
+        pdata.seek(0)
+        with open(fn, "wb") as f:
+            f.write(b">~MPP~>")
+            f.write(pdata.read())
+        globals()["project_name"] = fn.rsplit(".", 1)[0]
+    except:
+        print_exc()
+
 
 if len(sys.argv) > 1:
-    submit(enqueue_auto, *sys.argv[1:])
+    if len(sys.argv) == 2 and not is_url(sys.argv[1]) and os.path.exists(sys.argv[1]):
+        fi = sys.argv[1]
+        with open(fi, "rb") as f:
+            b = f.read(7)
+        if b == b">~MPP~>":
+            submit(load_project, fi)
+        else:
+            submit(enqueue_auto, fi)
+    else:
+        submit(enqueue_auto, *sys.argv[1:])
 
 
 sidebar.abspos = 0
@@ -1063,6 +1120,10 @@ def enqueue(entry, start=True):
     try:
         queue[0].lyrics_loading = True
         submit(render_lyrics, queue[0])
+        if len(queue) > 1:
+            entry = queue[1]
+            if (entry.duration is None or entry.get("research")):
+                ensure_next(1)
         flash_window()
         stream, duration = start_player()
         progress.num = 0
@@ -1304,7 +1365,7 @@ def update_menu():
         c = (64, 0, 96)
     sidebar.updated = False#sidebar.colour != c
     sidebar.colour = c
-    sidebar.relpos = (sidebar.get("relpos", 0) * (ratio - 1) + sidebar.abspos) / ratio
+    sidebar.relpos = (sidebar.get("relpos", 0) * (ratio - 1) + bool(sidebar.abspos)) / ratio
     scroll_height = screensize[1] - toolbar_height - 72
     sidebar.scroll.rect = (screensize[0] - 20, 52 + 16, 12, scroll_height)
     scroll_rat = max(12, min(scroll_height, scroll_height / max(1, len(queue)) * (screensize[1] - toolbar_height - 36) / 32))
@@ -1398,8 +1459,9 @@ def draw_menu():
                     lum = 223
                     cm = abs(pc() % 1 - 0.5) * 0.328125
                     c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
+                    name = button.name if not toolbar.editor else button.get("name2") or button.name
                     hovertext = cdict(
-                        text=button.name,
+                        text=name,
                         size=15,
                         colour=c,
                         offset=19,
@@ -1744,9 +1806,9 @@ def draw_menu():
             )
         pops = set()
         for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
-            ri = max(1, round(p.life ** 1.2 / 7 ** 0.2))
+            ri = max(1, round(p.life ** 1.1 / 7 ** 0.1))
             col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-            a = round(min(255, (p.life - 2) * 18))
+            a = round(min(255, (p.life - 2) * 16))
             point = [cos(p.angle) * p.rad, sin(p.angle) * p.rad]
             pos = (p.centre[0] + point[0], p.centre[1] + point[1])
             if ri > 2:
@@ -1794,7 +1856,7 @@ def draw_menu():
                     life=7,
                     hsv=hsv,
                 ))
-            ri = max(8, progress.width // 2 + 2)
+            ri = max(7, progress.width // 2 + 2)
             reg_polygon_complex(
                 DISP,
                 p,
@@ -1802,7 +1864,7 @@ def draw_menu():
                 0,
                 ri,
                 ri,
-                alpha=191 if r else 255,
+                alpha=127 if r else 255,
                 thickness=2,
                 repetition=ri - 2,
                 soft=True,
@@ -2195,9 +2257,13 @@ except Exception as ex:
         except:
             pass
     futs = set()
-    for fn in os.listdir("cache"):
-        if fn[0] == "\x7f" and fn.endswith(".pcm"):
-            futs.add(submit(os.remove, "cache/" + fn))
+    for e in os.scandir("cache"):
+        fn = e.name
+        if fn.endswith(".pcm") and e.is_file(follow_symlinks=False):
+            if fn[0] == "\x7f":
+                futs.add(submit(os.remove, e.path))
+            elif fn[0] == "~" and e.stat().st_size >= 1024 and e.stat().st_size > 268435456:
+                futs.add(submit(os.remove, e.path))
     if os.path.exists("misc/temp.tmp"):
         futs.add(submit(os.remove, "misc/temp.tmp"))
     for fut in futs:

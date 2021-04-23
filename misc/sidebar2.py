@@ -54,10 +54,17 @@ def render_sidebar_2(dur=0):
             sidebar.rect2,
             4,
         )
+    if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_s]:
+        fn = easygui.filesavebox(
+            "Save As",
+            "Miza Player",
+            project_name + ".mpp",
+            filetypes=(".mpp",),
+        )
+        if fn:
+            save_project(fn)
     if offs > 4 - sidebar_width:
         queue = sidebar.instruments
-        if queue and (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_s]:
-            save_project()
         Z = -sidebar.scroll.pos
         DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), SRCALPHA)
         DISP2.fill((0, 0, 0, 0))
@@ -373,7 +380,7 @@ def render_sidebar_2(dur=0):
             DISP2,
             (screensize[0] - sidebar_width + 4, 52 + 16),
         )
-    if offs <= -4 and offs > 4 - 2 * sidebar_width:
+    if offs <= -4 and sidebar.abspos == 1:
         DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
         DISP2.fill(sc)
         DISP2.set_colorkey(sc)
@@ -486,18 +493,18 @@ def render_sidebar_2(dur=0):
             DISP2,
             (screensize[0] - sidebar_width, 52),
         )
-    if offs <= -4 - sidebar_width:
+    if offs <= -4 and sidebar.abspos == 2:
         instrument = project.instruments[project.instrument_layout[sidebar.editing]]
         DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
         DISP2.fill(sc)
         DISP2.set_colorkey(sc)
         in_sidebar = in_rect(mpos, sidebar.rect)
-        offs2 = offs + sidebar_width * 2
+        offs2 = offs + sidebar_width
         for i, opt in enumerate(ssettings):
             message_display(
                 opt.capitalize(),
                 11,
-                (offs2 + 8, i * 32),
+                (offs2 + 8, i * 32 + 24),
                 surface=DISP2,
                 align=0,
                 cache=True,
@@ -508,7 +515,7 @@ def render_sidebar_2(dur=0):
             message_display(
                 s,
                 11,
-                (offs2 + sidebar_width - 8, 16 + i * 32),
+                (offs2 + sidebar_width - 8, 40 + i * 32),
                 surface=DISP2,
                 align=2,
                 cache=True,
@@ -522,11 +529,11 @@ def render_sidebar_2(dur=0):
             else:
                 x = min(1, abs(x))
             x = round(x * w)
-            brect = (screensize[0] + offs + sidebar_width + 6, 67 + i * 32, sidebar_width - 12, 13)
-            brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
+            brect = (screensize[0] + offs + 6, 91 + i * 32, sidebar_width - 12, 13)
+            brect2 = (offs2 + 6, 41 + i * 32, sidebar_width - 12, 13)
             hovered = in_sidebar and in_rect(mpos, brect) or sediting[opt]
             crosshair |= bool(hovered) << 1
-            v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + sidebar_width + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
+            v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
             if len(srange) > 2:
                 v = round_min(math.round(v / srange[2]) * srange[2])
             else:
@@ -555,13 +562,14 @@ def render_sidebar_2(dur=0):
                         sediting[opt] = True
                 if sediting[opt]:
                     orig, instrument.synth[opt] = instrument.synth[opt], v
+                    synth = instrument.synth
                     if orig != v:
                         if opt == "unison":
                             mixer.submit(f"~setting unison {synth.setdefault('unison', 1)}", force=True)
                         else:
                             mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
             z = max(0, x - 4)
-            rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
+            rect = (offs2 + 8 + z, 41 + i * 32, sidebar_width - 16 - z, 9)
             col = (48 if hovered else 32,) * 3
             bevel_rectangle(
                 DISP2,
@@ -572,11 +580,11 @@ def render_sidebar_2(dur=0):
             rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
             DISP2.blit(
                 rainbow,
-                (offs2 + 8 + x, 17 + i * 32),
+                (offs2 + 8 + x, 41 + i * 32),
                 (x, 0, w - x, 9),
                 special_flags=BLEND_RGB_MULT,
             )
-            rect = (offs2 + 8, 17 + i * 32, x, 9)
+            rect = (offs2 + 8, 41 + i * 32, x, 9)
             col = (223 if hovered else 191,) * 3
             bevel_rectangle(
                 DISP2,
@@ -587,7 +595,7 @@ def render_sidebar_2(dur=0):
             rainbow = quadratic_gradient((w, 9), pc() + i / 4)
             DISP2.blit(
                 rainbow,
-                (offs2 + 8, 17 + i * 32),
+                (offs2 + 8, 41 + i * 32),
                 (0, 0, x, 9),
                 special_flags=BLEND_RGB_MULT,
             )

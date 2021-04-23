@@ -188,9 +188,11 @@ def render_sidebar(dur=0):
                             sidebar.selection_offset = np.array(mpos2) - rect[:2]
                 elif mclick[1] and i == etarget:
                     entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
-                    ytdl = downloader.result()
+                    if not entries:
+                        entries = (entry,)
                     url = entries[0]["url"]
                     if is_url(url):
+                        ytdl = downloader.result()
                         name = None
                         if url in ytdl.searched:
                             resp = ytdl.searched[url].data

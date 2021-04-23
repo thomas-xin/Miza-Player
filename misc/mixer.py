@@ -793,10 +793,10 @@ def render():
                             if packet:
                                 point("~x " + " ".join(map(str, out)))
 
-                    if settings.spectrogram and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
+                    if settings.spectrogram > 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
                         spec2_fut = submit(spectrogram_update)
             elif packet_advanced:
-                if settings.spectrogram and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
+                if settings.spectrogram > 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
                     spec2_fut = submit(spectrogram_update)
             packet_advanced = False
             time.sleep(0.005)
@@ -927,7 +927,7 @@ def play(pos):
                     point_fut = submit(point, f"~{frame} {duration}")
                 if not channel2:
                     channel.queue(sound)
-                if settings.spectrogram and ssize[0] and ssize[1] and not is_minimised():
+                if settings.spectrogram > 0 and ssize[0] and ssize[1] and not is_minimised():
                     if spec_fut:
                         spec_fut.result()
                     spec_fut = submit(spectrogram, sbuffer)
@@ -1334,7 +1334,7 @@ while not sys.stdin.closed and failed < 8:
             ext = construct_options()
             if is_url(stream):
                 fn = "cache/~" + sh + ".pcm"
-                if os.path.exists(fn):
+                if os.path.exists(fn) and os.path.getsize(fn) / 48000 / 2 / 2 >= duration - 1:
                     stream = fn
                     fn = None
                     file = None
@@ -1401,7 +1401,7 @@ while not sys.stdin.closed and failed < 8:
                     if (fn or not stream.endswith(".pcm")) and (settings.speed < 0 or cdc != "mp3"):
                         ostream = stream
                         stream = "cache/~" + sh + ".pcm"
-                        if not os.path.exists(stream):
+                        if not os.path.exists(stream) or os.path.getsize(stream) / 48000 / 2 / 2 < duration - 1:
                             cmd = ffmpeg_start + ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
                             print(cmd)
                             resp = subprocess.run(cmd)

@@ -929,14 +929,16 @@ def start_player(pos=None):
             fi = stream
             fn = "cache/~" + shash(fi) + ".pcm"
             if not os.path.exists(fn):
-                args = ["py", f"-3.{sys.version_info[1]}", "png2wav.py", fi, "../" + fn]
-                print(args)
-                proc = psutil.Popen(args, cwd="misc", stderr=subprocess.PIPE)
-                while True:
-                    if os.path.exists(fn) and os.path.getsize(fn) >= 96000:
-                        break
-                    if not proc.is_running():
-                        raise RuntimeError(as_str(proc.stderr.read()))
+                fn = select_and_convert(fi)
+                print(fn)
+                # args = ["py", f"-3.{sys.version_info[1]}", "png2wav.py", fi, "../" + fn]
+                # print(args)
+                # proc = psutil.Popen(args, cwd="misc", stderr=subprocess.PIPE)
+                # while True:
+                #     if os.path.exists(fn) and os.path.getsize(fn) >= 96000:
+                #         break
+                #     if not proc.is_running():
+                #         raise RuntimeError(as_str(proc.stderr.read()))
             duration = get_duration_2(fn)[0]
             stream = entry.stream = fn
     entry.duration = duration
@@ -1628,7 +1630,7 @@ def draw_menu():
                 else:
                     val = -1
                 if val == 2:
-                    if i:
+                    if i > 1:
                         sprite = quadratic_gradient(button.sprite.get_size(), pc()).convert_alpha()
                     else:
                         sprite = radial_gradient(button.sprite.get_size(), -pc()).convert_alpha()
@@ -1887,6 +1889,8 @@ def draw_menu():
                 alpha=a,
                 font="Comic Sans MS",
             )
+    # if sidebar.menu:
+
     if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
         if toolbar.editor:
             render_dragging_2()

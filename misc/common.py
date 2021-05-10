@@ -491,6 +491,7 @@ deque = collections.deque
 suppress = contextlib.suppress
 d2r = pi / 180
 utc = time.time
+ts_us = lambda: time.time_ns() // 1000
 
 collections2f = "misc/collections2.tmp"
 
@@ -1355,6 +1356,127 @@ def get_duration_2(filename):
                 bps *= 1e9
             return (int(head["content-length"]) << 3) / bps, cdc
         return dur, cdc
+
+
+# runs org2xm on a file, with an optional custom sample bank.
+def org2xm(org, dat=None):
+    if os.name != "nt":
+        raise OSError("org2xm is only available on Windows.")
+    r_org = None
+    if not org or type(org) is not bytes:
+        if is_url(org):
+            with requests.get(org) as r:
+                data = r.content
+        else:
+            r_org = org
+            with open(r_org, "rb") as f:
+                data = f.read(6)
+        if not data:
+            raise FileNotFoundError("Error downloading file content.")
+    else:
+        if not org.startswith(b"Org-"):
+            raise ValueError("Invalid file header.")
+        data = org
+    # Set compatibility option if file is not of org2 format.
+    compat = not data.startswith(b"Org-02")
+    ts = ts_us()
+    # Write org data to file.
+    if not r_org:
+        r_org = "cache/" + str(ts) + ".org"
+        with open(r_org, "wb") as f:
+            f.write(data)
+    r_dat = "cache/" + str(ts) + ".dat"
+    orig = False
+    # Load custom sample bank if specified
+    if dat is not None and is_url(dat):
+        with open(r_dat, "wb") as f:
+            with requests.get(dat) as r:
+                f.write(r.content)
+    else:
+        if type(dat) is bytes and dat:
+            with open(r_dat, "wb") as f:
+                f.write(dat)
+        else:
+            r_dat = "misc/ORG210EN.DAT"
+            orig = True
+    args = ["misc/org2xm.exe", r_org, r_dat]
+    if compat:
+        args.append("c")
+    print(args)
+    subprocess.check_output(args)
+    r_xm = f"cache/{ts}.xm"
+    if not os.path.exists("cache/" + str(ts) + ".xm"):
+        raise FileNotFoundError("Unable to locate converted file.")
+    if not os.path.getsize(r_xm):
+        raise RuntimeError("Converted file is empty.")
+    for f in (r_org, r_dat)[:2 - orig]:
+        with suppress():
+            os.remove(f)
+    return r_xm
+
+def mid2mp3(mid):
+    url = requests.post(
+        "https://hostfast.onlineconverter.com/file/send",
+        files={
+            "class": (None, "audio"),
+            "from": (None, "midi"),
+            "to": (None, "mp3"),
+            "source": (None, "file"),
+            "file": mid,
+            "audio_quality": (None, "192"),
+        },
+    ).text
+    fn = url.rsplit("/", 1)[-1].strip("\x00")
+    for i in range(360):
+        with delay(1):
+            test = requests.get(f"https://hostfast.onlineconverter.com/file/{fn}").content
+            if test == b"d":
+                break
+    ts = ts_us()
+    r_mp3 = f"cache/{ts}.mp3"
+    with open(r_mp3, "wb") as f:
+        f.write(requests.get(f"https://hostfast.onlineconverter.com/file/{fn}/download").content)
+    return r_mp3
+
+def png2wav(png):
+    ts = ts_us()
+    r_png = f"cache/{ts}"
+    r_wav = f"cache/{ts}.wav"
+    args = ["py", f"-3.{sys.version_info[1]}", "png2wav.py", "../" + r_png, "../" + r_wav]
+    with open(r_png, "wb") as f:
+        f.write(png)
+    print(args)
+    subprocess.run(args, cwd="misc", stderr=subprocess.PIPE)
+    return r_wav
+
+
+CONVERTERS = {
+    b"MThd": mid2mp3,
+    b"Org-": org2xm,
+}
+
+def select_and_convert(stream):
+    if is_url(stream):
+        with requests.get(stream, timeout=8, stream=True) as resp:
+            it = resp.iter_content(4096)
+            b = bytes()
+            while len(b) < 4:
+                b += next(it)
+            try:
+                convert = CONVERTERS[b[:4]]
+            except KeyError:
+                convert = png2wav
+            b += resp.content
+    else:
+        with open(stream, "rb") as file:
+            b = file.read(4096)
+            try:
+                convert = CONVERTERS[b[:4]]
+            except KeyError:
+                convert = png2wav
+            b += file.read()
+    return convert(b)
+
 
 def time_disp(s, rounded=True):
     if not isfinite(s):

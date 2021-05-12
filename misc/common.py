@@ -1234,7 +1234,7 @@ def text_size(text, size, font="OpenSansEmoji"):
             f = ct_font[data] = sysfont(font, size, unicode=not asc)
 
 md_font = {}
-def message_display(text, size, pos, colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False):
+def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False):
     # text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
     colour = tuple(verify_colour(colour))
     data = (text, colour, background, size, font)
@@ -1250,13 +1250,13 @@ def message_display(text, size, pos, colour=(255,) * 3, background=None, surface
                 md_font.pop(next(iter(md_font)))
             except (KeyError, RuntimeError):
                 pass
-    if align == 1:
-        TextRect.center = pos
-    elif align == 0:
-        TextRect = list(pos) + TextRect[2:]
-    elif align == 2:
-        TextRect = [y - x for x, y in zip(TextRect[2:], pos)] + TextRect[2:]
     if surface:
+        if align == 1:
+            TextRect.center = pos
+        elif align == 0:
+            TextRect = list(pos) + TextRect[2:]
+        elif align == 2:
+            TextRect = [y - x for x, y in zip(TextRect[2:], pos)] + TextRect[2:]
         blit_complex(surface, TextSurf, TextRect, alpha, copy=False)
         return TextRect
     else:

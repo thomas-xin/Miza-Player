@@ -1323,10 +1323,11 @@ def update_menu():
             if enter:
                 pos = time_parse(enter)
                 submit(seek_abs, pos)
+    c = options.get("toolbar_colour", (64, 0, 96))
     if toolbar.resizing or in_rect(mpos, toolbar.rect):
-        c = (64, 32, 96)
-    else:
-        c = (64, 0, 96)
+        hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+        hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.5)
+        c = tuple(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
     toolbar.updated = False#toolbar.colour != c
     toolbar.colour = c
     if any(mclick):
@@ -1362,10 +1363,11 @@ def update_menu():
             sidebar.resizing = True
         else:
             sidebar.resizer = True
+    c = options.get("sidebar_colour", (64, 0, 96))
     if sidebar.resizing or in_rect(mpos, sidebar.rect):
-        c = (64, 32, 96)
-    else:
-        c = (64, 0, 96)
+        hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+        hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.5)
+        c = tuple(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
     sidebar.updated = False#sidebar.colour != c
     sidebar.colour = c
     sidebar.relpos = (sidebar.get("relpos", 0) * (ratio - 1) + bool(sidebar.abspos)) / ratio
@@ -1374,9 +1376,17 @@ def update_menu():
     scroll_rat = max(12, min(scroll_height, scroll_height / max(1, len(queue)) * (screensize[1] - toolbar_height - 36) / 32))
     scroll_pos = sidebar.scroll.pos / (32 * max(1, len(queue)) - screensize[1] + toolbar_height + 52 + 16) * (scroll_height - scroll_rat) + 52 + 16
     sidebar.scroll.select_rect = (sidebar.scroll.rect[0], scroll_pos, sidebar.scroll.rect[2], scroll_rat)
+    c = options.get("sidebar_colour", (64, 0, 96))
+    hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+    light = 1 - (1 - hls[1]) / 4
+    if hls[2]:
+        sat = 1 - (1 - hls[2]) / 2
+    else:
+        sat = 0
+    c1 = tuple(round(i * 255) for i in colorsys.hls_to_rgb(hls[0], light - 1 / 4, sat))
+    c2 = tuple(round(i * 255) for i in colorsys.hls_to_rgb((hls[0] + 1 / 12) % 1, light, sat))
     if sidebar.scrolling or in_rect(mpos, sidebar.scroll.rect):
-        c1 = (191, 127, 255, 191)
-        c2 = (255, 127, 191)
+        c1 += (191,)
         if mclick[0]:
             sidebar.scrolling = True
         elif mclick[1]:
@@ -1394,8 +1404,8 @@ def update_menu():
             r = min(max(0, mpos2[1] - 52 - 16 - scroll_rat / 2) / max(1, scroll_height - scroll_rat), 1)
             sidebar.scroll.target = r * (32 * max(1, len(queue)) - screensize[1] + toolbar_height + 52 + 16)
     else:
-        c1 = (191, 127, 255, 127)
-        c2 = (255, 127, 191, 191)
+        c1 += (127,)
+        c2 += (191,)
     sidebar.scroll.background = c1
     sidebar.scroll.colour = c2
 
@@ -1441,6 +1451,17 @@ def draw_menu():
             sidebar.ripples.pops(pops)
     crosshair = False
     hovertext = None
+    if sidebar.menu and sidebar.menu.scale >= 1:
+        sidebar.menu.selected = -1
+        if in_rect(mpos, sidebar.menu.rect):
+            i = (mpos2[1] - sidebar.menu.rect[1]) // 20
+            if mclick[0]:
+                sidebar.menu.buttons[i][1]()
+                mclick[0] = False
+            sidebar.menu.selected = i
+            globals()["mpos"] = (nan, nan)
+    if any(mclick):
+        sidebar.menu = None
     if any(mclick) and in_rect(mpos, sidebar.rect):
         sidebar.ripples.append(cdict(
             pos=mpos,
@@ -1448,6 +1469,18 @@ def draw_menu():
             colour=ripple_colours[mclick.index(1)],
             alpha=255,
         ))
+        if mclick[1] and not sidebar.menu:
+
+            def set_colour():
+                colour = easygui.get_color_rgb()
+                if colour:
+                    options.sidebar_colour = colour
+
+            sidebar.menu = cdict(
+                buttons=(
+                    ("Set Colour", set_colour),
+                ),
+            )
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
         if toolbar.editor:
             render_sidebar_2(dur)
@@ -1459,7 +1492,7 @@ def draw_menu():
         for i, button in enumerate(sidebar.buttons[:maxb]):
             if button.get("rect"):
                 if in_rect(mpos, button.rect):
-                    lum = 223
+                    lum = 239
                     cm = abs(pc() % 1 - 0.5) * 0.328125
                     c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
                     name = button.name if not toolbar.editor else button.get("name2") or button.name
@@ -1472,12 +1505,19 @@ def draw_menu():
                     )
                     crosshair |= 4
                 else:
-                    lum = 191
+                    lum = 175
                 lum += button.get("flash", 0)
                 if not i:
-                    lum -= 32
+                    lum -= 48
                     lum += button.get("flash", 0)
-                col = [round(i * 255) for i in colorsys.hls_to_rgb(0.75, lum / 255, 1)]
+                c = options.get("sidebar_colour", (64, 0, 96))
+                hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+                light = 1 - (1 - hls[1]) / 4
+                if hls[2]:
+                    sat = 1 - (1 - hls[2]) / 2
+                else:
+                    sat = 0
+                col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
                 bevel_rectangle(
                     DISP,
                     col,
@@ -1522,6 +1562,18 @@ def draw_menu():
             colour=ripple_colours[mclick.index(1)],
             alpha=255,
         ))
+        if mclick[1] and not sidebar.menu:
+
+            def set_colour():
+                colour = easygui.get_color_rgb()
+                if colour:
+                    options.toolbar_colour = colour
+
+            sidebar.menu = cdict(
+                buttons=(
+                    ("Set Colour", set_colour),
+                ),
+            )
     highlighted = progress.seeking or in_rect(mpos, progress.rect)
     crosshair |= highlighted
     osci_rect = (screensize[0] - 8 - progress.box, screensize[1] - toolbar_height, progress.box, toolbar_height * 2 // 3 - 3)
@@ -1615,9 +1667,16 @@ def draw_menu():
                     )
                     crosshair |= 4
                 else:
-                    lum = 127
+                    lum = 96
                 lum += button.get("flash", 0)
-                col = [round(i * 255) for i in colorsys.hls_to_rgb(0.5 + bool(i) / 4, lum / 255, 0.25)]
+                c = options.get("toolbar_colour", (64, 0, 96))
+                hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+                light = 1 - (1 - hls[1]) / 4
+                if hls[2]:
+                    sat = 1 - (1 - hls[2]) / 2
+                else:
+                    sat = 0
+                col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
                 rounded_bev_rect(
                     DISP,
                     col,
@@ -1891,36 +1950,65 @@ def draw_menu():
                 font="Comic Sans MS",
             )
     if sidebar.menu:
-        if sidebar.menu.get("scale") < 1:
-            sidebar.menu.scale = min(1, sidebar.menu.scale + dur)
-            if not sidebar.menu.size:
-                pass
-            sidebar.menu.rect = sidebar.menu.pos + tuple(round(x * sidebar.menu.scale) for x in sidebar.menu.size)
+        if sidebar.menu.get("scale", 0) < 1:
+            sidebar.menu.scale = min(1, sidebar.menu.get("scale", 0) + dur * 3 / sqrt(len(sidebar.menu.buttons)))
+            if not sidebar.menu.get("size"):
+                sidebar.menu.lines = lines = alist()
+                sidebar.menu.glow = [0] * len(sidebar.menu.buttons)
+                size = [0, 20 * len(sidebar.menu.buttons)]
+                for name, func in sidebar.menu.buttons:
+                    surf = message_display(
+                        name,
+                        14,
+                        colour=(255,) * 3,
+                    )
+                    w = surf.get_width() + 8
+                    if w > size[0]:
+                        size[0] = w
+                    lines.append(surf)
+                sidebar.menu.size = tuple(size)
+                sidebar.menu.selected = sidebar.menu.get("selected", -1)
+            sidebar.menu.rect = tuple(sidebar.menu.get("rect") or (mpos2[0] + 1, mpos2[1] + 1))[:2] + (sidebar.menu.size[0], round(sidebar.menu.size[1] * sidebar.menu.scale))
+        c = DISP.get_at(sidebar.menu.rect[:2])
+        c = colorsys.rgb_to_hsv(*(i / 255 for i in c[:3]))
+        sidebar.menu.colour = tuple(round(i * 255) for i in colorsys.hls_to_rgb(c[0], 0.875, 1))
         rect = sidebar.menu.rect
-        if in_rect(mpos, rect):
-            c = (255, 191, 255, round(255 * sidebar.menu.scale))
+        if sidebar.menu.selected:
+            alpha = round(223 * sidebar.menu.scale)
         else:
-            c = (255, 191, 255, round(64 * sidebar.menu.scale))
+            alpha = round(191 * sidebar.menu.scale)
+        c = sidebar.menu.colour + (alpha,)
+        # c = (239, 191, 255, alpha)
         rounded_bev_rect(
             DISP,
             c,
             rect,
             4,
         )
-        if sidebar.menu.scale >= 1:
-            for i, surf in enumerate(sidebar.menu.lines):
-                text_rect = (rect[0], rect[1] + i * 16, rect[2], 16)
-                if in_rect(mpos, text_rect):
-                    rounded_bev_rect(
-                        DISP,
-                        (64, 0, 96),
-                        text_rect,
-                        4,
-                    )
-                DISP.blit(
-                    surf,
-                    text_rect[:2],
+        for i, surf in enumerate(sidebar.menu.lines):
+            text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
+            if sidebar.menu.scale >= 1 and i == sidebar.menu.selected:
+                sidebar.menu.glow[i] = min(1, sidebar.menu.glow[i] + dur * 5)
+            if sidebar.menu.glow[i]:
+                c = round(255 * sidebar.menu.glow[i])
+                rounded_bev_rect(
+                    DISP,
+                    tuple(max(0, i - 64 >> 1) for i in sidebar.menu.colour),
+                    text_rect,
+                    4,
+                    alpha=c,
                 )
+                col = (c,) * 3
+                sidebar.menu.glow[i] = max(0, sidebar.menu.glow[i] - dur * 2.5)
+            else:
+                col = (0,) * 3
+            blit_complex(
+                DISP,
+                surf,
+                (text_rect[0] + 4, text_rect[1]),
+                alpha,
+                colour=col,
+            )
     if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
         if toolbar.editor:
             render_dragging_2()

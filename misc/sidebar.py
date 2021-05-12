@@ -187,36 +187,116 @@ def render_sidebar(dur=0):
                             lq2 = i
                             sidebar.selection_offset = np.array(mpos2) - rect[:2]
                 elif mclick[1] and i == etarget:
-                    entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
-                    if not entries:
-                        entries = (entry,)
-                    url = entries[0]["url"]
-                    if is_url(url):
-                        ytdl = downloader.result()
+                    if not entry.get("selected"):
+                        entry.selected = True
+                    sidebar.last_selected = entry
+
+                    def play_now():
+                        if queue:
+                            a = deque()
+                            b = deque()
+                            for e in queue:
+                                if e == sidebar.get("last_selected"):
+                                    a.appendleft(e)
+                                elif e.get("selected"):
+                                    a.append(e)
+                                else:
+                                    b.append(e)
+                            a.extend(b)
+                            queue[:] = a
+                            mixer.clear()
+                            submit(start)
+
+                    def play_next():
+                        if len(queue) > 1:
+                            s = queue.popleft()
+                            a = deque()
+                            b = deque()
+                            for e in queue:
+                                if e == sidebar.get("last_selected"):
+                                    a.appendleft(e)
+                                elif e.get("selected"):
+                                    a.append(e)
+                                else:
+                                    b.append(e)
+                            a.extend(b)
+                            queue[:] = a
+                            queue.appendleft(s)
+
+                    def add_to_playlist():
+                        entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
+                        if not entries:
+                            entries = (entry,)
+                        url = entries[0]["url"]
+                        if is_url(url):
+                            ytdl = downloader.result()
+                            name = None
+                            if url in ytdl.searched:
+                                resp = ytdl.searched[url].data
+                                if len(resp) == 1:
+                                    name = resp[0].get("name")
+                            if not name:
+                                resp = ytdl.downloader.extract_info(url, download=False, process=False)
+                                name = resp.get("title") or entries[0].name
+                        else:
+                            name = entries[0]["name"]
+                        if len(entries) > 1:
+                            name += f" +{len(entries) - 1}"
+                        playlists = os.listdir("playlists")
+                        text = (easygui.get_string(
+                            "Enter a name for your new playlist!",
+                            "Miza Player",
+                            name,
+                        ) or "").strip()
+                        if text:
+                            with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
+                                json.dump(dict(queue=entries, stats={}), f)
+                            easygui.show_message(
+                                f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+                            )
+                    
+                    def save_as():
                         name = None
-                        if url in ytdl.searched:
-                            resp = ytdl.searched[url].data
-                            if len(resp) == 1:
-                                name = resp[0].get("name")
-                        if not name:
-                            resp = ytdl.downloader.extract_info(url, download=False, process=False)
-                            name = resp.get("title") or entries[0].name
-                    else:
-                        name = entries[0].name
-                    if len(entries) > 1:
-                        name += f" +{len(entries) - 1}"
-                    playlists = os.listdir("playlists")
-                    text = (easygui.get_string(
-                        "Enter a name for your new playlist!",
-                        "Miza Player",
-                        name,
-                    ) or "").strip()
-                    if text:
-                        with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
-                            json.dump(dict(queue=entries, stats={}), f)
-                        easygui.show_message(
-                            f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+                        entries = deque()
+                        for entry in queue:
+                            if entry.get("selected"):
+                                if not name:
+                                    name = entry.name
+                                entries.append(entry)
+                        if not entries:
+                            name = queue[0].name
+                            entries = queue[:1]
+                        if len(entries) > 1:
+                            name += f" +{len(entries) - 1}"
+                        fn = easygui.filesavebox(
+                            "Save As",
+                            "Miza Player",
+                            name + ".ogg",
+                            filetypes=ftypes,
                         )
+                        if fn:
+                            submit(download, entries, fn)
+                    
+                    def delete():
+                        if queue:
+                            pops = set()
+                            for j, e in enumerate(queue):
+                                if e.get("selected"):
+                                    pops.add(j)
+                            queue.pops(pops)
+                            if 0 in pops:
+                                mixer.clear()
+                                submit(start)
+
+                    sidebar.menu = cdict(
+                        buttons=(
+                            ("Play now", play_now),
+                            ("Play next", play_next),
+                            ("Add to playlist", add_to_playlist),
+                            ("Save as", save_as),
+                            ("Delete", delete),
+                        ),
+                    )
                 if entry.get("selected"):
                     flash = entry.get("flash", 16)
                     if flash >= 0:

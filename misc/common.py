@@ -415,6 +415,7 @@ else:
 try:
     shobjidl_core = ctypes.cdll.LoadLibrary(spath)
 except OSError:
+    shobjidl_core = None
     print_exc()
 # shobjidl_core.SetWallpaper(0, os.path.abspath("misc/icon.png"))
 

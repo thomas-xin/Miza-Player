@@ -51,6 +51,7 @@ sidebar = cdict(
     particles=alist(),
     ripples=alist(),
     scroll=cdict(),
+    menu=None
 )
 toolbar = cdict(
     pause=cdict(
@@ -1124,7 +1125,7 @@ def enqueue(entry, start=True):
         submit(render_lyrics, queue[0])
         if len(queue) > 1:
             entry = queue[1]
-            if (entry.duration is None or entry.get("research")):
+            if entry.duration is None or entry.get("research") or not entry.get("lyrics_loading") and not entry.get("lyrics"):
                 ensure_next(1)
         flash_window()
         stream, duration = start_player()
@@ -1889,8 +1890,37 @@ def draw_menu():
                 alpha=a,
                 font="Comic Sans MS",
             )
-    # if sidebar.menu:
-
+    if sidebar.menu:
+        if sidebar.menu.get("scale") < 1:
+            sidebar.menu.scale = min(1, sidebar.menu.scale + dur)
+            if not sidebar.menu.size:
+                pass
+            sidebar.menu.rect = sidebar.menu.pos + tuple(round(x * sidebar.menu.scale) for x in sidebar.menu.size)
+        rect = sidebar.menu.rect
+        if in_rect(mpos, rect):
+            c = (255, 191, 255, round(255 * sidebar.menu.scale))
+        else:
+            c = (255, 191, 255, round(64 * sidebar.menu.scale))
+        rounded_bev_rect(
+            DISP,
+            c,
+            rect,
+            4,
+        )
+        if sidebar.menu.scale >= 1:
+            for i, surf in enumerate(sidebar.menu.lines):
+                text_rect = (rect[0], rect[1] + i * 16, rect[2], 16)
+                if in_rect(mpos, text_rect):
+                    rounded_bev_rect(
+                        DISP,
+                        (64, 0, 96),
+                        text_rect,
+                        4,
+                    )
+                DISP.blit(
+                    surf,
+                    text_rect[:2],
+                )
     if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
         if toolbar.editor:
             render_dragging_2()
@@ -2263,10 +2293,13 @@ except Exception as ex:
     futs = set()
     for e in os.scandir("cache"):
         fn = e.name
-        if fn.endswith(".pcm") and e.is_file(follow_symlinks=False):
-            if fn[0] == "\x7f":
-                futs.add(submit(os.remove, e.path))
-            elif fn[0] == "~" and e.stat().st_size >= 1024 and e.stat().st_size > 268435456:
+        if e.is_file(follow_symlinks=False):
+            if fn.endswith(".pcm"):
+                if fn[0] == "\x7f":
+                    futs.add(submit(os.remove, e.path))
+                elif fn[0] == "~" and (e.stat().st_size <= 1024 or e.stat().st_size > 268435456):
+                    futs.add(submit(os.remove, e.path))
+            else:
                 futs.add(submit(os.remove, e.path))
     if os.path.exists("misc/temp.tmp"):
         futs.add(submit(os.remove, "misc/temp.tmp"))

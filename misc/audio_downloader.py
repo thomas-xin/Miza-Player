@@ -915,6 +915,7 @@ class AudioDownloader:
                 total = 1
             else:
                 items = []
+                total = 0
         for item in items:
             try:
                 track = item["track"]
@@ -1516,12 +1517,16 @@ class AudioDownloader:
             data = data["entries"][0]
         elif not issubclass(type(data), collections.abc.Mapping):
             data = data[0]
+        if data.get("research"):
+            data = self.extract_true(data["url"])[0]
+        elif not issubclass(type(data), collections.abc.Mapping):
+            data = data[0]
         obj = cdict(t=utc())
         obj.data = out = [cdict(
-            name=data["title"],
+            name=data.get("title") or data.get("name"),
             url=data.get("webpage_url") or data.get("url"),
-            stream=get_best_audio(data),
-            icon=get_best_icon(data),
+            stream=data.get("stream") or get_best_audio(data),
+            icon=data.get("icon") or get_best_icon(data),
         )]
         try:
             out[0].duration = data["duration"]

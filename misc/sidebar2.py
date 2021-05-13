@@ -484,7 +484,7 @@ def render_sidebar_2(dur=0):
             if hovered:
                 bevel_rectangle(
                     DISP2,
-                    (191, 127, 255),
+                    progress.select_colour,
                     brect2,
                     2,
                     filled=False,
@@ -602,7 +602,7 @@ def render_sidebar_2(dur=0):
             if hovered:
                 bevel_rectangle(
                     DISP2,
-                    (191, 127, 255),
+                    progress.select_colour,
                     brect2,
                     2,
                     filled=False,

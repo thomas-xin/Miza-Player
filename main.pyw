@@ -4,9 +4,13 @@ import common
 globals().update(common.__dict__)
 
 
-atypes = "wav mp3 ogg opus flac aac m4a webm wma f4a mka mp2 riff".split()
+atypes = "wav mp3 ogg opus flac aac m4a webm wma f4a weba mka mp2 oga riff".split()
 ftypes = [[f"*.{f}" for f in atypes + "mp4 mov qt mkv avi f4v flv wmv raw".split()]]
 ftypes[0].append("All supported audio files")
+
+itypes = "png bmp jpg jpeg webp gif apng afif".split()
+iftypes = [[f"*.{f}" for f in itypes + "mp4 mov qt mkv avi f4v flv wmv raw".split()]]
+iftypes[0].append("All supported image files")
 
 with open("assoc.bat", "w", encoding="utf-8") as f:
     f.write(f"cd {os.path.abspath('')}\nstart /MIN py -3.{pyv} {sys.argv[0]} %*")
@@ -16,7 +20,8 @@ if not os.path.exists("playlists"):
     os.mkdir("playlists")
 
 
-teapot_fut = submit(load_surface, "misc/teapot.png")
+no_lyrics_path = options.get("no_lyrics_path", "misc/no_lyrics.png")
+no_lyrics_fut = submit(load_surface, no_lyrics_path)
 
 project = cdict(
     settings=cdict(
@@ -96,6 +101,7 @@ button_sources = (
     "back",
     "flip",
     "scramble",
+    "unique",
     "microphone",
 )
 button_images = cdict((i, submit(load_surface, "misc/" + i + ".png")) for i in button_sources)
@@ -404,7 +410,7 @@ def setup_buttons():
             queue.rotate(1)
             start()
         toolbar.buttons.append(cdict(
-            name="Back",
+            name="Previous",
             image=back,
             click=rleft,
         ))
@@ -439,6 +445,22 @@ def setup_buttons():
             name="Scramble",
             image=scramble,
             click=scramble_1,
+        ))
+        reset_menu(full=False)
+        unique = button_images.unique.result()
+        def unique_1():
+            pops = set()
+            found = set()
+            for i, e in enumerate(queue):
+                if e.url in found:
+                    pops.add(i)
+                else:
+                    found.add(e.url)
+            queue.pops(pops)
+        toolbar.buttons.append(cdict(
+            name="Remove Duplicates",
+            image=unique,
+            click=unique_1,
         ))
         reset_menu(full=False)
         microphone = button_images.microphone.result()
@@ -1292,6 +1314,19 @@ def update_menu():
             submit(seek_rel, 5)
         elif kspam[K_LEFT]:
             submit(seek_rel, -5)
+    reset = False
+    if sidebar.menu and sidebar.menu.scale >= 1:
+        sidebar.menu.selected = -1
+        if in_rect(mpos, sidebar.menu.rect):
+            i = (mpos2[1] - sidebar.menu.rect[1]) // 20
+            if mclick[0]:
+                sidebar.menu.buttons[i][1]()
+                reset = True
+                mclick[0] = False
+            sidebar.menu.selected = i
+            globals()["mpos"] = (nan, nan)
+    if any(mclick) or reset:
+        sidebar.menu = None
     if in_rect(mpos, toolbar.rect[:3] + (5,)):
         if mclick[0]:
             toolbar.resizing = True
@@ -1302,6 +1337,7 @@ def update_menu():
             player.paused ^= True
             mixer.state(player.paused)
             toolbar.pause.speed = toolbar.pause.maxspeed
+            sidebar.menu = 0
         toolbar.pause.outer = 255
         toolbar.pause.inner = 191
         toolbar.updated = False
@@ -1338,6 +1374,7 @@ def update_menu():
                     button.click()
                 else:
                     button.click[min(mclick.index(1), len(button.click) - 1)]()
+                sidebar.menu = 0
             if toolbar.editor:
                 break
     else:
@@ -1354,6 +1391,7 @@ def update_menu():
                     click()
                 else:
                     click[min(mclick.index(1), len(click) - 1)]()
+                sidebar.menu = 0
     else:
         for button in sidebar.buttons:
             if "flash" in button:
@@ -1385,6 +1423,7 @@ def update_menu():
         sat = 0
     c1 = tuple(round(i * 255) for i in colorsys.hls_to_rgb(hls[0], light - 1 / 4, sat))
     c2 = tuple(round(i * 255) for i in colorsys.hls_to_rgb((hls[0] + 1 / 12) % 1, light, sat))
+    progress.select_colour = c1
     if sidebar.scrolling or in_rect(mpos, sidebar.scroll.rect):
         c1 += (191,)
         if mclick[0]:
@@ -1451,17 +1490,6 @@ def draw_menu():
             sidebar.ripples.pops(pops)
     crosshair = False
     hovertext = None
-    if sidebar.menu and sidebar.menu.scale >= 1:
-        sidebar.menu.selected = -1
-        if in_rect(mpos, sidebar.menu.rect):
-            i = (mpos2[1] - sidebar.menu.rect[1]) // 20
-            if mclick[0]:
-                sidebar.menu.buttons[i][1]()
-                mclick[0] = False
-            sidebar.menu.selected = i
-            globals()["mpos"] = (nan, nan)
-    if any(mclick):
-        sidebar.menu = None
     if any(mclick) and in_rect(mpos, sidebar.rect):
         sidebar.ripples.append(cdict(
             pos=mpos,
@@ -1469,7 +1497,7 @@ def draw_menu():
             colour=ripple_colours[mclick.index(1)],
             alpha=255,
         ))
-        if mclick[1] and not sidebar.menu:
+        if mclick[1] and sidebar.menu is None:
 
             def set_colour():
                 colour = easygui.get_color_rgb()
@@ -1562,7 +1590,7 @@ def draw_menu():
             colour=ripple_colours[mclick.index(1)],
             alpha=255,
         ))
-        if mclick[1] and not sidebar.menu:
+        if mclick[1] and sidebar.menu is None:
 
             def set_colour():
                 colour = easygui.get_color_rgb()
@@ -1607,7 +1635,7 @@ def draw_menu():
         if highlighted:
             bevel_rectangle(
                 DISP,
-                (191, 127, 255),
+                progress.select_colour,
                 progress.rect,
                 3,
                 filled=False,
@@ -1949,6 +1977,48 @@ def draw_menu():
                 alpha=a,
                 font="Comic Sans MS",
             )
+    if mclick[0] or mclick[1]:
+        text_rect = (0, 0, 128, 64)
+        if in_rect(mpos, text_rect):
+            if mclick[1]:
+                pass
+            else:
+                player.flash_i = 32
+                options.insights = (options.get("insights", 0) + 1) % 2
+        elif in_rect(mpos, player.rect):
+            if mclick[1]:
+                s = options.get("spectrogram")
+                if not s:
+
+                    def change_image():
+                        no_lyrics_path = easygui.fileopenbox(
+                            "Open an image file here!",
+                            "Miza Player",
+                            default=options.get("no_lyrics_path", globals()["no_lyrics_path"]),
+                            filetypes=iftypes,
+                        )
+                        if no_lyrics_path:
+                            options.no_lyrics_path = no_lyrics_path
+                            globals()["no_lyrics_fut"] = submit(load_surface, no_lyrics_path)
+                    
+                    sidebar.menu = cdict(
+                        buttons=(
+                            ("Change Image", change_image),
+                        ),
+                    )
+            else:
+                player.flash_s = 32
+                options.spectrogram = (options.get("spectrogram", 0) + 1) % 3
+                mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
+                if not options.spectrogram and queue:
+                    submit(render_lyrics, queue[0])
+        elif in_rect(mpos, osci_rect) and not toolbar.resizer:
+            if mclick[1]:
+                pass
+            else:
+                player.flash_o = 32
+                options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
+                mixer.submit(f"~setting oscilloscope {options.oscilloscope}", force=True)
     if sidebar.menu:
         if sidebar.menu.get("scale", 0) < 1:
             sidebar.menu.scale = min(1, sidebar.menu.get("scale", 0) + dur * 3 / sqrt(len(sidebar.menu.buttons)))
@@ -2030,21 +2100,6 @@ def draw_menu():
         elif sidebar.resizer:
             pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
             sidebar.resizer = False
-    if mclick[0]:
-        text_rect = (0, 0, 128, 64)
-        if in_rect(mpos, text_rect):
-            player.flash_i = 32
-            options.insights = (options.get("insights", 0) + 1) % 2
-        elif in_rect(mpos, player.rect):
-            player.flash_s = 32
-            options.spectrogram = (options.get("spectrogram", 0) + 1) % 3
-            mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
-            if not options.spectrogram and queue:
-                submit(render_lyrics, queue[0])
-        elif in_rect(mpos, osci_rect) and not toolbar.resizer:
-            player.flash_o = 32
-            options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
-            mixer.submit(f"~setting oscilloscope {options.oscilloscope}", force=True)
     if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
         if crosshair & 3:
             pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
@@ -2248,14 +2303,14 @@ try:
                             font="Rockwell",
                         )
                     else:
-                        teapot_source = teapot_fut.result()
-                        teapot_size = limit_size(*teapot_source.get_size(), *player.rect[2:])
-                        teapot = globals().get("teapot")
-                        if not teapot or teapot.get_size() != teapot_size:
-                            teapot = globals()["teapot"] = pygame.transform.scale(teapot_source, teapot_size)
+                        no_lyrics_source = no_lyrics_fut.result()
+                        no_lyrics_size = limit_size(*no_lyrics_source.get_size(), *player.rect[2:])
+                        no_lyrics = globals().get("no_lyrics")
+                        if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
+                            no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size)
                         DISP.blit(
-                            teapot,
-                            (player.rect[2] - teapot.get_width() >> 1, player.rect[3] - teapot.get_height() >> 1),
+                            no_lyrics,
+                            (player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
                         )
                         message_display(
                             f"No lyrics found for {queue[0].name}.",

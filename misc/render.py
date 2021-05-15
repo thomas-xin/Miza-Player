@@ -1,4 +1,4 @@
-import sys, numpy, math, random, json, collections, colorsys, concurrent.futures
+import sys, numpy, math, random, json, collections, colorsys, traceback, concurrent.futures
 from math import *
 from traceback import print_exc
 np = numpy
@@ -188,19 +188,60 @@ class Bar(Particle):
             DRAW.text((x, pos), self.line, col, self.font)
 
 bars = [Bar(i - 1) for i in range(barcount)]
+CIRCLE_SPEC = None
 
 def spectrogram_render():
     global ssize2, specs, dur
     try:
-        if specs != 2:
+        if specs != 3:
+            globals()["CIRCLE_SPEC"] = None
+        if specs == 1:
             sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
             for bar in bars:
                 bar.render(sfx=sfx)
-        else:
+        elif specs == 2:
             sfx = Image.new("RGB", (barcount * 2 - 2,) * 2, (0,) * 3)
             globals()["DRAW"] = ImageDraw.Draw(sfx)
             for bar in bars:
                 bar.render2(sfx=sfx)
+        else:
+            spec = CIRCLE_SPEC
+            if not spec:
+                class Circle_Spec:
+                    angle = 0
+                    rotation = 0
+                globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
+                spec.image = Image.new("RGB", (barcount * 6 - 6,) * 2)
+            else:
+                spec.angle += 1 / 360 * tau
+                spec.rotation += 0.5
+                r = 15 / 16
+                s = 1 / 32
+                colourmatrix = (
+                    r, s, 0, 0,
+                    0, r, s, 0,
+                    s, 0, r, 0,
+                )
+                spec.image = spec.image.convert("RGB", colourmatrix)
+                # spec.image = im
+            sfx = spec.image
+            globals()["DRAW"] = ImageDraw.Draw(sfx)
+            c = (sfx.width + 1 >> 1, sfx.height + 1 >> 1)
+            for bar in sorted(bars, key=lambda bar: bar.height):
+                size = min(2 * barheight, round(bar.height))
+                amp = size / barheight * 2
+                val = min(1, amp)
+                sat = 1 - min(1, max(0, amp - 1))
+                colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount) % 1, sat, val))
+                x = bar.x + 1
+                r1 = x * 3 - 1
+                r2 = x * 3 + 4
+                for i in range(6):
+                    z = spec.angle + i / 6 * tau
+                    p1 = (c[0] + cos(z) * r1, c[1] + sin(z) * r1)
+                    p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
+                    DRAW.line((p1, p2), colour, 11)
+            sfx = sfx.rotate(spec.rotation)
         if sfx.size != ssize2:
             sfx = sfx.resize(ssize2, resample=Image.NEAREST)
             # if specs != 2:
@@ -208,7 +249,7 @@ def spectrogram_render():
             # else:
             #     sfx = sfx.resize(ssize2, resample=Image.LINEAR)
 
-        if specs != 2:
+        if specs == 1:
             fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
             if Bar.fsize != fsize:
                 Bar.fsize = fsize
@@ -233,6 +274,8 @@ def spectrogram_render():
             sys.stdout.write("~s\n")
         sys.stdout.flush()
     except:
+        # with open("log.txt", "w") as f:
+        #     f.write(traceback.format_exc())
         print_exc()
 
 fut = None

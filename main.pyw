@@ -2092,7 +2092,7 @@ def draw_menu():
                     )
             else:
                 player.flash_s = 32
-                options.spectrogram = (options.get("spectrogram", 0) + 1) % 3
+                options.spectrogram = (options.get("spectrogram", 0) + 1) % 4
                 mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
                 if not options.spectrogram and queue:
                     submit(render_lyrics, queue[0])

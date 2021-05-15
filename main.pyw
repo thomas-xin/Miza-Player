@@ -2246,12 +2246,13 @@ try:
         mprev = mheld
         mheld = get_pressed()
         foc = get_focused()
+        unfocused = False
         if foc:
             minimised = False
-            unfocused = False
+            # unfocused = False
         else:
             minimised = is_minimised()
-            unfocused = is_unfocused()
+            # unfocused = is_unfocused()
         if not tick & 15:
             if not downloading.target:
                 if player.paused:

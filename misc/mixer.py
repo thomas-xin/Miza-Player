@@ -18,9 +18,9 @@ def is_minimised():
     global min_inc
     if ctypes.windll.user32.IsIconic(hwnd):
         return True
-    if hwnd != ctypes.windll.user32.GetForegroundWindow(hwnd):
-        min_inc = (min_inc + 1) % 3
-        return min_inc
+    # if hwnd != ctypes.windll.user32.GetForegroundWindow(hwnd):
+    #     min_inc = (min_inc + 1) % 3
+    #     return min_inc
 
 rproc = psutil.Popen(("py", f"-3.{sys.version_info[1]}", "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 

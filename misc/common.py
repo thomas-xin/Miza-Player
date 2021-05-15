@@ -251,7 +251,7 @@ else:
     options = cdict(
         screensize=[1280, 720],
         sidebar_width=256,
-        toolbar_height=64,
+        toolbar_height=80,
         audio=cdict(audio_default),
         control=cdict(control_default),
         spectrogram=1,
@@ -997,16 +997,32 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
             colour = (0,) * 3
         return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
 
-def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4, alpha=255, thickness=0, repetition=1, filled=False, rotation=0, soft=False, attempts=128):
+reg_polygon_cache = {}
+
+def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4, alpha=255, thickness=0, repetition=1, filled=False, rotation=0, soft=False, attempts=128, cache=False):
     width = max(round(width), 0)
     height = max(round(height), 0)
+    repetition = int(repetition)
+    if sides:
+        angle %= tau / sides
+    else:
+        angle = 0
+    cache |= angle % (pi / 4) == 0
+    if cache:
+        h = (tuple(round(i / 8) * 8 for i in colour), sides, width, height, round(angle / tau * 256), thickness, repetition, filled, soft)
+        try:
+            newS = reg_polygon_cache[h]
+        except KeyError:
+            pass
+        else:
+            pos = [centre[0] - width, centre[1] - height]
+            return blit_complex(dest, newS, pos, alpha, rotation, copy=True)
     try:
         newS = pygame.Surface((width << 1, height << 1), SRCALPHA)
     except:
         print_exc()
         return
     newS.fill((0,) * 4)
-    repetition = int(repetition)
     draw_direction = 1 if repetition >= 0 else -1
     if draw_direction >= 0:
         a = draw_direction
@@ -1058,7 +1074,10 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
             print_exc()
         loop += draw_direction
     pos = [centre[0] - width, centre[1] - height]
-    return blit_complex(dest, newS, pos, alpha, rotation, copy=False)
+    if cache:
+        reg_polygon_cache[h] = newS
+        # print(len(reg_polygon_cache), h)
+    return blit_complex(dest, newS, pos, alpha, rotation, copy=cache)
 
 def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=255, gradient=False, filled=False, cache=True):
     reverse = fill_ratio < 0
@@ -1322,8 +1341,13 @@ def _get_duration_2(filename, _timeout=12):
     return dur, bps, cdc
 
 def get_duration_2(filename):
-    if not is_url(filename) and filename.endswith(".pcm"):
-        return os.path.getsize(filename) / (48000 * 2 * 2), "pcm"
+    if not is_url(filename):
+        if filename.endswith(".pcm"):
+            return os.path.getsize(filename) / (48000 * 2 * 2), "pcm"
+        if os.path.exists(filename):
+            with open(filename, "rb") as f:
+                if f.read(4) == b"MThd":
+                    return None, "N/A"
     if filename:
         dur, bps, cdc = _get_duration_2(filename, 4)
         if not dur and is_url(filename):
@@ -1429,10 +1453,13 @@ def mid2mp3(mid):
     ).text
     fn = url.rsplit("/", 1)[-1].strip("\x00")
     for i in range(360):
-        with delay(1):
-            test = requests.get(f"https://hostfast.onlineconverter.com/file/{fn}").content
-            if test == b"d":
-                break
+        t = utc()
+        test = requests.get(f"https://hostfast.onlineconverter.com/file/{fn}").content
+        if test == b"d":
+            break
+        delay = utc() - t
+        if delay < 1:
+            time.sleep(1 - delay)
     ts = ts_us()
     r_mp3 = f"cache/{ts}.mp3"
     with open(r_mp3, "wb") as f:

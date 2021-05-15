@@ -1113,7 +1113,7 @@ class AudioDownloader:
 
     # Extracts info from a URL or search, adjusting accordingly.
     def extract_info(self, item, count=1, search=False, mode=None):
-        if mode or search and not item.startswith("ytsearch:") and not is_url(item):
+        if mode or search and item[:9] not in ("ytsearch:", "scsearch:", "bcsearch:") and not is_url(item):
             if count == 1:
                 c = ""
             else:
@@ -1133,6 +1133,18 @@ class AudioDownloader:
                 return self.downloader.extract_info(f"scsearch{c}:{item}", download=False, process=False)
             except Exception as ex:
                 raise ConnectionError(exc + repr(ex))
+        if item[:9] == "spsearch:":
+            query = "https://api.spotify.com/v1/search?type=track%2Cshow_audio%2Cepisode_audio&include_external=audio&limit=1&q=" + url_parse(item[9:])
+            resp = requests.get(query, headers=self.spotify_header).json()
+            try:
+                track = resp["tracks"]["items"][0]
+                name = track.get("name", track["id"])
+                artists = ", ".join(a["name"] for a in track.get("artists", []))
+            except LookupError:
+                print(resp)
+            else:
+                item = "ytsearch:" + "".join(c if c.isascii() and c != ":" else "_" for c in f"{name} ~ {artists}")
+                self.spotify_x += 1
         if is_url(item) or not search:
             return self.extract_from(item)
         self.youtube_dl_x += 1

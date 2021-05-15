@@ -123,20 +123,26 @@ def setup_buttons():
         # inv = pygame.image.frombuffer(Image.merge("RGBA", (R, I, I, A)).tobytes(), I.size, "RGBA")
         def settings_toggle():
             sidebar.abspos = not bool(sidebar.abspos)
-        def settings_reset():
-            sidebar.abspos = 1
-            options.audio.update(audio_default)
-            s = io.StringIO()
-            for k, v in options.audio.items():
-                s.write(f"~setting #{k} {v}\n")
-            s.write(f"~replay\n")
-            s.seek(0)
-            mixer.stdin.write(s.read().encode("utf-8"))
-            mixer.stdin.flush()
+        def settings_menu():
+            def settings_reset():
+                options.audio.update(audio_default)
+                s = io.StringIO()
+                for k, v in options.audio.items():
+                    s.write(f"~setting #{k} {v}\n")
+                s.write(f"~replay\n")
+                s.seek(0)
+                mixer.stdin.write(s.read().encode("utf-8"))
+                mixer.stdin.flush()
+            sidebar.menu = cdict(
+                buttons=(
+                    ("Settings", settings_toggle),
+                    ("Reset", settings_reset),
+                ),
+            )
         sidebar.buttons.append(cdict(
             name="Settings",
             sprite=(gears, notes),
-            click=(settings_toggle, settings_reset),
+            click=(settings_toggle, settings_menu),
         ))
         reset_menu(full=False)
         folder = button_images.folder.result()
@@ -153,6 +159,24 @@ def setup_buttons():
             )
             if files:
                 submit(_enqueue_local, *files)
+        def enqueue_menu():
+            def enqueue_folder():
+                default = None
+                if options.get("path"):
+                    default = options.path.rstrip("/") + "/"
+                files = easygui.diropenbox(
+                    "Open an audio or video file here!",
+                    "Miza Player",
+                    default=default,
+                )
+                if files:
+                    submit(_enqueue_local, *(files + "/" + f for f in os.listdir(files)), probe=False)
+            sidebar.menu = cdict(
+                buttons=(
+                    ("Open file", enqueue_local),
+                    ("Open folder", enqueue_folder),
+                ),
+            )
         def load_project_file():
             default = None
             if options.get("path2"):
@@ -169,20 +193,34 @@ def setup_buttons():
         sidebar.buttons.append(cdict(
             name="Open",
             sprite=folder,
-            click=enqueue_local,
+            click=(enqueue_local, enqueue_menu),
             click2=load_project_file,
         ))
         reset_menu(full=False)
         hyperlink = button_images.hyperlink.result()
         plus = button_images.plus.result()
-        def enqueue_search():
+        def enqueue_search(q=None):
             query = easygui.get_string(
                 "Search for one or more songs online!",
                 "Miza Player",
                 "",
             )
             if query:
+                if not is_url(query):
+                    if q == "sc":
+                        query = "scsearch:" + query.replace(":", "-")
+                    elif q == "sp":
+                        query = "spsearch:" + query
                 submit(_enqueue_search, query)
+        def select_search():
+            sidebar.menu = cdict(
+                buttons=(
+                    ("YouTube", enqueue_search),
+                    ("SoundCloud", enqueue_search, "sc"),
+                    ("Spotify", enqueue_search, "sp"),
+                    ("BandCamp", enqueue_search, "bc"),
+                ),
+            )
         def add_instrument():
             x = 0
             while x in project.instruments:
@@ -199,7 +237,7 @@ def setup_buttons():
             name2="New instrument",
             sprite=hyperlink,
             sprite2=plus,
-            click=enqueue_search,
+            click=(enqueue_search, select_search),
             click2=add_instrument,
         ))
         reset_menu(full=False)
@@ -224,13 +262,8 @@ def setup_buttons():
                 if control.shuffle and len(queue) > 1:
                     random.shuffle(queue.view[bool(start):])
                 sidebar.loading = False
-        def edit_playlist():
-            method = easygui.buttonbox(
-                "Select an operation to perform on a playlist!",
-                "Miza Player",
-                ("Create", "Edit", "Delete"),
-            ).casefold()
-            if method == "create":
+        def playlist_menu():
+            def create_playlist():
                 text = (easygui.textbox(
                     "Enter a list of URLs or file paths to include in the playlist!",
                     "Miza Player",
@@ -273,7 +306,7 @@ def setup_buttons():
                                 f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
                                 "Success!",
                             )
-            elif method == "edit":
+            def edit_playlist():
                 items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
                 if not items:
                     return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
@@ -314,7 +347,7 @@ def setup_buttons():
                                     f"Playlist {repr(choice)} has been updated!",
                                     "Success!",
                                 )
-            elif method == "delete":
+            def delete_playlist():
                 items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
                 if not items:
                     return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
@@ -326,6 +359,14 @@ def setup_buttons():
                         f"Playlist {repr(choice)} has been removed!",
                         "Success!",
                     )
+            sidebar.menu = cdict(
+                buttons=(
+                    ("Open playlist", get_playlist),
+                    ("Create playlist", create_playlist),
+                    ("Edit playlist", edit_playlist),
+                    ("Delete playlist", delete_playlist),
+                ),
+            )
         def waves_1():
             raise BaseException
         sidebar.buttons.append(cdict(
@@ -333,7 +374,7 @@ def setup_buttons():
             name2="Audio Clip",
             sprite=playlist,
             sprite2=waves,
-            click=(get_playlist, edit_playlist),
+            click=(get_playlist, playlist_menu),
             click2=waves_1,
         ))
         reset_menu(full=False)
@@ -352,12 +393,22 @@ def setup_buttons():
                 entry = options.history.pop(int(selected.split(":", 1)[0]))
                 options.history.appendleft(entry)
                 queue.extend(cdict(name=entry[0], url=url, duration=None, pos=len(queue)) for url in entry[1])
+        def history_menu():
+            def clear_history():
+                options.history.clear()
+                easygui.show_message("History successfully cleared!", "Miza Player")
+            sidebar.menu = cdict(
+                buttons=(
+                    ("View history", player_history),
+                    ("Clear history", clear_history),
+                ),
+            )
         def project_history():
             raise BaseException
         sidebar.buttons.append(cdict(
             name="History",
             sprite=history,
-            click=player_history,
+            click=(player_history, history_menu),
             click2=project_history,
         ))
         reset_menu(full=False)
@@ -500,10 +551,16 @@ def setup_buttons():
             )
             if selected:
                 submit(_enqueue_local, "<" + selected.split(":", 1)[0].lstrip("0") + ">")
+        def microphone_menu():
+            sidebar.menu = cdict(
+                buttons=(
+                    ("Add input", enqueue_device),
+                ),
+            )
         sidebar.buttons.append(cdict(
             name="Audio input",
             sprite=microphone,
-            click=enqueue_device,
+            click=(enqueue_device, microphone_menu),
         ))
         reset_menu(full=False)
     except:
@@ -1248,7 +1305,7 @@ def update_menu():
         player.amp = 0
         player.pop("osci", None)
     progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
-    toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * 2) % tau
+    toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * 2)
     toolbar.pause.speed *= 0.995 ** (duration * 480)
     sidebar.scroll.target = max(0, min(sidebar.scroll.target, len(queue) * 32 - screensize[1] + options.toolbar_height + 36 + 32))
     r = ratio if sidebar.scrolling else (ratio - 1) / 3 + 1
@@ -1277,7 +1334,7 @@ def update_menu():
             alpha=255,
         ))
     if toolbar.resizing:
-        toolbar_height = min(96, max(48, screensize[1] - mpos2[1] + 2))
+        toolbar_height = min(128, max(64, screensize[1] - mpos2[1] + 2))
         if options.toolbar_height != toolbar_height:
             options.toolbar_height = toolbar_height
             reset_menu()
@@ -1320,7 +1377,8 @@ def update_menu():
         if in_rect(mpos, sidebar.menu.rect):
             i = (mpos2[1] - sidebar.menu.rect[1]) // 20
             if mclick[0]:
-                sidebar.menu.buttons[i][1]()
+                button = sidebar.menu.buttons[i]
+                button[1](*button[2:])
                 reset = True
                 mclick[0] = False
             sidebar.menu.selected = i
@@ -1370,11 +1428,11 @@ def update_menu():
         for button in toolbar.buttons:
             if in_rect(mpos, button.rect):
                 button.flash = 64
+                sidebar.menu = 0
                 if callable(button.click):
                     button.click()
                 else:
                     button.click[min(mclick.index(1), len(button.click) - 1)]()
-                sidebar.menu = 0
             if toolbar.editor:
                 break
     else:
@@ -1387,11 +1445,11 @@ def update_menu():
             if in_rect(mpos, button.rect):
                 button.flash = 32
                 click = button.click if not toolbar.editor else button.get("click2") or button.click
+                sidebar.menu = 0
                 if callable(click):
                     click()
                 else:
                     click[min(mclick.index(1), len(click) - 1)]()
-                sidebar.menu = 0
     else:
         for button in sidebar.buttons:
             if "flash" in button:
@@ -1463,6 +1521,51 @@ exec(compile(b, "sidebar.py", "exec"))
 with open("misc/sidebar2.py", "rb") as f:
     b = f.read()
 exec(compile(b, "sidebar2.py", "exec"))
+
+
+def spinnies():
+    ts = 0
+    while "pos" not in progress:
+        time.sleep(0.5)
+    while True:
+        t = pc()
+        dur = max(0.001, min(t - ts, 0.125))
+        ts = t
+        try:
+            progress.angle = -t * pi
+            pops = set()
+            for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
+                p.life -= dur * 2.5
+                if p.life <= 6:
+                    p.angle += dur
+                    p.rad = max(0, p.rad - 12 * dur)
+                    p.hsv[2] = max(p.hsv[2] - dur / 5, 0)
+                if p.life < 3:
+                    pops.add(i)
+            progress.particles.pops(pops)
+            x = progress.pos[0] + round(progress.length * progress.vis / player.end) - progress.width // 2 if not progress.seeking or player.end < inf else mpos2[0]
+            x = min(progress.pos[0] - progress.width // 2 + progress.length, max(progress.pos[0] - progress.width // 2, x))
+            r = ceil(progress.spread * toolbar_height) >> 1
+            d = abs(pc() % 2 - 1)
+            hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
+            for i in shuffle(range(3)):
+                a = progress.angle + i / 3 * tau
+                point = [cos(a) * r, sin(a) * r]
+                p = (x + point[0], progress.pos[1] + point[1])
+                if r:
+                    progress.particles.append(cdict(
+                        centre=(x, progress.pos[1]),
+                        angle=a,
+                        rad=r,
+                        life=7,
+                        hsv=hsv,
+                    ))
+            if pc() - t < 1 / 60:
+                time.sleep(t - pc() + 1 / 60)
+        except:
+            print_exc()
+
+submit(spinnies)
 
 
 def draw_menu():
@@ -1883,8 +1986,8 @@ def draw_menu():
             align=2,
             font="Comic Sans MS",
         )
-        x = progress.pos[0] + round(progress.length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
-        x = min(progress.pos[0] - width // 2 + progress.length, max(progress.pos[0] - width // 2, x))
+        x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
+        x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
         r = ceil(progress.spread * toolbar_height) >> 1
         if r:
             concentric_circle(
@@ -1894,7 +1997,6 @@ def draw_menu():
                 r,
                 fill_ratio=0.5,
             )
-        pops = set()
         for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
             ri = max(1, round(p.life ** 1.1 / 7 ** 0.1))
             col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
@@ -1921,16 +2023,6 @@ def draw_menu():
                     pos,
                     ri,
                 )
-            p.life -= dur * 2.5
-            if p.life <= 6:
-                p.angle += dur
-                p.rad = max(0, p.rad - 12 * dur)
-                # p.hsv[0] = (p.hsv[0] + dur / 24) % 1
-                # p.hsv[1] = max(p.hsv[1] - dur / 6, 0)
-                p.hsv[2] = max(p.hsv[2] - dur / 5, 0)
-            if p.life < 3:
-                pops.add(i)
-        progress.particles.pops(pops)
         d = abs(pc() % 2 - 1)
         hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
         col = [round(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
@@ -1938,14 +2030,6 @@ def draw_menu():
             a = progress.angle + i / 3 * tau
             point = [cos(a) * r, sin(a) * r]
             p = (x + point[0], progress.pos[1] + point[1])
-            if r and not tick & 7:
-                progress.particles.append(cdict(
-                    centre=(x, progress.pos[1]),
-                    angle=a,
-                    rad=r,
-                    life=7,
-                    hsv=hsv,
-                ))
             ri = max(7, progress.width // 2 + 2)
             reg_polygon_complex(
                 DISP,
@@ -2026,20 +2110,25 @@ def draw_menu():
                 sidebar.menu.lines = lines = alist()
                 sidebar.menu.glow = [0] * len(sidebar.menu.buttons)
                 size = [0, 20 * len(sidebar.menu.buttons)]
-                for name, func in sidebar.menu.buttons:
+                for t in sidebar.menu.buttons:
+                    name = t[0]
+                    func = t[1]
                     surf = message_display(
                         name,
                         14,
                         colour=(255,) * 3,
                     )
-                    w = surf.get_width() + 8
+                    w = surf.get_width() + 6
                     if w > size[0]:
                         size[0] = w
                     lines.append(surf)
                 sidebar.menu.size = tuple(size)
                 sidebar.menu.selected = sidebar.menu.get("selected", -1)
             sidebar.menu.rect = tuple(sidebar.menu.get("rect") or (mpos2[0] + 1, mpos2[1] + 1))[:2] + (sidebar.menu.size[0], round(sidebar.menu.size[1] * sidebar.menu.scale))
-        c = DISP.get_at(sidebar.menu.rect[:2])
+        try:
+            c = DISP.get_at(sidebar.menu.rect[:2])
+        except IndexError:
+            c = (0,) * 3
         c = colorsys.rgb_to_hsv(*(i / 255 for i in c[:3]))
         sidebar.menu.colour = tuple(round(i * 255) for i in colorsys.hls_to_rgb(c[0], 0.875, 1))
         rect = sidebar.menu.rect
@@ -2075,7 +2164,7 @@ def draw_menu():
             blit_complex(
                 DISP,
                 surf,
-                (text_rect[0] + 4, text_rect[1]),
+                (text_rect[0] + 3, text_rect[1]),
                 alpha,
                 colour=col,
             )
@@ -2184,7 +2273,7 @@ try:
                 player.fut = submit(start)
         elif not queue:
             player.pop("fut").result()
-        if not minimised and (not unfocused or not tick % 48):
+        if not minimised and (not unfocused or not tick % 24):
             mclick = [x and not y for x, y in zip(mheld, mprev)]
             mrelease = [not x and y for x, y in zip(mheld, mprev)]
             mpos2 = mouse_rel_pos()
@@ -2382,7 +2471,7 @@ try:
                         player.rect,
                     )
                 modified.clear()
-        else:
+        elif minimised:
             sidebar.particles.clear()
             progress.particles.clear()
         delay = max(0, last_tick - pc() + 1 / 480)

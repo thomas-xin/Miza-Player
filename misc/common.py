@@ -500,44 +500,54 @@ d2r = pi / 180
 ts_us = lambda: time.time_ns() // 1000
 
 
-etagf = "misc/etag.tmp"
+commitf = "misc/commit.tmp"
 
 def update_repo():
     print("Checking for updates...")
     try:
-        with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main", stream=True) as resp:
-            etag = resp.headers.get("etag", "")
+        with requests.get("https://github.com/thomas-xin/Miza-Player") as resp:
+            s = resp.text
+        try:
+            search = '<include-fragment src="/thomas-xin/Miza-Player/tree-commit/'
+            s = s[s.index(search) + len(search):]
+        except ValueError:
+            search = '<a data-pjax="true" data-test-selector="commit-tease-commit-message"'
+            s = s[s.index(search) + len(search):]
+            search = 'href="/thomas-xin/Miza-Player/commit/'
+            s = s[s.index(search) + len(search):]
+        commit = s.split('"', 1)[0]
+        try:
             try:
-                try:
-                    with open(etagf, "r") as f:
-                        s = f.read()
-                except FileNotFoundError:
-                    print("First run, treating as latest update...")
-                    raise EOFError
-                if etag != s:
-                    print("Update found!")
-                    globals()["repo-update"] = fut = concurrent.futures.Future()
+                with open(commitf, "r") as f:
+                    s = f.read()
+            except FileNotFoundError:
+                print("First run, treating as latest update...")
+                raise EOFError
+            if commit != s:
+                print("Update found!")
+                globals()["repo-update"] = fut = concurrent.futures.Future()
+                with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main", stream=True) as resp:
                     b = resp.content
-                    r = fut.result()
-                    if r:
-                        with zipfile.ZipFile(io.BytesIO(b), allowZip64=True, strict_timestamps=False) as z:
-                            for fn in z.namelist():
-                                fn2 = fn[len("Miza-Player-main/"):]
-                                if fn2 and not fn2.endswith("/") and not fn2.endswith(".ttf"):
-                                    try:
-                                        with open(fn2, "wb") as f2:
-                                            with z.open(fn, force_zip64=True) as f:
-                                                f2.write(f.read())
-                                    except PermissionError:
-                                        pass
-                        globals()["repo-update"] = True
-                    if r is not None:
-                        raise EOFError
-                else:
-                    print("No updates found.")
-            except EOFError:
-                with open(etagf, "w") as f:
-                    f.write(etag)
+                r = fut.result()
+                if r:
+                    with zipfile.ZipFile(io.BytesIO(b), allowZip64=True, strict_timestamps=False) as z:
+                        for fn in z.namelist():
+                            fn2 = fn[len("Miza-Player-main/"):]
+                            if fn2 and not fn2.endswith("/") and not fn2.endswith(".ttf"):
+                                try:
+                                    with open(fn2, "wb") as f2:
+                                        with z.open(fn, force_zip64=True) as f:
+                                            f2.write(f.read())
+                                except PermissionError:
+                                    pass
+                    globals()["repo-update"] = True
+                if r is not None:
+                    raise EOFError
+            else:
+                print("No updates found.")
+        except EOFError:
+            with open(commitf, "w") as f:
+                f.write(commit)
     except:
         print_exc()
 

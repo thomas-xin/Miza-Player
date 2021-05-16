@@ -112,6 +112,8 @@ def load_pencil():
     pencilb.fill((0, 0, 0), special_flags=BLEND_RGB_MULT)
 submit(load_pencil)
 
+lyrics_entry = None
+
 def setup_buttons():
     try:
         gears = button_images.gears.result()
@@ -397,10 +399,17 @@ def setup_buttons():
             def clear_history():
                 options.history.clear()
                 easygui.show_message("History successfully cleared!", "Miza Player")
+            def clear_cache():
+                for fn in os.listdir("cache"):
+                    try:
+                        os.remove("cache/" + fn)
+                    except (FileNotFoundError, PermissionError):
+                        pass
             sidebar.menu = cdict(
                 buttons=(
                     ("View history", player_history),
                     ("Clear history", clear_history),
+                    ("Clear cache", clear_cache),
                 ),
             )
         def project_history():
@@ -2084,10 +2093,25 @@ def draw_menu():
                         if no_lyrics_path:
                             options.no_lyrics_path = no_lyrics_path
                             globals()["no_lyrics_fut"] = submit(load_surface, no_lyrics_path)
+
+                    def search_lyrics():
+                        query = easygui.get_string(
+                            "Search a song to get its lyrics!",
+                            "Miza Player",
+                            "",
+                        )
+                        if query:
+                            globals()["lyrics_entry"] = entry = cdict(name=query)
+                            submit(render_lyrics, entry)
+                    
+                    def reset_lyrics():
+                        globals()["lyrics_entry"] = None
                     
                     sidebar.menu = cdict(
                         buttons=(
                             ("Change Image", change_image),
+                            ("Search Lyrics", search_lyrics),
+                            ("Reset Lyrics", reset_lyrics),
                         ),
                     )
             else:
@@ -2369,15 +2393,16 @@ try:
                             surf,
                             rect[:2],
                         )
-                if queue and not options.spectrogram:
+                if (queue or lyrics_entry) and not options.spectrogram:
                     size = max(16, min(32, (screensize[0] - sidebar_width) // 36))
-                    if "lyrics" not in queue[0]:
+                    entry = lyrics_entry or queue[0]
+                    if "lyrics" not in entry:
                         if pc() % 0.25 < 0.125:
                             col = (255,) * 3
                         else:
                             col = (255, 0, 0)
                         message_display(
-                            f"Loading lyrics for {queue[0].name}...",
+                            f"Loading lyrics for {entry.name}...",
                             size,
                             (player.rect[2] >> 1, size),
                             col,
@@ -2386,17 +2411,17 @@ try:
                             background=(0,) * 3,
                             font="Rockwell",
                         )
-                    elif queue[0].lyrics:
+                    elif entry.lyrics:
                         rect = (player.rect[2] - 8, player.rect[3] - 64)
-                        if not queue[0].get("lyrics_loading") and rect != queue[0].lyrics[1].get_size():
-                            queue[0].lyrics_loading = True
-                            submit(render_lyrics, queue[0])
+                        if not entry.get("lyrics_loading") and rect != entry.lyrics[1].get_size():
+                            entry.lyrics_loading = True
+                            submit(render_lyrics, entry)
                         DISP.blit(
-                            queue[0].lyrics[1],
+                            entry.lyrics[1],
                             (8, 64),
                         )
                         message_display(
-                            queue[0].lyrics[0],
+                            entry.lyrics[0],
                             size,
                             (player.rect[2] >> 1, size),
                             (255,) * 3,
@@ -2416,7 +2441,7 @@ try:
                             (player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
                         )
                         message_display(
-                            f"No lyrics found for {queue[0].name}.",
+                            f"No lyrics found for {entry.name}.",
                             size,
                             (player.rect[2] >> 1, size),
                             (255, 0, 0),
@@ -2543,8 +2568,10 @@ except Exception as ex:
             if fn.endswith(".pcm"):
                 if fn[0] == "\x7f":
                     futs.add(submit(os.remove, e.path))
-                elif fn[0] == "~" and (e.stat().st_size <= 1024 or e.stat().st_size > 268435456):
-                    futs.add(submit(os.remove, e.path))
+                elif fn[0] == "~":
+                    s = e.stat()
+                    if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 7:
+                        futs.add(submit(os.remove, e.path))
             else:
                 futs.add(submit(os.remove, e.path))
     if os.path.exists("misc/temp.tmp"):

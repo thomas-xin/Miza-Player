@@ -246,7 +246,14 @@ def setup_buttons():
         playlist = button_images.playlist.result()
         waves = button_images.waves.result()
         def get_playlist():
-            items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
+            items = deque()
+            for item in (item for item in os.listdir("playlists") if item.endswith(".json")):
+                u = unquote(item[:-5])
+                fn = "playlists/" + quote(u)[:245] + ".json"
+                fn2 = "playlists/" + item
+                if fn != fn2 or not os.path.exists(fn):
+                    os.rename(fn2, fn)
+                items.append(u)
             if not items:
                 return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
             choice = easygui.get_choice("Select a locally saved playlist here!", "Miza Player", items)

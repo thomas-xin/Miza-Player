@@ -2242,6 +2242,19 @@ kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
 try:
     for tick in itertools.count(0):
+        fut = common.__dict__.pop("repo-update", None)
+        if fut:
+            if fut is True:
+                easygui.show_message(
+                    f"Miza Player has been updated successfully!",
+                    "Success!",
+                )
+            else:
+                r = easygui.get_yes_or_no(
+                    "Would you like to update the application? (takes effect upon next usage)",
+                    "Miza Player ~ Update found!",
+                )
+                fut.set_result(r)
         lpos = mpos
         mprev = mheld
         mheld = get_pressed()

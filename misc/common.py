@@ -1,8 +1,7 @@
-import os, sys, json, traceback, subprocess, copy, concurrent.futures
+import os, sys, json, traceback, subprocess, copy, time, concurrent.futures
 
+utc = time.time
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
-
-
 from concurrent.futures import thread
 
 def _adjust_thread_count(self):
@@ -35,7 +34,6 @@ def _adjust_thread_count(self):
 
 concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
 
-
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=48)
 submit = exc.submit
 print_exc = traceback.print_exc
@@ -66,13 +64,20 @@ def as_str(s):
     return str(s)
 
 
+collections2f = "misc/collections2.tmp"
+try:
+    update_collections = utc() - os.path.getmtime(collections2f) > 3600
+except FileNotFoundError:
+    update_collections = True
+
 hasmisc = os.path.exists("misc")
 argp = ["py"]
 pyv = sys.version_info[1]
 if hasmisc:
-    if sys.version_info[1] in range(5, 9):
-        argp = ["py", f"-3.{sys.version_info[1]}"]
-        from install_pillow_simd import *
+    if pyv in range(5, 9):
+        argp = ["py", f"-3.{pyv}"]
+        if update_collections:
+            from install_pillow_simd import *
     else:
         for v in range(8, 4, -1):
             print(f"Attempting to find/install pillow-simd for Python 3.{v}...")
@@ -86,7 +91,7 @@ if hasmisc:
                 print(f"pillow-simd versioning successful for Python 3.{v}")
                 argp = ["py", f"-3.{v}"]
                 pyv = int(argp[-1].rsplit(".", 1)[-1])
-                if sys.version_info[1] != pyv:
+                if update_collections and sys.version_info[1] != pyv:
                     from install_pillow_simd import *
                 break
 
@@ -408,20 +413,21 @@ screenpos2 = get_window_rect()[:2]
 
 flash_window = lambda bInvert=True: user32.FlashWindow(hwnd, bInvert)
 
-if win == "win32":
-    spath = "misc/Shobjidl-32.dll"
-else:
-    spath = "misc/Shobjidl.dll"
-try:
-    shobjidl_core = ctypes.cdll.LoadLibrary(spath)
-except OSError:
-    shobjidl_core = None
-    print_exc()
 # shobjidl_core.SetWallpaper(0, os.path.abspath("misc/icon.png"))
 
 proglast = (0, 0)
 def taskbar_progress_bar(ratio=1, colour=0):
-    if not shobjidl_core:
+    if "shobjidl_core" not in globals():
+        if win == "win32":
+            spath = "misc/Shobjidl-32.dll"
+        else:
+            spath = "misc/Shobjidl.dll"
+        try:
+            globals()["shobjidl_core"] = ctypes.cdll.LoadLibrary(spath)
+        except OSError:
+            globals()["shobjidl_core"] = None
+            print_exc()
+    elif not shobjidl_core:
         return
     global proglast
     if ratio <= 0 and not colour & 1 or not colour:
@@ -477,7 +483,7 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import PIL, easygui, easygui_qt, numpy, time, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, zipfile, pickle, hashlib, base64, urllib, requests
+import PIL, easygui, easygui_qt, numpy, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, zipfile, pickle, hashlib, base64, urllib, requests
 import PyQt5
 from PyQt5 import QtCore, QtWidgets
 if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
@@ -491,10 +497,49 @@ easygui.__dict__.update(easygui_qt.easygui_qt.__dict__)
 deque = collections.deque
 suppress = contextlib.suppress
 d2r = pi / 180
-utc = time.time
 ts_us = lambda: time.time_ns() // 1000
 
-collections2f = "misc/collections2.tmp"
+
+etagf = "misc/etag.tmp"
+
+def update_repo():
+    print("Checking for updates...")
+    try:
+        with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main", stream=True) as resp:
+            etag = resp.headers.get("etag", "")
+            try:
+                try:
+                    with open(etagf, "r") as f:
+                        s = f.read()
+                except FileNotFoundError:
+                    print("First run, treating as latest update...")
+                    raise EOFError
+                if etag != s:
+                    print("Update found!")
+                    globals()["repo-update"] = fut = concurrent.futures.Future()
+                    b = resp.content
+                    r = fut.result()
+                    if r:
+                        with zipfile.ZipFile(io.BytesIO(b), allowZip64=True, strict_timestamps=False) as z:
+                            for fn in z.namelist():
+                                fn2 = fn[len("Miza-Player-main/"):]
+                                if fn2 and not fn2.endswith("/") and not fn2.endswith(".ttf"):
+                                    try:
+                                        with open(fn2, "wb") as f2:
+                                            with z.open(fn, force_zip64=True) as f:
+                                                f2.write(f.read())
+                                    except PermissionError:
+                                        pass
+                        globals()["repo-update"] = True
+                    if r is not None:
+                        raise EOFError
+                else:
+                    print("No updates found.")
+            except EOFError:
+                with open(etagf, "w") as f:
+                    f.write(etag)
+    except:
+        print_exc()
 
 def update_collections2():
     with requests.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py") as resp:
@@ -504,13 +549,16 @@ def update_collections2():
     exec(compile(b, "collections2.tmp", "exec"), globals())
     print("collections2.tmp updated.")
 
+repo_fut = None
 if not os.path.exists(collections2f):
     update_collections2()
+    repo_fut = submit(update_repo)
 with open(collections2f, "rb") as f:
     b = f.read()
 exec(compile(b, "collections2.tmp", "exec"), globals())
 if utc() - os.path.getmtime(collections2f) > 3600:
     submit(update_collections2)
+    repo_fut = submit(update_repo)
 
 options.history = alist(options.get("history", ()))
 globals().update(options)

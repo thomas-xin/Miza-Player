@@ -188,7 +188,11 @@ def render_sidebar(dur=0):
                             sidebar.selection_offset = np.array(mpos2) - rect[:2]
                 elif mclick[1] and i == etarget:
                     if not entry.get("selected"):
-                        entry.selected = True
+                        for e in queue:
+                            if e == entry:
+                                e.selected = True
+                            else:
+                                e.pop("selected", None)
                     sidebar.last_selected = entry
 
                     def play_now():

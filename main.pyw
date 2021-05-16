@@ -1561,7 +1561,7 @@ def spinnies():
                         hsv=hsv,
                     ))
             if pc() - t < 1 / 60:
-                time.sleep(t - pc() + 1 / 60)
+                time.sleep(max(0, t - pc() + 1 / 60))
         except:
             print_exc()
 

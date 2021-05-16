@@ -519,8 +519,8 @@ shash = lambda s: as_str(base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is
 
 def quote(s):
     if s.isascii():
-        return urllib.parse.quote(s)
-    a = urllib.parse.quote(s)
+        return urllib.parse.quote_plus(s)
+    a = urllib.parse.quote_plus(s)
     b = base64.urlsafe_b64encode(s.encode("utf-8")).rstrip(b"=")
     if len(a) < len(b):
         return a
@@ -533,7 +533,7 @@ def unquote(s):
         if (len(s) - 1) & 3 == 0:
             s += b"="
         return as_str(base64.urlsafe_b64decode(s))
-    return urllib.parse.unquote(s)
+    return urllib.parse.unquote_plus(s)
 
 
 afut = submit(pyaudio.PyAudio)

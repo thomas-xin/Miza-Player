@@ -124,12 +124,16 @@ class Bar(Particle):
         self.height2 = 0
 
     def update(self, dur=1):
+        if specs == 3:
+            rat = 1 / 60
+        else:
+            rat = 0.2
         if self.height:
-            self.height = self.height * 0.2 ** dur - 1
+            self.height = self.height * rat ** dur - 1
             if self.height < 0:
                 self.height = 0
         if self.height2:
-            self.height2 = self.height2 * 0.4 ** dur - 1
+            self.height2 = self.height2 * rat ** dur - 1
             if self.height2 < 0:
                 self.height2 = 0
 
@@ -260,8 +264,8 @@ def spectrogram_render():
             for bar in reversed(highbars):
                 bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
         spectrobytes = sfx.tobytes()
-        
-        write = False
+
+        write = specs == 3
         for bar in bars:
             if bar.height2:
                 write = True

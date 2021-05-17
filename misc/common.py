@@ -526,12 +526,15 @@ def update_repo():
             if commit != s:
                 print("Update found!")
                 globals()["repo-update"] = fut = concurrent.futures.Future()
-                with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main", stream=True) as resp:
+                with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main") as resp:
                     b = resp.content
                 r = fut.result()
                 if r:
                     with zipfile.ZipFile(io.BytesIO(b), allowZip64=True, strict_timestamps=False) as z:
-                        for fn in z.namelist():
+                        nl = z.namelist()
+                        globals()["updating"] = updating = cdict(target=len(nl), progress=0)
+                        for i, fn in enumerate(nl):
+                            updating.progress = i
                             fn2 = fn[len("Miza-Player-main/"):]
                             if fn2 and not fn2.endswith("/") and not fn2.endswith(".ttf"):
                                 try:
@@ -540,6 +543,9 @@ def update_repo():
                                             f2.write(f.read())
                                 except PermissionError:
                                     pass
+                        updating.progress = len(nl)
+                    globals().pop("updating", None)
+
                     globals()["repo-update"] = True
                 if r is not None:
                     raise EOFError
@@ -1067,7 +1073,8 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
         angle = 0
     cache |= angle % (pi / 4) == 0
     if cache:
-        h = (tuple(round(i / 8) * 8 for i in colour), sides, width, height, round(angle / tau * 256), thickness, repetition, filled, soft)
+        colour = tuple(min(255, round(i / 9) * 9) for i in colour)
+        h = (colour, sides, width, height, round(angle / tau * 256), thickness, repetition, filled, soft)
         try:
             newS = reg_polygon_cache[h]
         except KeyError:

@@ -401,7 +401,10 @@ def setup_buttons():
             if selected:
                 entry = options.history.pop(int(selected.split(":", 1)[0]))
                 options.history.appendleft(entry)
+                start = len(queue)
                 queue.extend(cdict(name=entry[0], url=url, duration=None, pos=len(queue)) for url in entry[1])
+                if control.shuffle and len(queue) > 1:
+                    random.shuffle(queue.view[bool(start):])
         def history_menu():
             def clear_history():
                 options.history.clear()
@@ -1543,8 +1546,8 @@ def spinnies():
     ts = 0
     while "pos" not in progress:
         time.sleep(0.5)
+    t = pc()
     while True:
-        t = pc()
         dur = max(0.001, min(t - ts, 0.125))
         ts = t
         try:
@@ -1576,8 +1579,10 @@ def spinnies():
                         life=7,
                         hsv=hsv,
                     ))
-            if pc() - t < 1 / 60:
-                time.sleep(max(0, t - pc() + 1 / 60))
+            d = 1 / 60
+            if pc() - t < d:
+                time.sleep(max(0, t - pc() + d))
+            t = max(t + d, pc() - 0.5)
         except:
             print_exc()
 
@@ -1867,8 +1872,13 @@ def draw_menu():
                         cache=True,
                         font="Comic Sans MS",
                     )
-        if downloading.target:
+        downloading = globals().get("downloading")
+        if common.__dict__.get("updating"):
+            downloading = common.__dict__["updating"]
+            pgr = downloading.progress
+        elif downloading.target:
             pgr = os.path.exists(downloading.fn) and os.path.getsize(downloading.fn) / 192000 * 8
+        if downloading.target:
             ratio = min(1, pgr / max(1, downloading.target))
             percentage = round(ratio * 100, 3)
             message_display(
@@ -2016,7 +2026,7 @@ def draw_menu():
         for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
             ri = max(1, round(p.life ** 1.1 / 7 ** 0.1))
             col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-            a = round(min(255, (p.life - 2) * 16))
+            a = round(min(255, (p.life - 2.5) * 12))
             point = [cos(p.angle) * p.rad, sin(p.angle) * p.rad]
             pos = (p.centre[0] + point[0], p.centre[1] + point[1])
             if ri > 2:
@@ -2522,7 +2532,7 @@ try:
             progress.particles.clear()
         d = 1 / 480
         delay = max(0, last_tick - pc() + d)
-        last_tick = max(last_tick + d, pc() - 0.5)
+        last_tick = max(last_tick + d, pc() - 0.25)
         time.sleep(delay)
         for event in pygame.event.get():
             if event.type == QUIT:

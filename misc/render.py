@@ -210,17 +210,19 @@ def spectrogram_render():
                 bar.render2(sfx=sfx)
         else:
             spec = CIRCLE_SPEC
+            D = 5
+            R = D / 2
             if not spec:
                 class Circle_Spec:
                     angle = 0
                     rotation = 0
                 globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
-                spec.image = Image.new("RGB", (barcount * 6 - 6,) * 2)
+                spec.image = Image.new("RGB", (barcount * D - D,) * 2)
             else:
                 spec.angle += 1 / 360 * tau
                 spec.rotation += 0.5
                 r = 15 / 16
-                s = 1 / 32
+                s = 1 / 48
                 colourmatrix = (
                     r, s, 0, 0,
                     0, r, s, 0,
@@ -238,20 +240,20 @@ def spectrogram_render():
                 sat = 1 - min(1, max(0, amp - 1))
                 colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount) % 1, sat, val))
                 x = bar.x + 1
-                r1 = x * 3 - 1
-                r2 = x * 3 + 4
+                r1 = x * R - 1
+                r2 = x * R + 4
                 for i in range(6):
                     z = spec.angle + i / 6 * tau
                     p1 = (c[0] + cos(z) * r1, c[1] + sin(z) * r1)
                     p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
-                    DRAW.line((p1, p2), colour, 11)
-            sfx = sfx.rotate(spec.rotation)
+                    DRAW.line((p1, p2), colour, 9)
+            sfx = sfx.rotate(spec.rotation, resample=Image.NEAREST)
         if sfx.size != ssize2:
             sfx = sfx.resize(ssize2, resample=Image.NEAREST)
-            # if specs != 2:
+            # if specs != 3:
             #     sfx = sfx.resize(ssize2, resample=Image.NEAREST)
             # else:
-            #     sfx = sfx.resize(ssize2, resample=Image.LINEAR)
+            #     sfx = sfx.resize(ssize2, resample=Image.BICUBIC)
 
         if specs == 1:
             fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
@@ -286,17 +288,20 @@ fut = None
 ssize2 = (0, 0)
 specs = 0
 while True:
-    line = sys.stdin.buffer.read(2)
-    if line == b"~r":
-        line = sys.stdin.buffer.readline().rstrip()
-        # print(line)
-        ssize2, specs, dur, pc_ = map(json.loads, line.split(b"~"))
-        if fut:
-            fut.result()
-        fut = submit(spectrogram_render)
-    elif line == b"~e":
-        amp = np.frombuffer(sys.stdin.buffer.read(4 * len(bars)), dtype=np.float32)
-        for i, pwr in enumerate(amp):
-            bars[i].ensure(pwr / 8)
-    elif not line:
-        break
+    try:
+        line = sys.stdin.buffer.read(2)
+        if line == b"~r":
+            line = sys.stdin.buffer.readline().rstrip()
+            # print(line)
+            ssize2, specs, dur, pc_ = map(json.loads, line.split(b"~"))
+            if fut:
+                fut.result()
+            fut = submit(spectrogram_render)
+        elif line == b"~e":
+            amp = np.frombuffer(sys.stdin.buffer.read(4 * len(bars)), dtype=np.float32)
+            for i, pwr in enumerate(amp):
+                bars[i].ensure(pwr / 8)
+        elif not line:
+            break
+    except:
+        print_exc()

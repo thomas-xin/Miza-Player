@@ -296,7 +296,7 @@ def setup_buttons():
                                     name = resp[0].get("name")
                             if not name:
                                 resp = ytdl.downloader.extract_info(url, download=False, process=False)
-                                name = resp.get("title") or entries[0].name
+                                name = resp.get("title") or entries[0].get("name")
                             if name:
                                 entries[0]["name"] = name
                         else:

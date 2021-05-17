@@ -2520,8 +2520,9 @@ try:
         elif minimised:
             sidebar.particles.clear()
             progress.particles.clear()
-        delay = max(0, last_tick - pc() + 1 / 480)
-        last_tick = pc()
+        d = 1 / 480
+        delay = max(0, last_tick - pc() + d)
+        last_tick = max(last_tick + d, pc() - 0.5)
         time.sleep(delay)
         for event in pygame.event.get():
             if event.type == QUIT:

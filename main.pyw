@@ -408,13 +408,17 @@ def setup_buttons():
         def history_menu():
             def clear_history():
                 options.history.clear()
-                easygui.show_message("History successfully cleared!", "Miza Player")
+                return easygui.show_message("History successfully cleared!", "Miza Player")
             def clear_cache():
+                futs = deque()
                 for fn in os.listdir("cache"):
+                    futs.append(submit(os.remove, "cache/" + fn))
+                for fut in futs:
                     try:
-                        os.remove("cache/" + fn)
+                        fut.result()
                     except (FileNotFoundError, PermissionError):
                         pass
+                return easygui.show_message("Cache successfully cleared!", "Miza Player")
             sidebar.menu = cdict(
                 buttons=(
                     ("View history", player_history),

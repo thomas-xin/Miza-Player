@@ -1568,6 +1568,7 @@ def select_and_convert(stream):
             except KeyError:
                 convert = png2wav
             b += file.read()
+    print(convert, stream)
     return convert(b)
 
 

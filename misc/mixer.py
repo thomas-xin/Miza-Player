@@ -1193,7 +1193,7 @@ def ensure_parent():
 
 
 ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
-ffmpeg_start += ("-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
+ffmpeg_stream = ("-reconnect", "1", "-reconnect_at_eof", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
 settings = cdict()
 alphakeys = prevkeys = [0] * 32
 buffoffs = 0
@@ -1282,7 +1282,10 @@ while not sys.stdin.closed and failed < 8:
                 st, fn2 = command[10:].split(" ", 1)
                 # fn2 = "cache/~" + h + ".pcm"
                 if not os.path.exists(fn2):
-                    cmd = ffmpeg_start + ("-nostdin", "-i", st)
+                    cmd = ffmpeg_start
+                    if is_url(st):
+                        cmd += ffmpeg_stream
+                    cmd += ("-nostdin", "-i", st)
                     if fn2.endswith(".pcm"):
                         cmd += ("-f", "s16le")
                     else:
@@ -1402,12 +1405,18 @@ while not sys.stdin.closed and failed < 8:
                         ostream = stream
                         stream = "cache/~" + sh + ".pcm"
                         if not os.path.exists(stream) or os.path.getsize(stream) / 48000 / 2 / 2 < duration - 1:
-                            cmd = ffmpeg_start + ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
+                            cmd = ffmpeg_start
+                            if is_url(stream):
+                                cmd += ffmpeg_stream
+                            cmd += ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
                             print(cmd)
                             resp = subprocess.run(cmd)
                     fn = None
                     f = open(stream, "rb")
-                cmd = list(ffmpeg_start)
+                cmd = ffmpeg_start
+                if is_url(stream):
+                    cmd += ffmpeg_stream
+                cmd = list(cmd)
                 pcm = False
                 if not fn:
                     if stream.endswith(".pcm"):

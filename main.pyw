@@ -269,7 +269,7 @@ def setup_buttons():
                     options.history = options.history.uniq(sort=False)[:64]
                     queue.extend(ensure_duration(cdict(**e, pos=start)) for e in q)
                 if control.shuffle and len(queue) > 1:
-                    random.shuffle(queue.view[bool(start):])
+                    random.shuffle(queue.view[1:])
                 sidebar.loading = False
         def playlist_menu():
             def create_playlist():
@@ -401,10 +401,7 @@ def setup_buttons():
             if selected:
                 entry = options.history.pop(int(selected.split(":", 1)[0]))
                 options.history.appendleft(entry)
-                start = len(queue)
-                queue.extend(cdict(name=entry[0], url=url, duration=None, pos=len(queue)) for url in entry[1])
-                if control.shuffle and len(queue) > 1:
-                    random.shuffle(queue.view[bool(start):])
+                enqueue_auto(*entry[1])
         def history_menu():
             def clear_history():
                 options.history.clear()
@@ -597,6 +594,7 @@ def _enqueue_local(*files, probe=True):
             start = len(queue)
             title = None
             for fn in files:
+                entries = None
                 if fn[0] == "<" and fn[-1] == ">":
                     pya = afut.result()
                     dev = pya.get_device_info_by_index(int(fn.strip("<>")))
@@ -606,6 +604,13 @@ def _enqueue_local(*files, probe=True):
                         name=dev.get("name"),
                         duration=inf,
                     )
+                elif fn.endswith(".json"):
+                    with open(fn, "rb") as f:
+                        data = json.load(f)
+                    q = data.get("queue", ())
+                    entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
+                    queue.extend(entries)
+                    entry = entries[0]
                 else:
                     fn = fn.replace("\\", "/")
                     if "/" not in fn:
@@ -637,9 +642,10 @@ def _enqueue_local(*files, probe=True):
                         title += f" +{len(files) - 1}"
                     options.history.appendleft((title, files))
                     options.history = options.history.uniq(sort=False)[:64]
-                queue.append(entry)
-            if control.shuffle and len(queue) > 1:
-                random.shuffle(queue.view[bool(start):])
+                if not entries:
+                    queue.append(entry)
+            if control.shuffle:
+                random.shuffle(queue.view[1:])
             sidebar.loading = False
     except:
         sidebar.loading = False
@@ -971,6 +977,21 @@ def prepare(entry, force=False, download=False):
         return
     stream = entry.get("stream", "")
     if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream)):
+        if not is_url(entry.url):
+            entry.stream = os.path.exists(entry.url) and entry.url
+            duration = entry.duration
+            if not duration:
+                info = get_duration_2(stream)
+                duration = info[0]
+                if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
+                    fi = stream
+                    fn = "cache/~" + shash(fi) + ".pcm"
+                    if not os.path.exists(fn):
+                        fn = select_and_convert(fi)
+                    duration = get_duration_2(fn)[0]
+                    stream = entry.stream = fn
+            entry.duration = duration
+            return entry.stream
         ytdl = downloader.result()
         try:
             resp = ytdl.search(entry.url)
@@ -1006,8 +1027,20 @@ def prepare(entry, force=False, download=False):
     else:
         stream = entry.stream
     stream = stream.strip()
-    if stream and is_url(stream) and download:
+    duration = entry.duration
+    if not duration:
+        info = get_duration_2(stream)
+        duration = info[0]
+        if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
+            fi = stream
+            fn = "cache/~" + shash(fi) + ".pcm"
+            if not os.path.exists(fn):
+                fn = select_and_convert(fi)
+            duration = get_duration_2(fn)[0]
+            stream = entry.stream = fn
+    elif stream and is_url(stream) and download:
         mixer.submit(f"~download {stream} cache/~{shash(entry.url)}.pcm")
+    entry.duration = duration
     return stream
 
 def start_player(pos=None):
@@ -1033,15 +1066,6 @@ def start_player(pos=None):
             fn = "cache/~" + shash(fi) + ".pcm"
             if not os.path.exists(fn):
                 fn = select_and_convert(fi)
-                print(fn)
-                # args = ["py", f"-3.{sys.version_info[1]}", "png2wav.py", fi, "../" + fn]
-                # print(args)
-                # proc = psutil.Popen(args, cwd="misc", stderr=subprocess.PIPE)
-                # while True:
-                #     if os.path.exists(fn) and os.path.getsize(fn) >= 96000:
-                #         break
-                #     if not proc.is_running():
-                #         raise RuntimeError(as_str(proc.stderr.read()))
             duration = get_duration_2(fn)[0]
             stream = entry.stream = fn
     entry.duration = duration
@@ -1084,8 +1108,6 @@ def skip():
     if queue:
         e = queue.popleft()
         if control.shuffle:
-            # for entry in queue[sidebar.base + 1:sidebar.base + sidebar.maxitems]:
-            #     entry.pos = sidebar.base + sidebar.maxitems
             random.shuffle(queue.view[1:])
         if control.loop == 2:
             queue.appendleft(e)
@@ -1565,7 +1587,10 @@ def spinnies():
                     p.hsv[2] = max(p.hsv[2] - dur / 5, 0)
                 if p.life < 3:
                     pops.add(i)
-            progress.particles.pops(pops)
+            try:
+                progress.particles.pops(pops)
+            except IndexError:
+                pass
             x = progress.pos[0] + round(progress.length * progress.vis / player.end) - progress.width // 2 if not progress.seeking or player.end < inf else mpos2[0]
             x = min(progress.pos[0] - progress.width // 2 + progress.length, max(progress.pos[0] - progress.width // 2, x))
             r = ceil(progress.spread * toolbar_height) >> 1

@@ -990,7 +990,7 @@ def prepare(entry, force=False, download=False):
                         fn = select_and_convert(fi)
                     duration = get_duration_2(fn)[0]
                     stream = entry.stream = fn
-            entry.duration = duration
+            entry.duration = duration or entry.duration
             return entry.stream
         ytdl = downloader.result()
         try:
@@ -1040,7 +1040,7 @@ def prepare(entry, force=False, download=False):
             stream = entry.stream = fn
     elif stream and is_url(stream) and download:
         mixer.submit(f"~download {stream} cache/~{shash(entry.url)}.pcm")
-    entry.duration = duration
+    entry.duration = duration or entry.duration
     return stream
 
 def start_player(pos=None):
@@ -1068,7 +1068,7 @@ def start_player(pos=None):
                 fn = select_and_convert(fi)
             duration = get_duration_2(fn)[0]
             stream = entry.stream = fn
-    entry.duration = duration
+    entry.duration = duration or entry.duration
     if duration is None:
         player.fut = None
         return None, inf

@@ -122,7 +122,8 @@ def render_sidebar_2(dur=0):
                         swap = target - i
         
         for i, entry in enumerate(queue):
-            entry.name = project.instruments[project.instrument_layout[i]].name
+            instrument = project.instruments[project.instrument_layout[i]]
+            entry.name = instrument.name
             if not entry.name:
                 pops.add(i)
                 continue
@@ -156,7 +157,7 @@ def render_sidebar_2(dur=0):
                     a, b = sorted((a, b))
                     if a <= i <= b:
                         selectable = True
-            col = project.instruments[project.instrument_layout[i]].colour
+            col = instrument.colour
             hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
             if selectable or entry.get("selected"):
                 d = hypot(*(np.array(mpos) - (screensize[0] + x - 32 - 16, y + 52 + 16 + 16)))
@@ -179,6 +180,8 @@ def render_sidebar_2(dur=0):
                             sidebar.last_selected = entry
                             lq2 = i
                             sidebar.selection_offset = np.array(mpos2) - rect[:2]
+                            synth = instrument.synth
+                            mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
                 if entry.get("selected"):
                     flash = entry.get("flash", 16)
                     if flash >= 0:
@@ -207,7 +210,7 @@ def render_sidebar_2(dur=0):
                 filled=not secondary,
             )
             if secondary:
-                col = project.instruments[project.instrument_layout[i]].colour
+                col = instrument.colour
                 hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
                 sat -= 0.125
                 val /= 2
@@ -449,7 +452,7 @@ def render_sidebar_2(dur=0):
                 if aediting[opt]:
                     orig, options.audio[opt] = options.audio[opt], v
                     if orig != v:
-                        mixer.submit(f"~setting {opt} {v}", force=opt == "volume" or not queue)
+                        mixer.submit(f"~setting {opt} {v}", force=True)
             z = max(0, x - 4)
             rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
             col = (48 if hovered else 32,) * 3

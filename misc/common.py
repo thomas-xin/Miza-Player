@@ -74,26 +74,9 @@ hasmisc = os.path.exists("misc")
 argp = ["py"]
 pyv = sys.version_info[1]
 if hasmisc:
-    if pyv in range(5, 9):
-        argp = ["py", f"-3.{pyv}"]
-        if update_collections:
-            from install_pillow_simd import *
-    else:
-        for v in range(8, 4, -1):
-            print(f"Attempting to find/install pillow-simd for Python 3.{v}...")
-            args = ["py", f"-3.{v}", "misc/install_pillow_simd.py"]
-            print(args)
-            resp = subprocess.run(args, stdout=subprocess.PIPE)
-            out = as_str(resp.stdout).strip()
-            if not out.startswith(f"Python 3.{v} not found!"):
-                if out:
-                    print(out)
-                print(f"pillow-simd versioning successful for Python 3.{v}")
-                argp = ["py", f"-3.{v}"]
-                pyv = int(argp[-1].rsplit(".", 1)[-1])
-                if update_collections and sys.version_info[1] != pyv:
-                    from install_pillow_simd import *
-                break
+    argp = ["py", f"-3.{pyv}"]
+    if update_collections:
+        from install_update_p import *
 
 import psutil
 

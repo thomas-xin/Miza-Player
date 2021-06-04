@@ -68,7 +68,7 @@ if x < 9:
             win = "win_amd64"
         else:
             win = "win32"
-        subprocess.run(["py", f"-3.{x}", "-m", "pip", "install", f"https://download.lfd.uci.edu/pythonlibs/w4tscw6k/Pillow_SIMD-7.0.0.post3+avx2-cp3{x}-cp3{x}-{win}.whl", "--user"])
+        subprocess.run(["py", f"-3.{x}", "-m", "pip", "install", f"Pillow_SIMD-7.0.0.post3+avx2-cp3{x}-cp3{x}-{win}.whl", "--user"])
 try:
     if str(pkg_resources.get_distribution("pyaudio")) < "PyAudio 0.2.11":
         raise ValueError
@@ -79,5 +79,5 @@ except (pkg_resources.DistributionNotFound, ValueError):
             win = "win_amd64"
         else:
             win = "win32"
-    subprocess.run(["py", f"-3.{x}", "-m", "pip", "install", f"https://download.lfd.uci.edu/pythonlibs/w4tscw6k/PyAudio-0.2.11-cp3{x}-cp3{x}-{win}.whl", "--user"])
+    subprocess.run(["py", f"-3.{x}", "-m", "pip", "install", f"PyAudio-0.2.11-cp3{x}-cp3{x}-{win}.whl", "--user"])
 print("Installer terminated.")

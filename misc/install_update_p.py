@@ -10,6 +10,7 @@ numpy>=1.20.3
 psutil>=5.8.0
 pygame>=2.0.1
 pyperclip>=1.8.2
+python-magic-bin>=0.4.14
 PyQt5>=5.15.4
 requests>=2.25.1
 samplerate>=0.1.0

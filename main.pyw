@@ -1043,7 +1043,9 @@ def prepare(entry, force=False, download=False):
     entry.duration = duration or entry.duration
     return stream
 
-def start_player(pos=None):
+def start_player(pos=None, force=False):
+    if force and is_url(queue[0].url):
+        queue[0].stream = None
     player.last = 0
     player.amp = 0
     player.pop("osci", None)
@@ -1205,6 +1207,9 @@ def pos():
             if s == "s":
                 submit(skip)
                 player.last = 0
+                continue
+            if s == "r":
+                submit(start_player, 0, True)
                 continue
             if s[0] == "x":
                 spl = s[2:].split()
@@ -2311,7 +2316,7 @@ kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
 try:
-    for tick in itertools.count(0):
+    for tick in itertools.count(0, 2):
         fut = common.__dict__.pop("repo-update", None)
         if fut:
             if fut is True:
@@ -2559,7 +2564,7 @@ try:
         elif minimised:
             sidebar.particles.clear()
             progress.particles.clear()
-        d = 1 / 480
+        d = 1 / 240
         delay = max(0, last_tick - pc() + d)
         last_tick = max(last_tick + d, pc() - 0.25)
         time.sleep(delay)

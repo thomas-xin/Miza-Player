@@ -823,6 +823,7 @@ def play(pos):
                         file = open(fn, "rb") # *cough* "FM", Miza is secretly a radio host and Txin's house is a radio station - Smudge
                     except (OSError, FileNotFoundError, PermissionError):
                         if proc and not proc.is_running():
+                            point("~r")
                             raise
                         time.sleep(0.005)
                         continue

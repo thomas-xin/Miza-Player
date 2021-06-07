@@ -1046,6 +1046,7 @@ def prepare(entry, force=False, download=False):
 def start_player(pos=None, force=False):
     if force and is_url(queue[0].url):
         queue[0].stream = None
+        queue[0].research = True
     player.last = 0
     player.amp = 0
     player.pop("osci", None)

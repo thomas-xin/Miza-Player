@@ -80,16 +80,30 @@ submit = exc.submit
 
 afut = submit(pyaudio.PyAudio)
 
+OUTPUT_DEVICE = None
+OUTPUT_FILE = None
+
 def pya_init():
     try:
         pya = afut.result()
-        return pya.open(
+        if OUTPUT_DEVICE is None:
+            return pya.open(
+                rate=48000,
+                channels=2,
+                format=pyaudio.paInt16,
+                output=True,
+                frames_per_buffer=800,
+            )
+        out = pya.open(
+            output_device_index=int(OUTPUT_DEVICE.split(":", 1)[0]),
             rate=48000,
             channels=2,
             format=pyaudio.paInt16,
             output=True,
             frames_per_buffer=800,
         )
+        globals()["channel2"] = out
+        return out
     except:
         print_exc()
 
@@ -896,6 +910,8 @@ def play(pos):
                 else:
                     sample = smp
                 sbuffer = sample.astype(np.float32)
+                if OUTPUT_FILE:
+                    submit(OUTPUT_FILE.write, b)
                 if channel2:
                     b = bytes(b)
                     fut = submit(channel2.write, b)
@@ -1294,6 +1310,28 @@ while not sys.stdin.closed and failed < 8:
                     cmd += ("-ar", "48k", "-ac", "2", fn2)
                     print(cmd)
                     subprocess.Popen(cmd)
+                continue
+            if command.startswith("~output"):
+                OUTPUT_DEVICE = command[8:]
+                aout = submit(pya_init)
+                channel2 = None
+                name = OUTPUT_DEVICE.split(":", 1)[-1].strip()
+                # pygame.mixer.quit()
+                # pygame.mixer.init(
+                #     devicename=name,
+                #     frequency=48000,
+                #     size=-16,
+                #     channels=2,
+                #     buffer=1024,
+                # )
+                continue
+            if command.startswith("~record"):
+                s = command[8:]
+                if s:
+                    OUTPUT_FILE = open(s, "ab")
+                else:
+                    OUTPUT_FILE.close()
+                    OUTPUT_FILE = None
                 continue
             if command.startswith("~setting"):
                 setting, value = command[9:].split()

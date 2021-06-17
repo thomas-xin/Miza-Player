@@ -466,14 +466,14 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import PIL, easygui, easygui_qt, numpy, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, zipfile, pickle, hashlib, base64, urllib, requests
+import PIL, easygui, easygui_qt, numpy, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, zipfile, pickle, hashlib, base64, urllib, requests, datetime
 import PyQt5
 from PyQt5 import QtCore, QtWidgets
 if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
     PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
 if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
     PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
-from PIL import Image, ImageChops
+from PIL import Image, ImageOps, ImageChops
 from math import *
 np = numpy
 easygui.__dict__.update(easygui_qt.easygui_qt.__dict__)
@@ -689,12 +689,21 @@ b = submit(pygame.font.init)
 a.result()
 b.result()
 
-def load_surface(fn, size=None):
+def load_surface(fn, greyscale=False, size=None):
     im = image = Image.open(fn)
     if im.mode == "P":
         im = im.convert("RGBA")
     if size:
         im = im.resize(size)
+    if greyscale:
+        if "A" in im.mode:
+            A = im.getchannel("A")
+        im2 = ImageOps.grayscale(im)
+        if "A" in im.mode:
+            im2.putalpha(A)
+        if "RGB" not in im2.mode:
+            im2 = im2.convert("RGB" + ("A" if "A" in im.mode else ""))
+        im = im2
     b = im.tobytes()
     surf = pygame.image.frombuffer(b, im.size, im.mode)
     image.close()

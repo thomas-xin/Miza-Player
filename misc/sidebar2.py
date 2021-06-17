@@ -11,12 +11,13 @@ def render_sidebar_2(dur=0):
             (0, 0) + sidebar.rect2[2:],
             4,
         )
+        ripple_f = globals().get("h-ripple", concentric_circle)
         for ripple in sidebar.ripples:
-            concentric_circle(
+            ripple_f(
                 DISP2,
-                ripple.colour,
-                (ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
-                ripple.radius,
+                colour=ripple.colour,
+                pos=(ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
+                radius=ripple.radius,
                 fill_ratio=1 / 3,
                 alpha=sqrt(max(0, ripple.alpha)) * 16,
             )

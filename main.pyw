@@ -618,15 +618,21 @@ def setup_buttons():
             if not sidebar.get("recording"):
                 sidebar.recording = f"cache/\x7f{ts_us()}.pcm"
             else:
-                fn = sidebar.recording.split("/", 1)[-1][1:].split(".", 1)[0] + ".ogg"
-                fn = easygui.filesavebox(
-                    "Save As",
-                    "Miza Player",
-                    fn,
-                    filetypes=ftypes,
-                )
-                if fn:
-                    os.system(f"ffmpeg -hide_banner -y -v error -f s16le -ar 48k -ac 2 -i {sidebar.recording} {fn}")
+                try:
+                    if not os.path.getsize(sidebar.recording):
+                        raise FileNotFoundError
+                except FileNotFoundError:
+                    pass
+                else:
+                    fn = sidebar.recording.split("/", 1)[-1][1:].split(".", 1)[0] + ".ogg"
+                    fn = easygui.filesavebox(
+                        "Save As",
+                        "Miza Player",
+                        fn,
+                        filetypes=ftypes,
+                    )
+                    if fn:
+                        os.system(f"ffmpeg -hide_banner -y -v error -f s16le -ar 48k -ac 2 -i {sidebar.recording} {fn}")
                 sidebar.recording = ""
             mixer.submit(f"~record " + sidebar.recording, force=True)
         def record_menu():
@@ -1758,6 +1764,11 @@ def draw_menu():
                     ("Set Colour", set_colour),
                 ),
             )
+            if not toolbar.get("editor") and not sidebar.abspos:
+                p = pyperclip.paste()
+                if p:
+                    paste_queue = lambda: submit(enqueue_auto, *p.splitlines())
+                    sidebar.menu.buttons = (("Paste", paste_queue),) + sidebar.menu.buttons
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
         if toolbar.editor:
             render_sidebar_2(dur)

@@ -196,6 +196,15 @@ def render_sidebar(dur=0):
                                 e.pop("selected", None)
                     sidebar.last_selected = entry
 
+                    def copy_queue():
+                        entries = [e.url for e in queue if e.get("selected")]
+                        if not entries:
+                            entries = [entry.url]
+                        pyperclip.copy("\n".join(entries))
+
+                    def paste_queue():
+                        submit(enqueue_auto, *pyperclip.paste().splitlines())
+
                     def play_now():
                         if queue:
                             a = deque()
@@ -295,6 +304,8 @@ def render_sidebar(dur=0):
 
                     sidebar.menu = cdict(
                         buttons=(
+                            ("Copy", copy_queue),
+                            ("Paste", paste_queue),
                             ("Play now", play_now),
                             ("Play next", play_next),
                             ("Add to playlist", add_to_playlist),

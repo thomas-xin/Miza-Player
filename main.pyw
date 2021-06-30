@@ -1630,6 +1630,12 @@ def update_menu():
         c2 += (191,)
     sidebar.scroll.background = c1
     sidebar.scroll.colour = c2
+    if common.font_reload:
+        common.font_reload = False
+        [e.pop("surf", None) for e in queue]
+        [e.pop("surf", None) for e in sidebar.instruments]
+        lyrics_cache.clear()
+        lyrics_renders.clear()
 
 ripple_colours = (
     (191, 127, 255),

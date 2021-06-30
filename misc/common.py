@@ -1265,10 +1265,9 @@ def text_objects(text, font, colour, background):
             pass
     return text_surface, text_surface.get_rect()
 
-def sysfont(font, size, unicode=False):
-    func = pygame.ftfont if unicode else pygame.font
-    fn = "misc/" + font + ".ttf"
-    if not os.path.exists(fn):
+def get_font(font):
+    try:
+        fn = "misc/" + font + ".ttf"
         if font == "Rockwell":
             with requests.get("https://drive.google.com/u/0/uc?id=1QFIyn5YPVCPitA5wZjqzJD3tRLe3sKW9&export=download") as resp:
                 with open(fn, "wb") as f:
@@ -1277,6 +1276,25 @@ def sysfont(font, size, unicode=False):
             with requests.get("https://drive.google.com/u/0/uc?id=1sUZqTAOLd4mSW2i2xn7dqWxwRenvBkQa&export=download") as resp:
                 with open(fn, "wb") as f:
                     f.write(resp.content)
+        if "ct_font" in globals():
+            ct_font.clear()
+        if "ft_font" in globals():
+            ft_font.clear()
+        md_font.clear()
+        globals()["font_reload"] = True
+    except:
+        print_exc()
+
+loaded_fonts = set()
+font_reload = False
+
+def sysfont(font, size, unicode=False):
+    func = pygame.ftfont if unicode else pygame.font
+    fn = "misc/" + font + ".ttf"
+    if not os.path.exists(fn) and font not in loaded_fonts:
+        if font in ("Rockwell", "OpenSansEmoji"):
+            loaded_fonts.add(font)
+            submit(get_font, font)
     if os.path.exists(fn):
         return func.Font(fn, size)
     return func.SysFont(font, size)

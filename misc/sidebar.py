@@ -23,7 +23,7 @@ def render_sidebar(dur=0):
             )
         if offs > -sidebar_width + 4:
             n = len(queue)
-            t = sum(e.get("duration") or 300 for e in queue) - (player.pos or 0)
+            t = sum(e.get("duration") or 300 for e in queue if e) - (player.pos or 0)
             message_display(
                 f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
                 12,

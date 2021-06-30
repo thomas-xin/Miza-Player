@@ -2501,7 +2501,7 @@ try:
         if fut:
             if fut is True:
                 easygui.show_message(
-                    f"Miza Player has been updated successfully!",
+                    f"Miza Player has been updated successfully! Please restart the program in order to apply changes.",
                     "Success!",
                 )
             else:

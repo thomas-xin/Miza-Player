@@ -521,6 +521,9 @@ def update_repo():
                             fn2 = fn[len("Miza-Player-main/"):]
                             if fn2 and not fn2.endswith("/") and not fn2.endswith(".ttf"):
                                 try:
+                                    folder = fn2.rsplit("/", 1)[0]
+                                    if not os.path.exists(folder):
+                                        os.mkdir(folder)
                                     with open(fn2, "wb") as f2:
                                         with z.open(fn, force_zip64=True) as f:
                                             f2.write(f.read())

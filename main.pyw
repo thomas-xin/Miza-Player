@@ -20,9 +20,6 @@ if not os.path.exists("playlists"):
     os.mkdir("playlists")
 
 
-no_lyrics_path = options.get("no_lyrics_path", "misc/no_lyrics.png")
-no_lyrics_fut = submit(load_surface, no_lyrics_path)
-
 project = cdict(
     settings=cdict(
         time=(4, 4),
@@ -1277,6 +1274,7 @@ def pos():
                 continue
             if s == "r":
                 submit(start_player, 0, True)
+                print("Re-evaluating file stream...")
                 continue
             if s[0] == "x":
                 spl = s[2:].split()
@@ -1317,6 +1315,10 @@ def ensure_next(i=1):
 
 def enqueue(entry, start=True):
     try:
+        if not queue:
+            return None, inf
+        while queue[0] is None:
+            time.sleep(0.5)
         queue[0].lyrics_loading = True
         submit(render_lyrics, queue[0])
         if len(queue) > 1:
@@ -1485,9 +1487,15 @@ def update_menu():
         elif kspam[K_DOWN]:
             submit(seek_rel, -30)
         elif kspam[K_RIGHT]:
-            submit(seek_rel, 5)
+            if kheld[K_LCTRL] or kheld[K_RCTRL]:
+                submit(seek_abs, inf)
+            else:
+                submit(seek_rel, 5)
         elif kspam[K_LEFT]:
-            submit(seek_rel, -5)
+            if kheld[K_LCTRL] or kheld[K_RCTRL]:
+                submit(seek_abs, 0)
+            else:
+                submit(seek_rel, -5)
     reset = False
     if sidebar.menu and sidebar.menu.scale >= 1:
         sidebar.menu.selected = -1
@@ -1640,13 +1648,15 @@ with open("misc/sidebar2.py", "rb") as f:
 exec(compile(b, "sidebar2.py", "exec"))
 
 
-def load_secondary_ripple():
+no_lyrics_path = options.get("no_lyrics_path", "misc/Default/no_lyrics.png")
+no_lyrics_fut = submit(load_surface, no_lyrics_path)
+
+def load_bubble(bubble_path):
     try:
-        resp = requests.get("https://cdn.discordapp.com/attachments/699815878010732574/854199862492790794/Heart.png")
-        globals()["h-img"] = Image.open(io.BytesIO(resp.content))
+        globals()["h-img"] = Image.open(bubble_path)
         globals()["h-cache"] = {}
 
-        def heart_ripple(dest, colour, pos, radius, alpha, **kwargs):
+        def heart_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
             diameter = round(radius * 2)
             if not diameter > 0:
                 return
@@ -1654,6 +1664,8 @@ def load_secondary_ripple():
                 surf = globals()["h-cache"][diameter]
             except KeyError:
                 im = globals()["h-img"].resize((diameter,) * 2, resample=Image.NEAREST)
+                if "RGB" not in im.mode:
+                    im = im.convert("RGBA")
                 b = im.tobytes()
                 surf = pygame.image.frombuffer(b, im.size, im.mode)
                 im.close()
@@ -1661,13 +1673,16 @@ def load_secondary_ripple():
             blit_complex(
                 dest,
                 surf,
-                [x - y // 2 for x, y in zip(pos, surf.get_size())],
+                [x - y / 2 for x, y in zip(pos, surf.get_size())],
                 alpha=alpha,
                 colour=colour,
             )
         globals()["h-ripple"] = heart_ripple
     except:
         print_exc()
+
+bubble_path = options.get("bubble_path", "misc/Default/bubble.png")
+submit(load_bubble, bubble_path)
 
 
 def spinnies():
@@ -1720,6 +1735,17 @@ def spinnies():
 submit(spinnies)
 
 
+def change_bubble():
+    bubble_path = easygui.fileopenbox(
+        "Open an image file here!",
+        "Miza Player",
+        default=options.get("bubble_path", globals()["bubble_path"]),
+        filetypes=iftypes,
+    )
+    if bubble_path:
+        options.bubble_path = bubble_path
+        submit(load_bubble, bubble_path)
+
 def draw_menu():
     global crosshair, hovertext
     ts = toolbar.progress.setdefault("timestamp", 0)
@@ -1762,6 +1788,7 @@ def draw_menu():
             sidebar.menu = cdict(
                 buttons=(
                     ("Set Colour", set_colour),
+                    ("Change Image", change_bubble),
                 ),
             )
             if not toolbar.get("editor") and not sidebar.abspos:
@@ -1867,6 +1894,7 @@ def draw_menu():
             sidebar.menu = cdict(
                 buttons=(
                     ("Set Colour", set_colour),
+                    ("Change Image", change_bubble),
                 ),
             )
     highlighted = progress.seeking or in_rect(mpos, progress.rect)
@@ -2068,7 +2096,6 @@ def draw_menu():
                         surf = load_surface(io.BytesIO(resp.content), greyscale=True)
                         globals()["alt-surf"] = surf
                     globals()["alt-play"] = pygame.transform.smoothscale(surf, (radius << 1,) * 2)
-                    submit(load_secondary_ripple)
                 except:
                     print_exc()
                     globals()["alt-play"] = 0
@@ -2194,13 +2221,14 @@ def draw_menu():
         )
         x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
         x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
-        r = ceil(progress.spread * toolbar_height) >> 1
+        r = progress.spread * toolbar_height / 2
         if r:
-            concentric_circle(
+            ripple_f = globals().get("h-ripple", concentric_circle)
+            ripple_f(
                 DISP,
-                (127, 127, 255),
-                (x, progress.pos[1]),
-                r,
+                colour=(127, 127, 255),
+                pos=(x, progress.pos[1]),
+                radius=r,
                 fill_ratio=0.5,
             )
         for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
@@ -2244,7 +2272,7 @@ def draw_menu():
                 0,
                 ri,
                 ri,
-                alpha=127 if r else 255,
+                alpha=159 if r else 255,
                 thickness=2,
                 repetition=ri - 2,
                 soft=True,

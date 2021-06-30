@@ -588,7 +588,7 @@ def render_sidebar(dur=0):
                         str(round_min(options.audio[opt] * 100)),
                     )
                     if enter:
-                        v = round_min(float(eval(enter, {}, {})) / 100)
+                        v = round_min(float(safe_eval(enter)) / 100)
                         aediting[opt] = True
                 if aediting[opt]:
                     orig, options.audio[opt] = options.audio[opt], v

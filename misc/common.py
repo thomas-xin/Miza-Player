@@ -744,7 +744,8 @@ def quadratic_gradient(size=gsize, t=None):
 
 rgw = 256
 mid = (rgw - 1) / 2
-row = np.arange(rgw, dtype=np.float64) - mid
+row = np.arange(rgw, dtype=np.float64)
+row -= mid
 data = [None] * rgw
 for i in range(rgw):
     data[i] = a = np.arctan2(i - mid, row)
@@ -1267,6 +1268,15 @@ def text_objects(text, font, colour, background):
 def sysfont(font, size, unicode=False):
     func = pygame.ftfont if unicode else pygame.font
     fn = "misc/" + font + ".ttf"
+    if not os.path.exists(fn):
+        if font == "Rockwell":
+            with requests.get("https://drive.google.com/u/0/uc?id=1QFIyn5YPVCPitA5wZjqzJD3tRLe3sKW9&export=download") as resp:
+                with open(fn, "wb") as f:
+                    f.write(resp.content)
+        elif font == "OpenSansEmoji":
+            with requests.get("https://drive.google.com/u/0/uc?id=1sUZqTAOLd4mSW2i2xn7dqWxwRenvBkQa&export=download") as resp:
+                with open(fn, "wb") as f:
+                    f.write(resp.content)
     if os.path.exists(fn):
         return func.Font(fn, size)
     return func.SysFont(font, size)
@@ -1563,6 +1573,20 @@ def select_and_convert(stream):
     print(convert, stream)
     return convert(b)
 
+
+eval_const = {
+    "none": None,
+    "null": None,
+    "NULL": None,
+    "true": True,
+    "false": False,
+    "TRUE": True,
+    "FALSE": False,
+    "inf": inf,
+    "nan": nan,
+    "Infinity": inf,
+}
+safe_eval = lambda s: eval(s, {}, eval_const)
 
 def time_disp(s, rounded=True):
     if not isfinite(s):

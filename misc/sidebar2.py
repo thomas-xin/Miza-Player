@@ -299,9 +299,10 @@ def render_sidebar_2(dur=0):
                 )
                 col = project.instruments[project.instrument_layout[i]].colour
                 hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
+                h = (i / 12 - 1 / 12 + abs(1 - pc() % 2) / 6) % 1
                 anima_rectangle(
                     DISP2,
-                    [round(x * 255) for x in colorsys.hsv_to_rgb(hue + 1 / 12, sat - 0.0625, val)],
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(h, sat - 0.0625, val)],
                     [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
                     frame=4,
                     count=2,
@@ -668,9 +669,10 @@ def render_dragging_2():
         )
         col = project.instruments[project.instrument_layout[i]].colour
         hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
+        h = (i / 12 - 1 / 12 + abs(1 - pc() % 2) / 6) % 1
         anima_rectangle(
             DISP,
-            [round(x * 255) for x in colorsys.hsv_to_rgb(hue + 1 / 12, sat - 0.0625, val)],
+            [round(x * 255) for x in colorsys.hsv_to_rgb(h, sat - 0.0625, val)],
             [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
             frame=4,
             count=2,

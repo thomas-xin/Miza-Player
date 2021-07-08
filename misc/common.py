@@ -880,7 +880,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
         colour, alpha = colour[:-1], colour[-1]
     if min(alpha, rect[2], rect[3]) > 0:
         br_surf = globals().setdefault("br_surf", {})
-        colour = list(map(lambda i: min(i, 255), colour))
+        colour = verify_colour(colour)
         if alpha == 255 and angle == 0 and (any(i > 160 for i in colour) or all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour)):
             if cache:
                 data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)

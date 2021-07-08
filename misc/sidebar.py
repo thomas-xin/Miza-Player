@@ -443,9 +443,10 @@ def render_sidebar(dur=0):
                     cache=True,
                     font="Comic Sans MS",
                 )
+                h = (i / 12 - 1 / 12 + abs(1 - pc() % 2) / 6) % 1
                 anima_rectangle(
                     DISP2,
-                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
+                    [round(x * 255) for x in colorsys.hsv_to_rgb(h, 0.9375, 1)],
                     [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
                     frame=4,
                     count=2,
@@ -697,9 +698,10 @@ def render_dragging():
             cache=True,
             font="Comic Sans MS",
         )
+        h = (i / 12 - 1 / 12 + abs(1 - pc() % 2) / 6) % 1
         anima_rectangle(
             DISP,
-            [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12 + 1 / 12, 0.9375, 1)],
+            [round(x * 255) for x in colorsys.hsv_to_rgb(h, 0.9375, 1)],
             [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
             frame=4,
             count=2,

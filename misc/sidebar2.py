@@ -164,25 +164,26 @@ def render_sidebar_2(dur=0):
                 d = hypot(*(np.array(mpos) - (screensize[0] + x - 32 - 16, y + 52 + 16 + 16)))
                 entry.pencil = d < 10
                 if mclick[0] and selectable:
-                    if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
-                        entry.selected = False
-                        sidebar.dragging = False
-                        sidebar.pop("last_selected", None)
-                        lq = nan
-                    else:
-                        entry.selected = True
-                        if entry.pencil:
-                            sidebar.abspos = 2
-                            sidebar.editing = i
+                    if offs > -4:
+                        if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
+                            entry.selected = False
+                            sidebar.dragging = False
+                            sidebar.pop("last_selected", None)
+                            lq = nan
                         else:
-                            sidebar.dragging = True
-                        sidebar.dragging = not entry.pencil
-                        if i == target:
-                            sidebar.last_selected = entry
-                            lq2 = i
-                            sidebar.selection_offset = np.array(mpos2) - rect[:2]
-                            synth = instrument.synth
-                            mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
+                            entry.selected = True
+                            if entry.pencil:
+                                sidebar.abspos = 2
+                                sidebar.editing = i
+                            else:
+                                sidebar.dragging = True
+                            sidebar.dragging = not entry.pencil
+                            if i == target:
+                                sidebar.last_selected = entry
+                                lq2 = i
+                                sidebar.selection_offset = np.array(mpos2) - rect[:2]
+                                synth = instrument.synth
+                                mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
                 if entry.get("selected"):
                     flash = entry.get("flash", 16)
                     if flash >= 0:

@@ -175,18 +175,19 @@ def render_sidebar(dur=0):
                         selectable = True
             if selectable or entry.get("selected"):
                 if mclick[0] and selectable:
-                    if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
-                        entry.selected = False
-                        sidebar.dragging = False
-                        sidebar.pop("last_selected", None)
-                        lq = nan
-                    else:
-                        entry.selected = True
-                        sidebar.dragging = True
-                        if i == target:
-                            sidebar.last_selected = entry
-                            lq2 = i
-                            sidebar.selection_offset = np.array(mpos2) - rect[:2]
+                    if offs > -4:
+                        if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
+                            entry.selected = False
+                            sidebar.dragging = False
+                            sidebar.pop("last_selected", None)
+                            lq = nan
+                        else:
+                            entry.selected = True
+                            sidebar.dragging = True
+                            if i == target:
+                                sidebar.last_selected = entry
+                                lq2 = i
+                                sidebar.selection_offset = np.array(mpos2) - rect[:2]
                 elif mclick[1] and i == etarget:
                     if not entry.get("selected"):
                         for e in queue:

@@ -1662,7 +1662,7 @@ def load_bubble(bubble_path):
         globals()["h-img"] = Image.open(bubble_path)
         globals()["h-cache"] = {}
 
-        def heart_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
+        def bubble_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
             diameter = round(radius * 2)
             if not diameter > 0:
                 return
@@ -1683,12 +1683,45 @@ def load_bubble(bubble_path):
                 alpha=alpha,
                 colour=colour,
             )
-        globals()["h-ripple"] = heart_ripple
+        globals()["h-ripple"] = bubble_ripple
+    except:
+        print_exc()
+
+def load_spinner(spinner_path):
+    try:
+        globals()["s-img"] = Image.open(spinner_path)
+        globals()["s-cache"] = {}
+
+        def spinner_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
+            diameter = round(radius * 2)
+            if not diameter > 0:
+                return
+            try:
+                surf = globals()["s-cache"][diameter]
+            except KeyError:
+                im = globals()["s-img"].resize((diameter,) * 2, resample=Image.NEAREST)
+                if "RGB" not in im.mode:
+                    im = im.convert("RGBA")
+                b = im.tobytes()
+                surf = pygame.image.frombuffer(b, im.size, im.mode)
+                im.close()
+                globals()["s-cache"][diameter] = surf
+            blit_complex(
+                dest,
+                surf,
+                [x - y / 2 for x, y in zip(pos, surf.get_size())],
+                alpha=alpha,
+                colour=colour,
+            )
+        globals()["s-ripple"] = spinner_ripple
     except:
         print_exc()
 
 bubble_path = options.get("bubble_path", "misc/Default/bubble.png")
 submit(load_bubble, bubble_path)
+
+spinner_path = "misc/Default/bubble.png"
+submit(load_spinner, spinner_path)
 
 
 def spinnies():
@@ -2229,7 +2262,7 @@ def draw_menu():
         x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
         r = progress.spread * toolbar_height / 2
         if r:
-            ripple_f = globals().get("h-ripple", concentric_circle)
+            ripple_f = globals().get("s-ripple", concentric_circle)
             ripple_f(
                 DISP,
                 colour=(127, 127, 255),
@@ -2497,11 +2530,15 @@ kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
 try:
     for tick in itertools.count(0, 2):
+        if not tick & 255:
+            if utc() - os.path.getmtime(collections2f) > 3600:
+                submit(update_collections2)
+                common.repo_fut = submit(update_repo)
         fut = common.__dict__.pop("repo-update", None)
         if fut:
             if fut is True:
                 easygui.show_message(
-                    f"Miza Player has been updated successfully! Please restart the program in order to apply changes.",
+                    f"Miza Player has been updated successfully!\nPlease restart the program in order to apply changes.",
                     "Success!",
                 )
             else:
@@ -2756,7 +2793,7 @@ try:
             if event.type == QUIT:
                 raise StopIteration
             elif event.type == MOUSEWHEEL:
-                sidebar.scroll.target -= event.y * 8
+                sidebar.scroll.target -= event.y * 16
             elif event.type == VIDEORESIZE:
                 flags = get_window_flags()
                 if flags == 3:

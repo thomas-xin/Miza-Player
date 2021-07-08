@@ -623,7 +623,7 @@ def oscilloscope(buffer):
                             return
                         prev = point
                         point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
-                        hue = (osci[i] + osci[i - 1]) / 4 % 1
+                        hue = ((osci[i] + osci[i - 1]) / 4 + pc() / 3 - i / len(osci)) % 1
                         col = tuple(map(lambda x: round(x * 255), colorsys.hsv_to_rgb(1 - hue, 1, 1)))
                         pygame.draw.line(
                             OSCI,

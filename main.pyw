@@ -1962,7 +1962,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
         "Reset",
         16,
         [offs2 + sidebar_width // 2, 318],
-        (191, 191, 255) if not hovered else (255,) * 3,
+        (255, 127, 191) if not hovered else (255,) * 3,
         font="Comic Sans MS",
         surface=DISP2,
     )

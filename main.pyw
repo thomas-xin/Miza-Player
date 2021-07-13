@@ -1951,6 +1951,8 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
     rect = (offs2 + sidebar_width // 2 - 32, 304, 64, 32)
     crect = (screensize[0] - sidebar_width // 2 - 32, 355) + rect[2:]
     hovered = in_rect(mpos, crect)
+    if hovered and mclick[0]:
+        settings_reset()
     col = (0, 191, 191) if not hovered else (191, 255, 255)
     bevel_rectangle(
         DISP2,

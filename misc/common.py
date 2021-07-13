@@ -528,7 +528,7 @@ with open(collections2f, "rb") as f:
 exec(compile(b, "collections2.tmp", "exec"), globals())
 if utc() - os.path.getmtime(collections2f) > 3600:
     submit(update_collections2)
-    repo_fut = submit(update_repo)
+repo_fut = submit(update_repo)
 
 options.history = alist(options.get("history", ()))
 globals().update(options)

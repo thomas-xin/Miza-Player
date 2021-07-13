@@ -478,6 +478,8 @@ def update_repo():
                     b = resp.content
                 if not options.control.autoupdate:
                     r = fut.result()
+                else:
+                    r = True
                 if r:
                     with zipfile.ZipFile(io.BytesIO(b), allowZip64=True, strict_timestamps=False) as z:
                         nl = z.namelist()

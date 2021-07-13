@@ -1951,7 +1951,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
     rect = (offs2 + sidebar_width // 2 - 32, 304, 64, 32)
     crect = (screensize[0] - sidebar_width // 2 - 32, 355) + rect[2:]
     hovered = in_rect(mpos, crect)
-    col = (255, 0, 0) if not hovered else (255, 191, 191)
+    col = (0, 191, 191) if not hovered else (191, 255, 255)
     bevel_rectangle(
         DISP2,
         col,
@@ -1962,7 +1962,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
         "Reset",
         16,
         [offs2 + sidebar_width // 2, 318],
-        (255, 191, 191) if not hovered else (255,) * 3,
+        (191, 191, 255) if not hovered else (255,) * 3,
         font="Comic Sans MS",
         surface=DISP2,
     )
@@ -2036,8 +2036,8 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
             surf,
             (offs2 + 8, 376),
         )
-    rect = (offs2 + sidebar_width // 2 - 24, 344, 56, 32)
-    crect = (screensize[0] - sidebar_width // 2 - 24, 395) + rect[2:]
+    rect = (offs2 + sidebar_width // 2 - 32, 344, 64, 32)
+    crect = (screensize[0] - sidebar_width // 2 - 32, 395) + rect[2:]
     hovered = in_rect(mpos, crect)
     if hovered and any(mclick):
         sidebar.more = not sidebar.more
@@ -2060,7 +2060,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
     )
     reg_polygon_complex(
         DISP2,
-        (offs2 + sidebar_width // 2 - 40, 357 + sidebar.more_angle * 6),
+        (offs2 + sidebar_width // 2 - 48, 357 + sidebar.more_angle * 6),
         (255,) * 3,
         3,
         12,
@@ -2076,7 +2076,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
     message_display(
         text,
         16,
-        [offs2 + sidebar_width // 2 + 4, 358],
+        [offs2 + sidebar_width // 2, 358],
         (255, 127, 191) if not hovered else (255,) * 3,
         font="Comic Sans MS",
         surface=DISP2,

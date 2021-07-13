@@ -155,10 +155,10 @@ audio_default = dict(
 control_default = cdict(
     shuffle=1,
     loop=1,
-    silenceremove=False,
-    presearch=True,
-    ripples=True,
-    autoupdate=False,
+    silenceremove=0,
+    presearch=0,
+    ripples=1,
+    autoupdate=0,
 )
 ssettings = cdict(
     shape=(0, 3),

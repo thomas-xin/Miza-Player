@@ -123,60 +123,11 @@ def mixer_submit(s, force, debug):
 mixer.state = lambda i=0: state(i)
 mixer.clear = lambda: clear()
 mixer.drop = lambda i=0: drop(i)
-mixer.submit = lambda s, force=False, debug=False: submit(mixer_submit, s, force, debug)
+mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
 
 write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame
 sys.stdout.write = write
-
-# import arcade
-# key = arcade.key
-# mouse = cdict(
-#     LEFT=arcade.MOUSE_BUTTON_LEFT,
-#     RIGHT=arcade.MOUSE_BUTTON_RIGHT,
-#     MIDDLE=arcade.MOUSE_BUTTON_MIDDLE,
-# )
-
-# class Window(arcade.Window):
-
-#     kheld = set()
-#     mheld = set()
-#     mpos = [0, 0]
-
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.background = (0,) * 3
-
-#     def on_key_press(self, k, *_):
-#         kheld.add(k)
-#         if k in (key.LSHIFT, key.RSHIFT):
-#             kheld.add("SHIFT")
-#         elif k in (key.LCTRL, key.RCTRL):
-#             kheld.add("CTRL")
-#         elif k in (key.LALT, key.RALT):
-#             kheld.add("ALT")
-    
-#     def on_key_release(self, k, *_):
-#         kheld.discard(k)
-#         if k in (key.LSHIFT, key.RSHIFT):
-#             kheld.discard("SHIFT")
-#         elif k in (key.LCTRL, key.RCTRL):
-#             kheld.discard("CTRL")
-#         elif k in (key.LALT, key.RALT):
-#             kheld.discard("ALT")
-
-#     def on_mouse_motion(self, x, y, *_):
-#         self.mpos[:] = x, y
-
-#     def on_mouse_press(self, x, y, k, *_):
-#         self.mpos[:] = x, y
-#         mheld.add(k)
-    
-#     def on_mouse_release(self, x, y, k, *_):
-#         self.mpos[:] = x, y
-#         mheld.discard(k)
-
-# window = Window()
 
 
 asettings = cdict(
@@ -204,6 +155,10 @@ audio_default = dict(
 control_default = cdict(
     shuffle=1,
     loop=1,
+    silenceremove=False,
+    presearch=True,
+    ripples=True,
+    autoupdate=False,
 )
 ssettings = cdict(
     shape=(0, 3),
@@ -245,8 +200,16 @@ else:
         spectrogram=1,
         oscilloscope=1,
     )
-options.audio = cdict(options.get("audio", audio_default))
-options.control = cdict(options.get("control", control_default))
+_audio = options.get("audio")
+oaudio = cdict(audio_default)
+if _audio:
+    oaudio.update(_audio)
+options.audio = oaudio
+_control = options.get("control")
+control = cdict(control_default)
+if _control:
+    control.update(_control)
+options.control = control
 orig_options = copy.deepcopy(options)
 
 
@@ -327,6 +290,7 @@ if hasmisc:
     for k, v in options.audio.items():
         s.write(f"~setting #{k} {v}\n")
     s.write(f"~setting #shuffle {options.control.setdefault('shuffle', 0)}\n")
+    s.write(f"~setting silenceremove {options.control.setdefault('silenceremove', 0)}\n")
     s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
     s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
     s.write(f"~synth 1.5 1 0 0.75 0 1\n")
@@ -508,10 +472,12 @@ def update_repo():
                 raise EOFError
             if commit != s:
                 print("Update found!")
-                globals()["repo-update"] = fut = concurrent.futures.Future()
+                if not options.control.autoupdate:
+                    globals()["repo-update"] = fut = concurrent.futures.Future()
                 with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main") as resp:
                     b = resp.content
-                r = fut.result()
+                if not options.control.autoupdate:
+                    r = fut.result()
                 if r:
                     with zipfile.ZipFile(io.BytesIO(b), allowZip64=True, strict_timestamps=False) as z:
                         nl = z.namelist()
@@ -531,8 +497,8 @@ def update_repo():
                                     pass
                         updating.progress = len(nl)
                     globals().pop("updating", None)
-
-                    globals()["repo-update"] = True
+                    if not options.control.autoupdate:
+                        globals()["repo-update"] = True
                 if r is not None:
                     raise EOFError
             else:
@@ -1083,7 +1049,6 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
     except:
         print_exc()
         return
-    newS.fill((0,) * 4)
     draw_direction = 1 if repetition >= 0 else -1
     if draw_direction >= 0:
         a = draw_direction
@@ -1167,7 +1132,6 @@ def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=25
                 size = [radius2 * 2] * 2
                 size2 = [round(radius2 * 4), round(radius2 * 4) + 1]
                 s2 = pygame.Surface(size2, SRCALPHA)
-                s2.fill((0,) * 4)
                 circles = round(radius2 * 2 * fill_ratio / width2)
                 col = colour2
                 r = radius2 * 2

@@ -164,7 +164,7 @@ def render_sidebar_2(dur=0):
                 d = hypot(*(np.array(mpos) - (screensize[0] + x - 32 - 16, y + 52 + 16 + 16)))
                 entry.pencil = d < 10
                 if mclick[0] and selectable:
-                    if offs > -4:
+                    if not sidebar.abspos:
                         if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
                             entry.selected = False
                             sidebar.dragging = False
@@ -387,118 +387,7 @@ def render_sidebar_2(dur=0):
             (screensize[0] - sidebar_width + 4, 52 + 16),
         )
     if offs <= -4 and sidebar.abspos == 1:
-        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
-        DISP2.fill(sc)
-        DISP2.set_colorkey(sc)
-        in_sidebar = in_rect(mpos, sidebar.rect)
-        offs2 = offs + sidebar_width
-        for i, opt in enumerate(asettings):
-            message_display(
-                opt.capitalize(),
-                11,
-                (offs2 + 8, i * 32),
-                surface=DISP2,
-                align=0,
-                cache=True,
-                font="Comic Sans MS",
-            )
-            # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
-            s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
-            message_display(
-                s,
-                11,
-                (offs2 + sidebar_width - 8, 16 + i * 32),
-                surface=DISP2,
-                align=2,
-                cache=True,
-                font="Comic Sans MS",
-            )
-            srange = asettings[opt]
-            w = (sidebar_width - 16)
-            x = (options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
-            if opt in ("speed", "pitch", "nightcore"):
-                x = min(1, max(0, x))
-            else:
-                x = min(1, abs(x))
-            x = round(x * w)
-            brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
-            brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
-            hovered = in_sidebar and in_rect(mpos, brect) or aediting[opt]
-            crosshair |= bool(hovered) << 1
-            v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
-            if len(srange) > 2:
-                v = round_min(math.round(v / srange[2]) * srange[2])
-            else:
-                rv = round_min(math.round(v * 32) / 32)
-                if type(rv) is int and rv not in srange:
-                    v = rv
-            if hovered and not hovertext:
-                hovertext = cdict(
-                    text=str(round(v * 100, 2)) + "%",
-                    size=10,
-                    colour=(255, 255, 127),
-                )
-                if aediting[opt]:
-                    if not mheld[0]:
-                        aediting[opt] = False
-                elif mclick[0]:
-                    aediting[opt] = True
-                elif mclick[1]:
-                    enter = easygui.get_string(
-                        opt.capitalize(),
-                        "Miza Player",
-                        str(round_min(options.audio[opt] * 100)),
-                    )
-                    if enter:
-                        v = round_min(float(safe_eval(enter)) / 100)
-                        aediting[opt] = True
-                if aediting[opt]:
-                    orig, options.audio[opt] = options.audio[opt], v
-                    if orig != v:
-                        mixer.submit(f"~setting {opt} {v}", force=True)
-            z = max(0, x - 4)
-            rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
-            col = (48 if hovered else 32,) * 3
-            bevel_rectangle(
-                DISP2,
-                col,
-                rect,
-                3,
-            )
-            rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
-            DISP2.blit(
-                rainbow,
-                (offs2 + 8 + x, 17 + i * 32),
-                (x, 0, w - x, 9),
-                special_flags=BLEND_RGB_MULT,
-            )
-            rect = (offs2 + 8, 17 + i * 32, x, 9)
-            col = (223 if hovered else 191,) * 3
-            bevel_rectangle(
-                DISP2,
-                col,
-                rect,
-                3,
-            )
-            rainbow = quadratic_gradient((w, 9), pc() + i / 4)
-            DISP2.blit(
-                rainbow,
-                (offs2 + 8, 17 + i * 32),
-                (0, 0, x, 9),
-                special_flags=BLEND_RGB_MULT,
-            )
-            if hovered:
-                bevel_rectangle(
-                    DISP2,
-                    progress.select_colour,
-                    brect2,
-                    2,
-                    filled=False,
-                )
-        DISP.blit(
-            DISP2,
-            (screensize[0] - sidebar_width, 52),
-        )
+        render_settings(dur, hovertext, crosshair, ignore=True)
     if offs <= -4 and sidebar.abspos == 2:
         instrument = project.instruments[project.instrument_layout[sidebar.editing]]
         DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
@@ -571,9 +460,9 @@ def render_sidebar_2(dur=0):
                     synth = instrument.synth
                     if orig != v:
                         if opt == "unison":
-                            mixer.submit(f"~setting unison {synth.setdefault('unison', 1)}", force=True)
+                            mixer.submit(f"~setting unison {synth.setdefault('unison', 1)}")
                         else:
-                            mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
+                            mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}")
             z = max(0, x - 4)
             rect = (offs2 + 8 + z, 41 + i * 32, sidebar_width - 16 - z, 9)
             col = (48 if hovered else 32,) * 3

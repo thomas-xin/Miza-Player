@@ -74,43 +74,8 @@ def _adjust_thread_count(self):
 
 concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
 
-
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 submit = exc.submit
-
-afut = submit(pyaudio.PyAudio)
-
-OUTPUT_DEVICE = None
-OUTPUT_FILE = None
-
-def pya_init():
-    try:
-        pya = afut.result()
-        if OUTPUT_DEVICE is None:
-            return pya.open(
-                rate=48000,
-                channels=2,
-                format=pyaudio.paInt16,
-                output=True,
-                frames_per_buffer=800,
-            )
-        out = pya.open(
-            output_device_index=int(OUTPUT_DEVICE.split(":", 1)[0]),
-            rate=48000,
-            channels=2,
-            format=pyaudio.paInt16,
-            output=True,
-            frames_per_buffer=800,
-        )
-        globals()["channel2"] = out
-        return out
-    except:
-        print_exc()
-
-channel2 = None
-aout = submit(pya_init)
-pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
-
 
 class cdict(dict):
 
@@ -168,6 +133,72 @@ def bsend(*args):
 
 print = lambda *args, sep=" ", end="\n": point(repr(str(sep).join(map(str, args)) + end))
 print_exc = lambda: point(repr(traceback.format_exc()))
+
+
+def aff():
+    try:
+        pya = pyaudio.PyAudio()
+        globals()["OUTPUT_DEVICE"] = pya.get_default_output_device_info()["name"]
+        print(OUTPUT_DEVICE)
+        globals()["aout"] = submit(pya_init)
+        return pya
+    except:
+        print_exc()
+
+afut = submit(aff)
+
+OUTPUT_FILE = None
+
+def get_device_by_name(name):
+    pya = afut.result()
+    for i in range(pya.get_device_count()):
+        d = pya.get_device_info_by_index(i)
+        if d.get("name") == name:
+            return i
+
+def pya_init():
+    try:
+        i = get_device_by_name(OUTPUT_DEVICE)
+        if i is None:
+            print(OUTPUT_DEVICE, "not found.")
+            i = afut.result().get_default_output_device_info()["index"]
+            point(f"~w {OUTPUT_DEVICE}")
+        else:
+            point("~W")
+        try:
+            out = afut.result().open(
+                output_device_index=i,
+                rate=48000,
+                channels=2,
+                format=pyaudio.paInt16,
+                output=True,
+                frames_per_buffer=800,
+            )
+        except OSError:
+            out = None
+        if not out:
+            point(f"~w {OUTPUT_DEVICE}")
+            while not out:
+                try:
+                    out = afut.result().open(
+                        rate=48000,
+                        channels=2,
+                        format=pyaudio.paInt16,
+                        output=True,
+                        frames_per_buffer=800,
+                    )
+                except:
+                    print_exc()
+                    time.sleep(1)
+        if channel2:
+            channel2.close()
+        globals()["channel2"] = out
+        return out
+    except:
+        print_exc()
+
+channel2 = None
+pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
 
 
 def _get_duration(filename, _timeout=12):
@@ -880,17 +911,13 @@ def play(pos):
                     p.kill()
                 except:
                     pass
-            if drop > 0:
-                drop -= 1
-            else:
+            try:
+                if drop > 0:
+                    drop -= 1
+                    raise StopIteration
                 r = b
                 if len(b) < req:
                     b += bytes(emptymem[:req - len(b)])
-                lastpacket = packet
-                packet = b
-                packet_advanced = True
-                packet_advanced2 = True
-                packet_advanced3 = True
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
                 smp = np.frombuffer(b, dtype=np.int16)
@@ -910,20 +937,25 @@ def play(pos):
                 else:
                     sample = smp
                 sbuffer = sample.astype(np.float32)
+                if settings.silenceremove and np.mean(np.abs(sample)) < 64:
+                    raise StopIteration
+                lastpacket = packet
+                packet = b
+                packet_advanced = True
+                packet_advanced2 = True
+                packet_advanced3 = True
                 if OUTPUT_FILE:
                     submit(OUTPUT_FILE.write, b)
                 if channel2:
                     b = bytes(b)
                     fut = submit(channel2.write, b)
                     try:
-                        fut.result(timeout=0.24)
+                        fut.result(timeout=1)
                     except:
                         print("Pyaudio timed out.")
-                        # try:
-                        #     channel2.stop_stream()
-                        # except:
-                        #     pass
-                        # submit(channel2.close)
+                        pya = afut.result()
+                        pya.terminate()
+                        globals()["afut"] = submit(pyaudio.PyAudio)
                         globals()["aout"] = submit(pya_init)
                         globals()["channel2"] = None
                 if not channel2:
@@ -947,6 +979,8 @@ def play(pos):
                     if spec_fut:
                         spec_fut.result()
                     spec_fut = submit(spectrogram, sbuffer)
+            except StopIteration:
+                pass
             frame += settings.speed * 2 ** (settings.nightcore / 12)
     except:
         try:
@@ -1163,14 +1197,12 @@ def piano_player():
                     if channel2:
                         fut = submit(channel2.write, b)
                         try:
-                            fut.result(timeout=0.12)
+                            fut.result(timeout=1)
                         except:
                             print("Pyaudio timed out.")
-                            try:
-                                channel2.stop_stream()
-                            except:
-                                pass
-                            submit(channel2.close)
+                            pya = afut.result()
+                            pya.terminate()
+                            globals()["afut"] = submit(pyaudio.PyAudio)
                             globals()["aout"] = submit(pya_init)
                             globals()["channel2"] = None
                     if not channel2:
@@ -1313,17 +1345,10 @@ while not sys.stdin.closed and failed < 8:
                 continue
             if command.startswith("~output"):
                 OUTPUT_DEVICE = command[8:]
+                afut.result().terminate()
+                afut = submit(pyaudio.PyAudio)
                 aout = submit(pya_init)
                 channel2 = None
-                name = OUTPUT_DEVICE.split(":", 1)[-1].strip()
-                # pygame.mixer.quit()
-                # pygame.mixer.init(
-                #     devicename=name,
-                #     frequency=48000,
-                #     size=-16,
-                #     channels=2,
-                #     buffer=1024,
-                # )
                 continue
             if command.startswith("~record"):
                 s = command[8:]

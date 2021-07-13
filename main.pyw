@@ -112,6 +112,16 @@ submit(load_pencil)
 
 lyrics_entry = None
 
+def settings_reset():
+    options.audio.update(audio_default)
+    s = io.StringIO()
+    for k, v in options.audio.items():
+        s.write(f"~setting #{k} {v}\n")
+    s.write(f"~replay\n")
+    s.seek(0)
+    mixer.stdin.write(s.read().encode("utf-8"))
+    mixer.stdin.flush()
+
 def setup_buttons():
     try:
         gears = button_images.gears.result()
@@ -119,15 +129,6 @@ def setup_buttons():
         def settings_toggle():
             sidebar.abspos = not bool(sidebar.abspos)
         def settings_menu():
-            def settings_reset():
-                options.audio.update(audio_default)
-                s = io.StringIO()
-                for k, v in options.audio.items():
-                    s.write(f"~setting #{k} {v}\n")
-                s.write(f"~replay\n")
-                s.seek(0)
-                mixer.stdin.write(s.read().encode("utf-8"))
-                mixer.stdin.flush()
             sidebar.menu = cdict(
                 buttons=(
                     ("Settings", settings_toggle),
@@ -429,9 +430,9 @@ def setup_buttons():
         def edit_1():
             toolbar.editor ^= 1
             if toolbar.editor:
-                mixer.submit(f"~setting spectrogram -1", force=True)
+                mixer.submit(f"~setting spectrogram -1")
             else:
-                mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
+                mixer.submit(f"~setting spectrogram {options.spectrogram}")
         toolbar.buttons.append(cdict(
             name="Editor",
             image=edit,
@@ -453,13 +454,13 @@ def setup_buttons():
         def shuffle_1():
             control.shuffle = (control.shuffle + 1) % 3
             if control.shuffle in (0, 2):
-                mixer.submit(f"~setting shuffle {control.shuffle}", force=True)
+                mixer.submit(f"~setting shuffle {control.shuffle}")
             if control.shuffle == 2 and player.get("needs_shuffle") and player.end >= 960:
                 seek_abs(player.pos)
         def shuffle_2():
             control.shuffle = (control.shuffle - 1) % 3
             if control.shuffle in (0, 2):
-                mixer.submit(f"~setting shuffle {control.shuffle}", force=True)
+                mixer.submit(f"~setting shuffle {control.shuffle}")
             if control.shuffle == 2 and player.get("needs_shuffle"):
                 seek_abs(player.pos)
         toolbar.buttons.append(cdict(
@@ -529,6 +530,8 @@ def setup_buttons():
         reset_menu(full=False)
         microphone = button_images.microphone.result()
         def enqueue_device():
+            afut.result().terminate()
+            globals()["afut"] = submit(pyaudio.PyAudio)
             globals()["pya"] = afut.result()
             count = pya.get_device_count()
             apis = {}
@@ -577,6 +580,8 @@ def setup_buttons():
         reset_menu(full=False)
         record = button_images.record.result()
         def output_device():
+            afut.result().terminate()
+            globals()["afut"] = submit(pyaudio.PyAudio)
             globals()["pya"] = afut.result()
             count = pya.get_device_count()
             apis = {}
@@ -610,7 +615,7 @@ def setup_buttons():
                 sorted(f % d.id + ": " + d.name for d in devices),
             )
             if selected:
-                mixer.submit(f"~output {selected}", force=True)
+                mixer.submit(f"~output {selected.split(': ', 1)[-1]}")
         def record_audio():
             if not sidebar.get("recording"):
                 sidebar.recording = f"cache/\x7f{ts_us()}.pcm"
@@ -631,7 +636,7 @@ def setup_buttons():
                     if fn:
                         os.system(f"ffmpeg -hide_banner -y -v error -f s16le -ar 48k -ac 2 -i {sidebar.recording} {fn}")
                 sidebar.recording = ""
-            mixer.submit(f"~record " + sidebar.recording, force=True)
+            mixer.submit(f"~record " + sidebar.recording)
         def record_menu():
             sidebar.menu = cdict(
                 buttons=(
@@ -765,7 +770,7 @@ def enqueue_auto(*queries):
 def load_project(fn):
     if not toolbar.editor:
         toolbar.editor = 1
-        mixer.submit(f"~setting spectrogram -1", force=True)
+        mixer.submit(f"~setting spectrogram -1")
     try:
         with open(fn, "rb") as f:
             b = f.read(7)
@@ -787,7 +792,7 @@ def load_project(fn):
 def save_project(fn):
     if not toolbar.editor:
         toolbar.editor = 1
-        mixer.submit(f"~setting spectrogram -1", force=True)
+        mixer.submit(f"~setting spectrogram -1")
     try:
         b = pickle.dumps(project)
         pdata = io.BytesIO()
@@ -829,7 +834,7 @@ def reset_menu(full=True, reset=False):
     ssize2 = (screensize[0] - sidebar_width, screensize[1] - toolbar_height)
     if ssize != ssize2:
         ssize = ssize2
-        mixer.submit(f"~ssize {' '.join(map(str, ssize))}", True)
+        mixer.submit(f"~ssize {' '.join(map(str, ssize))}")
     player.rect = (0,) * 2 + ssize
     sidebar.colour = None
     sidebar.updated = False
@@ -880,7 +885,7 @@ def reset_menu(full=True, reset=False):
     osize2 = (progress.box, toolbar_height * 2 // 3 - 3)
     if osize != osize2:
         osize = osize2
-        mixer.submit(f"~osize {' '.join(map(str, osize))}", True)
+        mixer.submit(f"~osize {' '.join(map(str, osize))}")
 
 
 submit(setup_buttons)
@@ -1156,7 +1161,7 @@ def start_player(pos=None, force=False):
     else:
         player.needs_shuffle = not is_url(stream)
     h = shash(entry.url)
-    mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")) + " " + h)
+    mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")) + " " + h, force=False)
     player.pos = pos
     player.index = player.pos * 30
     player.end = duration or inf
@@ -1251,6 +1256,41 @@ def play():
             print(mixer.stderr.read().decode("utf-8", "replace"))
         print_exc()
 
+def reevaluate():
+    time.sleep(2)
+    while not player.pos:
+        print("Re-evaluating file stream...")
+        start_player(0, True)
+        time.sleep(2)
+
+device_waiting = None
+
+def get_device_by_name(name):
+    pya = afut.result()
+    for i in range(pya.get_device_count()):
+        d = pya.get_device_info_by_index(i)
+        if d.get("name") == name:
+            return i
+
+def wait_on():
+    print(f"Waiting on {OUTPUT_DEVICE}...")
+    while device_waiting:
+        try:
+            afut.result().terminate()
+            globals()["afut"] = submit(pyaudio.PyAudio)
+            pya = afut.result()
+            i = get_device_by_name(OUTPUT_DEVICE)
+            print(i, pya.get_device_count())
+            if i is not None:
+                globals()["device_waiting"] = None
+                print("Device target found.")
+                mixer.submit(f"~output {OUTPUT_DEVICE}")
+                return
+        except:
+            print_exc()
+        time.sleep(0.5)
+    print("Device switch cancelled.")
+
 def pos():
     try:
         while True:
@@ -1264,6 +1304,7 @@ def pos():
                     s = ""
             if not s:
                 if not mixer.is_running():
+                    print(mixer.stderr.read())
                     raise StopIteration
                 continue
             player.last = pc()
@@ -1272,9 +1313,18 @@ def pos():
                 submit(skip)
                 player.last = 0
                 continue
+            if s[0] == "w":
+                globals()["OUTPUT_DEVICE"] = s[2:]
+                if not device_waiting:
+                    globals()["device_waiting"] = submit(wait_on)
+                continue
+            if s == "W":
+                globals()["device_waiting"] = None
+                continue
             if s == "r":
                 submit(start_player, 0, True)
                 print("Re-evaluating file stream...")
+                submit(reevaluate)
                 continue
             if s[0] == "x":
                 spl = s[2:].split()
@@ -1446,12 +1496,13 @@ def update_menu():
             c = (255, 0, 0)
         else:
             c = (0, 255, 0)
-        toolbar.ripples.append(cdict(
-            pos=toolbar.pause.pos,
-            radius=0,
-            colour=c,
-            alpha=255,
-        ))
+        if control.ripples:
+            toolbar.ripples.append(cdict(
+                pos=toolbar.pause.pos,
+                radius=0,
+                colour=c,
+                alpha=255,
+            ))
     if toolbar.resizing:
         toolbar_height = min(128, max(64, screensize[1] - mpos2[1] + 2))
         if options.toolbar_height != toolbar_height:
@@ -1545,7 +1596,7 @@ def update_menu():
     c = options.get("toolbar_colour", (64, 0, 96))
     if toolbar.resizing or in_rect(mpos, toolbar.rect):
         hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
-        hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.5)
+        hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.2)
         c = tuple(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
     toolbar.updated = False#toolbar.colour != c
     toolbar.colour = c
@@ -1587,7 +1638,7 @@ def update_menu():
     c = options.get("sidebar_colour", (64, 0, 96))
     if sidebar.resizing or in_rect(mpos, sidebar.rect):
         hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
-        hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.5)
+        hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.2)
         c = tuple(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
     sidebar.updated = False#sidebar.colour != c
     sidebar.colour = c
@@ -1699,7 +1750,7 @@ def load_spinner(spinner_path):
             try:
                 surf = globals()["s-cache"][diameter]
             except KeyError:
-                im = globals()["s-img"].resize((diameter,) * 2, resample=Image.NEAREST)
+                im = globals()["s-img"].resize((diameter,) * 2, resample=Image.BICUBIC)
                 if "RGB" not in im.mode:
                     im = im.convert("RGBA")
                 b = im.tobytes()
@@ -1785,6 +1836,256 @@ def change_bubble():
         options.bubble_path = bubble_path
         submit(load_bubble, bubble_path)
 
+
+def render_settings(dur, hovertext, crosshair, ignore=False):
+    offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
+    sc = sidebar.colour or (64, 0, 96)
+    DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
+    DISP2.fill(sc)
+    DISP2.set_colorkey(sc)
+    in_sidebar = in_rect(mpos, sidebar.rect)
+    offs2 = offs + sidebar_width
+    for i, opt in enumerate(asettings):
+        message_display(
+            opt.capitalize(),
+            11,
+            (offs2 + 8, i * 32),
+            surface=DISP2,
+            align=0,
+            cache=True,
+            font="Comic Sans MS",
+        )
+        # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
+        s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
+        message_display(
+            s,
+            11,
+            (offs2 + sidebar_width - 8, 16 + i * 32),
+            surface=DISP2,
+            align=2,
+            cache=True,
+            font="Comic Sans MS",
+        )
+        srange = asettings[opt]
+        w = (sidebar_width - 16)
+        x = (options.audio.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
+        if opt in ("speed", "pitch", "nightcore"):
+            x = min(1, max(0, x))
+        else:
+            x = min(1, abs(x))
+        x = round(x * w)
+        brect = (screensize[0] + offs + 6, 67 + i * 32, sidebar_width - 12, 13)
+        brect2 = (offs2 + 6, 17 + i * 32, sidebar_width - 12, 13)
+        hovered = in_sidebar and in_rect(mpos, brect) or aediting[opt]
+        crosshair |= bool(hovered) << 1
+        v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
+        if len(srange) > 2:
+            v = round_min(math.round(v / srange[2]) * srange[2])
+        else:
+            rv = round_min(math.round(v * 32) / 32)
+            if type(rv) is int and rv not in srange:
+                v = rv
+        if hovered and not hovertext:
+            hovertext = cdict(
+                text=str(round(v * 100, 2)) + "%",
+                size=10,
+                colour=(255, 255, 127),
+            )
+            if aediting[opt]:
+                if not mheld[0]:
+                    aediting[opt] = False
+            elif mclick[0]:
+                aediting[opt] = True
+            elif mclick[1]:
+                enter = easygui.get_string(
+                    opt.capitalize(),
+                    "Miza Player",
+                    str(round_min(options.audio[opt] * 100)),
+                )
+                if enter:
+                    v = round_min(float(safe_eval(enter)) / 100)
+                    aediting[opt] = True
+            if aediting[opt]:
+                orig, options.audio[opt] = options.audio[opt], v
+                if orig != v:
+                    mixer.submit(f"~setting {opt} {v}", force=ignore or opt == "volume" or not queue)
+        z = max(0, x - 4)
+        rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
+        col = (48 if hovered else 32,) * 3
+        bevel_rectangle(
+            DISP2,
+            col,
+            rect,
+            3,
+        )
+        rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
+        DISP2.blit(
+            rainbow,
+            (offs2 + 8 + x, 17 + i * 32),
+            (x, 0, w - x, 9),
+            special_flags=BLEND_RGB_MULT,
+        )
+        rect = (offs2 + 8, 17 + i * 32, x, 9)
+        col = (223 if hovered else 191,) * 3
+        bevel_rectangle(
+            DISP2,
+            col,
+            rect,
+            3,
+        )
+        rainbow = quadratic_gradient((w, 9), pc() + i / 4)
+        DISP2.blit(
+            rainbow,
+            (offs2 + 8, 17 + i * 32),
+            (0, 0, x, 9),
+            special_flags=BLEND_RGB_MULT,
+        )
+        if hovered:
+            bevel_rectangle(
+                DISP2,
+                progress.select_colour,
+                brect2,
+                2,
+                filled=False,
+            )
+    rect = (offs2 + sidebar_width // 2 - 32, 304, 64, 32)
+    crect = (screensize[0] - sidebar_width // 2 - 32, 355) + rect[2:]
+    hovered = in_rect(mpos, crect)
+    col = (255, 0, 0) if not hovered else (255, 191, 191)
+    bevel_rectangle(
+        DISP2,
+        col,
+        rect,
+        4,
+    )
+    message_display(
+        "Reset",
+        16,
+        [offs2 + sidebar_width // 2, 318],
+        (255, 191, 191) if not hovered else (255,) * 3,
+        font="Comic Sans MS",
+        surface=DISP2,
+    )
+    if "more" not in sidebar:
+        sidebar.more = sidebar.more_angle = 0
+    if sidebar.more_angle > 0.001:
+        more = (
+            ("silenceremove", "Skip silence", "Skips over silent or extremely quiet frames of audio."),
+            ("presearch", "Preemptive search", "Pre-emptively searches up and displays duration of songs in a playlist.\nIncreases amount of requests being sent, and may also cause lag spikes."),
+            ("ripples", "Ripples", "Clicking anywhere on the sidebar or toolbar produces a visual ripple effect."),
+            ("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
+        )
+        mrect = (offs2 + 8, 376, sidebar_width - 16, 160)
+        surf = pygame.Surface(mrect[2:], SRCALPHA)
+        for i, t in enumerate(more):
+            s, name, description = t
+            apos = (screensize[0] - sidebar_width + offs2 + 24, 427 + i * 32 + 16)
+            hovered = hypot(*(np.array(mpos) - apos)) < 16
+            if hovered and mclick[0]:
+                options.control[s] ^= 1
+                if s == "silenceremove":
+                    mixer.submit(f"~setting silenceremove {options.control[s]}")
+            ripple_f = globals().get("s-ripple", concentric_circle)
+            if options.control.get(s):
+                col = (96, 255, 96)
+            else:
+                col = (127, 0, 0)
+            pos = (16, i * 32 + 16)
+            reg_polygon_complex(
+                surf,
+                pos,
+                (255,) * 3 if hovered else col,
+                0,
+                14,
+                14,
+                0,
+                255 if hovered else 255 * (abs((pc() - i / 2) / 4 % 1 - 0.5) + 0.5),
+                2,
+                9,
+                True,
+                soft=True
+            )
+            ripple_f(
+                surf,
+                colour=col,
+                pos=pos,
+                radius=16,
+                fill_ratio=0.5,
+            )
+            message_display(
+                name,
+                16,
+                (36, i * 32 + 4),
+                colour=(255,) * 3 if hovered else col,
+                align=0,
+                surface=surf,
+                font="Comic Sans MS",
+            )
+        b = pygame.image.tostring(surf, "RGBA")
+        im = Image.frombuffer("RGBA", mrect[2:], b)
+        a = im.getchannel("A")
+        arr = np.linspace(sidebar.more_angle * 510, sidebar.more_angle * 510 - 255, 160)
+        np.clip(arr, 0, 255, out=arr)
+        arr = arr.astype(np.uint8)
+        a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Image.NEAREST)
+        A = ImageChops.multiply(a, a2)
+        im.putalpha(A)
+        b = im.tobytes()
+        surf = pygame.image.frombuffer(b, im.size, im.mode)
+        DISP2.blit(
+            surf,
+            (offs2 + 8, 376),
+        )
+    rect = (offs2 + sidebar_width // 2 - 24, 344, 56, 32)
+    crect = (screensize[0] - sidebar_width // 2 - 24, 395) + rect[2:]
+    hovered = in_rect(mpos, crect)
+    if hovered and any(mclick):
+        sidebar.more = not sidebar.more
+    rat = 0.01 ** dur
+    sidebar.more_angle = sidebar.more_angle * rat + sidebar.more * (1 - rat)
+    lum = 223 if hovered else 191
+    c = options.get("sidebar_colour", (64, 0, 96))
+    hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+    light = 1 - (1 - hls[1]) / 4
+    if hls[2]:
+        sat = 1 - (1 - hls[2]) / 2
+    else:
+        sat = 0
+    col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
+    bevel_rectangle(
+        DISP2,
+        col,
+        rect,
+        4,
+    )
+    reg_polygon_complex(
+        DISP2,
+        (offs2 + sidebar_width // 2 - 40, 357 + sidebar.more_angle * 6),
+        (255,) * 3,
+        3,
+        12,
+        12,
+        pi/2 - sidebar.more_angle * pi,
+        255,
+        2,
+        9,
+        True,
+        soft=False
+    )
+    text = "More" if not sidebar.get("more") else "Less"
+    message_display(
+        text,
+        16,
+        [offs2 + sidebar_width // 2 + 4, 358],
+        (255, 127, 191) if not hovered else (255,) * 3,
+        font="Comic Sans MS",
+        surface=DISP2,
+    )
+    DISP.blit(
+        DISP2,
+        (screensize[0] - sidebar_width, 52),
+    )
+
 def draw_menu():
     global crosshair, hovertext
     ts = toolbar.progress.setdefault("timestamp", 0)
@@ -1811,12 +2112,13 @@ def draw_menu():
     crosshair = False
     hovertext = None
     if any(mclick) and in_rect(mpos, sidebar.rect):
-        sidebar.ripples.append(cdict(
-            pos=mpos,
-            radius=0,
-            colour=ripple_colours[mclick.index(1)],
-            alpha=255,
-        ))
+        if control.ripples:
+            sidebar.ripples.append(cdict(
+                pos=mpos,
+                radius=0,
+                colour=ripple_colours[mclick.index(1)],
+                alpha=255,
+            ))
         if mclick[1] and sidebar.menu is None:
 
             def set_colour():
@@ -1917,12 +2219,13 @@ def draw_menu():
         else:
             sidebar.particles.clear()
     if any(mclick) and in_rect(mpos, toolbar.rect):
-        toolbar.ripples.append(cdict(
-            pos=mpos,
-            radius=0,
-            colour=ripple_colours[mclick.index(1)],
-            alpha=255,
-        ))
+        if control.ripples:
+            toolbar.ripples.append(cdict(
+                pos=mpos,
+                radius=0,
+                colour=ripple_colours[mclick.index(1)],
+                alpha=255,
+            ))
         if mclick[1] and sidebar.menu is None:
 
             def set_colour():
@@ -2381,7 +2684,7 @@ def draw_menu():
             else:
                 player.flash_s = 32
                 options.spectrogram = (options.get("spectrogram", 0) + 1) % 4
-                mixer.submit(f"~setting spectrogram {options.spectrogram}", force=True)
+                mixer.submit(f"~setting spectrogram {options.spectrogram}")
                 if not options.spectrogram and queue:
                     submit(render_lyrics, queue[0])
         elif in_rect(mpos, osci_rect) and not toolbar.resizer:
@@ -2390,7 +2693,7 @@ def draw_menu():
             else:
                 player.flash_o = 32
                 options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
-                mixer.submit(f"~setting oscilloscope {options.oscilloscope}", force=True)
+                mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
     if sidebar.menu:
         if sidebar.menu.get("scale", 0) < 1:
             sidebar.menu.scale = min(1, sidebar.menu.get("scale", 0) + dur * 3 / sqrt(len(sidebar.menu.buttons)))
@@ -2530,7 +2833,7 @@ kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
 try:
     for tick in itertools.count(0, 2):
-        if not tick & 255:
+        if not tick & 1023:
             if utc() - os.path.getmtime(collections2f) > 3600:
                 submit(update_collections2)
                 common.repo_fut = submit(update_repo)
@@ -2636,7 +2939,7 @@ try:
                     alphakeys[14] |= kheld[K_PERIOD]
                     alphakeys[15] |= kheld[K_SEMICOLON]
                     alphakeys[16] |= kheld[K_SLASH]
-                mixer.submit("~keys " + repr(alphakeys), force=True)
+                mixer.submit("~keys " + repr(alphakeys))
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
                 try:
                     update_menu()

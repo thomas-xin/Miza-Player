@@ -1365,7 +1365,7 @@ while not sys.stdin.closed and failed < 8:
                     nostart = True
                 else:
                     nostart = False
-                settings[setting] = float(value)
+                settings[setting] = eval(value, {}, {})
                 if nostart or setting in ("volume", "shuffle", "spectrogram", "oscilloscope") or not stream:
                     continue
             elif command.startswith("~drop"):

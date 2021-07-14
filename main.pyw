@@ -1703,7 +1703,7 @@ def get_ripple(i, mode="toolbar"):
     else:
         d = i * 2 - 3
     h, l, s = colorsys.rgb_to_hls(*(i / 255 for i in c))
-    h = (h + d / 3) % 1
+    h = (h + d * 5 / 12) % 1
     s = 1 - (1 - s) / 2
     l = 1 - (1 - l) / 2
     return [round(i * 255) for i in colorsys.hls_to_rgb(h, l, s)]

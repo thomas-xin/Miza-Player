@@ -1688,13 +1688,25 @@ def update_menu():
         lyrics_cache.clear()
         lyrics_renders.clear()
 
-ripple_colours = (
-    (191, 127, 255),
-    (255, 127, 191),
-    (0, 255, 255),
-    (0, 0, 0),
-    (255, 255, 255),
-)
+
+def get_ripple(i, mode="toolbar"):
+    if i >= 4:
+        return (255,) * 3
+    if i == 3:
+        return (0,) * 3
+    if mode == "toolbar":
+        c = options.get("toolbar_colour", (64, 0, 96))
+    else:
+        c = options.get("sidebar_colour", (64, 0, 96))
+    if not i:
+        d = 0
+    else:
+        d = i * 2 - 3
+    h, l, s = colorsys.rgb_to_hls(*(i / 255 for i in c))
+    h = (h + d / 3) % 1
+    s = 1 - (1 - s) / 2
+    l = 1 - (1 - l) / 2
+    return [round(i * 255) for i in colorsys.hls_to_rgb(h, l, s)]
 
 
 with open("misc/sidebar.py", "rb") as f:
@@ -2018,7 +2030,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
                 name,
                 16,
                 (36, i * 32 + 4),
-                colour=(255,) * 3 if hovered else col,
+                colour=(255,) * 3 if hovered else (223,) * 3,
                 align=0,
                 surface=surf,
                 font="Comic Sans MS",
@@ -2118,7 +2130,7 @@ def draw_menu():
             sidebar.ripples.append(cdict(
                 pos=mpos,
                 radius=0,
-                colour=ripple_colours[mclick.index(1)],
+                colour=get_ripple(mclick.index(1), mode="sidebar"),
                 alpha=255,
             ))
         if mclick[1] and sidebar.menu is None:
@@ -2225,7 +2237,7 @@ def draw_menu():
             toolbar.ripples.append(cdict(
                 pos=mpos,
                 radius=0,
-                colour=ripple_colours[mclick.index(1)],
+                colour=get_ripple(mclick.index(1), mode="toolbar"),
                 alpha=255,
             ))
         if mclick[1] and sidebar.menu is None:

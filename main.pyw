@@ -1114,7 +1114,7 @@ def start_player(pos=None, force=False):
     if force and is_url(queue[0].url):
         queue[0].stream = None
         queue[0].research = True
-        downloader.result().pop(queue[0].url, None)
+        downloader.result().cache.pop(queue[0].url, None)
     player.last = 0
     player.amp = 0
     player.pop("osci", None)

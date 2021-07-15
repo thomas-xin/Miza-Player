@@ -190,8 +190,6 @@ def pya_init():
                 except:
                     print_exc()
                     time.sleep(1)
-        if channel2:
-            channel2.close()
         globals()["channel2"] = out
         return out
     except:
@@ -946,6 +944,8 @@ def play(pos):
                 packet_advanced3 = True
                 if OUTPUT_FILE:
                     submit(OUTPUT_FILE.write, b)
+                while waiting:
+                    waiting.result()
                 if channel2:
                     b = bytes(b)
                     fut = submit(channel2.write, b)
@@ -953,11 +953,14 @@ def play(pos):
                         fut.result(timeout=1)
                     except:
                         print("Pyaudio timed out.")
-                        pya = afut.result()
-                        pya.terminate()
+                        globals()["waiting"] = concurrent.futures.Future()
+                        aout.result().close()
+                        afut.result().terminate()
                         globals()["afut"] = submit(pyaudio.PyAudio)
                         globals()["aout"] = submit(pya_init)
                         globals()["channel2"] = None
+                        waiting.set_result(None)
+                        globals()["waiting"] = None
                 if not channel2:
                     buffer = sample.reshape((1600, 2))
                     sound = pygame.sndarray.make_sound(buffer)
@@ -1194,17 +1197,22 @@ def piano_player():
                     packet_advanced2 = True
                     packet_advanced3 = True
                     sbuffer = sample.astype(np.float32)
+                    while waiting:
+                        waiting.result()
                     if channel2:
                         fut = submit(channel2.write, b)
                         try:
                             fut.result(timeout=1)
                         except:
                             print("Pyaudio timed out.")
-                            pya = afut.result()
-                            pya.terminate()
+                            globals()["waiting"] = concurrent.futures.Future()
+                            aout.result().close()
+                            afut.result().terminate()
                             globals()["afut"] = submit(pyaudio.PyAudio)
                             globals()["aout"] = submit(pya_init)
                             globals()["channel2"] = None
+                            waiting.set_result(None)
+                            globals()["waiting"] = None
                     if not channel2:
                         buffer = sample.reshape((1600, 2))
                         sound = pygame.sndarray.make_sound(buffer)
@@ -1274,6 +1282,7 @@ submit(duration_est)
 submit(ensure_parent)
 submit(piano_player)
 pc()
+waiting = None
 while not sys.stdin.closed and failed < 8:
     try:
         command = sys.stdin.readline()
@@ -1345,10 +1354,14 @@ while not sys.stdin.closed and failed < 8:
                 continue
             if command.startswith("~output"):
                 OUTPUT_DEVICE = command[8:]
+                waiting = concurrent.futures.Future()
+                aout.result().close()
                 afut.result().terminate()
                 afut = submit(pyaudio.PyAudio)
                 aout = submit(pya_init)
                 channel2 = None
+                waiting.set_result(None)
+                waiting = None
                 continue
             if command.startswith("~record"):
                 s = command[8:]

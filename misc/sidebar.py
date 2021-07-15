@@ -203,6 +203,12 @@ def render_sidebar(dur=0):
                             entries = [entry.url]
                         pyperclip.copy("\n".join(entries))
 
+                    def copy_name():
+                        entries = [e.name for e in queue if e.get("selected")]
+                        if not entries:
+                            entries = [entry.name]
+                        pyperclip.copy("\n".join(entries))
+
                     def paste_queue():
                         submit(enqueue_auto, *pyperclip.paste().splitlines())
 
@@ -305,7 +311,8 @@ def render_sidebar(dur=0):
 
                     sidebar.menu = cdict(
                         buttons=(
-                            ("Copy", copy_queue),
+                            ("Copy URL", copy_queue),
+                            ("Copy name", copy_name),
                             ("Paste", paste_queue),
                             ("Play now", play_now),
                             ("Play next", play_next),

@@ -22,7 +22,7 @@ def is_minimised():
     #     min_inc = (min_inc + 1) % 3
     #     return min_inc
 
-rproc = psutil.Popen(("py", f"-3.{sys.version_info[1]}", "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+rproc = psutil.Popen((sys.executable, "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
 pt = None
 pt2 = None

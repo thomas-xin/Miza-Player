@@ -71,10 +71,9 @@ except FileNotFoundError:
     update_collections = True
 
 hasmisc = os.path.exists("misc")
-argp = ["py"]
+argp = [sys.executable]
 pyv = sys.version_info[1]
 if hasmisc:
-    argp = ["py", f"-3.{pyv}"]
     if update_collections:
         from install_update_p import *
 
@@ -1524,7 +1523,7 @@ def png2wav(png):
     ts = ts_us()
     r_png = f"cache/{ts}"
     r_wav = f"cache/{ts}.wav"
-    args = ["py", f"-3.{sys.version_info[1]}", "png2wav.py", "../" + r_png, "../" + r_wav]
+    args = [sys.executable, "png2wav.py", "../" + r_png, "../" + r_wav]
     with open(r_png, "wb") as f:
         f.write(png)
     print(args)

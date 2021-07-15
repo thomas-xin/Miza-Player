@@ -80,5 +80,5 @@ except (pkg_resources.DistributionNotFound, ValueError):
             win = "win_amd64"
         else:
             win = "win32"
-    subprocess.run(["py", f"-3.{x}", "-m", "pip", "install", f"https://download.lfd.uci.edu/pythonlibs/q4trcu4l/PyAudio-0.2.11-cp3{x}-cp3{x}-{win}.whl", "--user"])
+    subprocess.run(["py", f"-3.{x}", "-m", "pip", "install", f"https://download.lfd.uci.edu/pythonlibs/r4tycu3t/PyAudio-0.2.11-cp3{x}-cp3{x}-{win}.whl", "--user"])
 print("Installer terminated.")

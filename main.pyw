@@ -2847,10 +2847,11 @@ kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
 try:
     for tick in itertools.count(0, 2):
-        if not tick & 1023:
+        if not tick % 6000:
             if utc() - os.path.getmtime(collections2f) > 3600:
                 submit(update_collections2)
                 common.repo_fut = submit(update_repo)
+            submit(requests.post, "http://i.mizabot.xyz/mphb?playing=" + str(is_active() and not player.paused))
         fut = common.__dict__.pop("repo-update", None)
         if fut:
             if fut is True:

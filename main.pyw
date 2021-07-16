@@ -1985,6 +1985,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
     if sidebar.more_angle > 0.001:
         more = (
             ("silenceremove", "Skip silence", "Skips over silent or extremely quiet frames of audio."),
+            ("unfocus", "Reduce unfocus FPS", "Greatly reduces FPS of display when window is left unfocused."),
             ("presearch", "Preemptive search", "Pre-emptively searches up and displays duration of songs in a playlist.\nIncreases amount of requests being sent, and may also cause lag spikes."),
             ("ripples", "Ripples", "Clicking anywhere on the sidebar or toolbar produces a visual ripple effect."),
             ("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
@@ -1997,8 +1998,8 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
             hovered = hypot(*(np.array(mpos) - apos)) < 16
             if hovered and mclick[0]:
                 options.control[s] ^= 1
-                if s == "silenceremove":
-                    mixer.submit(f"~setting silenceremove {options.control[s]}")
+                if s in ("silenceremove", "unfocus"):
+                    mixer.submit(f"~setting {s} {options.control[s]}")
             ripple_f = globals().get("s-ripple", concentric_circle)
             if options.control.get(s):
                 col = (96, 255, 96)
@@ -2872,10 +2873,10 @@ try:
         unfocused = False
         if foc:
             minimised = False
-            # unfocused = False
+            unfocused = False
         else:
             minimised = is_minimised()
-            # unfocused = is_unfocused()
+            unfocused = options.control.unfocus and is_unfocused()
         if not tick & 15:
             if not downloading.target:
                 if player.paused:
@@ -2897,7 +2898,7 @@ try:
                 player.fut = submit(start)
         elif not queue:
             player.pop("fut").result()
-        if not minimised and (not unfocused or not tick % 24):
+        if not minimised and (not unfocused or not tick % 14):
             mclick = [x and not y for x, y in zip(mheld, mprev)]
             mrelease = [not x and y for x, y in zip(mheld, mprev)]
             mpos2 = mouse_rel_pos()

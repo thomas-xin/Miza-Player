@@ -155,6 +155,7 @@ control_default = cdict(
     shuffle=1,
     loop=1,
     silenceremove=0,
+    unfocus=1,
     presearch=0,
     ripples=1,
     autoupdate=0,
@@ -289,6 +290,7 @@ if hasmisc:
     for k, v in options.audio.items():
         s.write(f"~setting #{k} {v}\n")
     s.write(f"~setting #shuffle {options.control.setdefault('shuffle', 0)}\n")
+    s.write(f"~setting unfocus {options.control.setdefault('unfocus', 1)}\n")
     s.write(f"~setting silenceremove {options.control.setdefault('silenceremove', 0)}\n")
     s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
     s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
@@ -346,7 +348,12 @@ def get_window_flags():
     return wp.showCmd
 
 is_minimised = lambda: user32.IsIconic(hwnd)
-is_unfocused = lambda: hwnd != user32.GetForegroundWindow(hwnd)
+globals()["unfocus-time"] = 0
+def is_unfocused():
+    if hwnd == user32.GetForegroundWindow(hwnd):
+        globals()["unfocus-time"] = utc()
+        return
+    return utc() - globals()["unfocus-time"] > 3
 
 if options.get("maximised"):
     user32.ShowWindow(hwnd, 3)

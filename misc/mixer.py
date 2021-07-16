@@ -11,16 +11,17 @@ deque = collections.deque
 suppress = contextlib.suppress
 hwnd = int(sys.stdin.readline()[1:])
 
-# is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
-
-min_inc = -1
+is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
+globals()["unfocus-time"] = 0
 def is_minimised():
-    global min_inc
     if ctypes.windll.user32.IsIconic(hwnd):
         return True
-    # if hwnd != ctypes.windll.user32.GetForegroundWindow(hwnd):
-    #     min_inc = (min_inc + 1) % 3
-    #     return min_inc
+    if not settings.get("unfocus"):
+        return
+    if hwnd == ctypes.windll.user32.GetForegroundWindow(hwnd):
+        globals()["unfocus-time"] = time.time()
+        return
+    return time.time() - globals()["unfocus-time"] > 3
 
 rproc = psutil.Popen((sys.executable, "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
@@ -807,7 +808,7 @@ def render():
                 # amp = (amp1 + amp2) / len(buffer)
                 p_amp = sqrt(amp / 32767)
 
-                if is_minimised():
+                if is_strict_minimised():
                     point(f"~y {p_amp}")
                 else:
                     if settings.oscilloscope and osize[0] and osize[1] and (not osci_fut or osci_fut.done()):
@@ -836,10 +837,12 @@ def render():
                                 point("~x " + " ".join(map(str, out)))
 
                     if settings.spectrogram > 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
-                        spec2_fut = submit(spectrogram_update)
+                        if is_strict_minimised():
+                            spec2_fut = submit(spectrogram_update)
             elif packet_advanced:
                 if settings.spectrogram > 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
-                    spec2_fut = submit(spectrogram_update)
+                    if is_strict_minimised():
+                        spec2_fut = submit(spectrogram_update)
             packet_advanced = False
             time.sleep(0.005)
     except:
@@ -1379,7 +1382,7 @@ while not sys.stdin.closed and failed < 8:
                 else:
                     nostart = False
                 settings[setting] = eval(value, {}, {})
-                if nostart or setting in ("volume", "shuffle", "spectrogram", "oscilloscope") or not stream:
+                if nostart or setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus") or not stream:
                     continue
             elif command.startswith("~drop"):
                 drop += float(command[5:]) * 30

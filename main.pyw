@@ -2866,9 +2866,6 @@ try:
                     "Miza Player ~ Update found!",
                 )
                 fut.set_result(r)
-        lpos = mpos
-        mprev = mheld
-        mheld = get_pressed()
         foc = get_focused()
         unfocused = False
         if foc:
@@ -2898,7 +2895,10 @@ try:
                 player.fut = submit(start)
         elif not queue:
             player.pop("fut").result()
-        if not minimised and (not unfocused or not tick % 14):
+        if not minimised and (not unfocused or not tick % 14) and (unfocused or not player.paused and queue or not tick % 6 or toolbar.ripples or sidebar.ripples or any(mheld)):
+            lpos = mpos
+            mprev = mheld
+            mheld = get_pressed()
             mclick = [x and not y for x, y in zip(mheld, mprev)]
             mrelease = [not x and y for x, y in zip(mheld, mprev)]
             mpos2 = mouse_rel_pos()

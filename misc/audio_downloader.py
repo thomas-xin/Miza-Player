@@ -1,6 +1,6 @@
 # This file mostly contains code copied from the Miza discord bot's voice command category
 
-import youtube_dl, contextlib, requests, random, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures, json, itertools
+import youtube_dl, contextlib, requests, random, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures, itertools
 from math import *
 from traceback import print_exc
 
@@ -1204,7 +1204,7 @@ class AudioDownloader:
                         print_exc()
                 else:
                     try:
-                        return list(map(cdict, json.loads(requests.get("http://i.mizabot.xyz/ytdl?q=" + item).content)))
+                        return list(map(cdict, requests.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
                     except:
                         pass
         elif regexp("(play|open|api)\\.spotify\\.com").search(item):

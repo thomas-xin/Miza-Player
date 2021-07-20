@@ -289,9 +289,11 @@ if hasmisc:
     s.write(("%" + str(hwnd) + "\n"))
     for k, v in options.audio.items():
         s.write(f"~setting #{k} {v}\n")
+    s.write(f"~setting #gradient-vertices {options.control.setdefault('gradient-vertices', 4)}\n")
+    s.write(f"~setting #spiral-vertices {options.control.setdefault('spiral-vertices', 6)}\n")
     s.write(f"~setting #shuffle {options.control.setdefault('shuffle', 0)}\n")
     s.write(f"~setting unfocus {options.control.setdefault('unfocus', 1)}\n")
-    s.write(f"~setting silenceremove {options.control.setdefault('silenceremove', 0)}\n")
+    s.write(f"~setting #silenceremove {options.control.setdefault('silenceremove', 0)}\n")
     s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
     s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
     s.write(f"~synth 1.5 1 0 0.75 0 1\n")

@@ -2671,7 +2671,6 @@ def draw_menu():
             if mclick[1]:
                 s = options.get("spectrogram")
                 if not s:
-
                     def change_image():
                         no_lyrics_path = easygui.fileopenbox(
                             "Open an image file here!",
@@ -2702,6 +2701,38 @@ def draw_menu():
                             ("Change Image", change_image),
                             ("Search Lyrics", search_lyrics),
                             ("Reset Lyrics", reset_lyrics),
+                        ),
+                    )
+                elif s == 2:
+                    def change_vertices():
+                        enter = easygui.get_string(
+                            "Change vertex count",
+                            "Miza Player",
+                            str(options.control.get("gradient-vertices", 4)),
+                        )
+                        if enter:
+                            options.control["gradient-vertices"] = int(enter)
+                            mixer.submit(f"~setting #gradient-vertices {enter}")
+
+                    sidebar.menu = cdict(
+                        buttons=(
+                            ("Change vertices", change_vertices),
+                        ),
+                    )
+                elif s == 3:
+                    def change_vertices():
+                        enter = easygui.get_string(
+                            "Change vertex count",
+                            "Miza Player",
+                            str(options.control.get("spiral-vertices", 6)),
+                        )
+                        if enter:
+                            options.control["spiral-vertices"] = int(enter)
+                            mixer.submit(f"~setting #spiral-vertices {enter}")
+
+                    sidebar.menu = cdict(
+                        buttons=(
+                            ("Change vertices", change_vertices),
                         ),
                     )
             else:

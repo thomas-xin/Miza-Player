@@ -161,6 +161,8 @@ class Bar(Particle):
             sfx.paste(surf, (barcount - 2 - self.x, barheight - size))
     
     def render2(self, sfx, **void):
+        if not vertices > 0:
+            return
         size = min(2 * barheight, round(self.height))
         if size:
             amp = size / barheight * 2
@@ -168,12 +170,55 @@ class Bar(Particle):
             sat = 1 - min(1, max(0, amp - 1))
             self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount) % 1, sat, val))
             x = barcount - self.x - 2
-            DRAW.rectangle(
-                (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),
-                None,
-                self.colour,
-                width=1,
-            )
+            if vertices == 4:
+                DRAW.rectangle(
+                    (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),
+                    None,
+                    self.colour,
+                    width=1,
+                )
+            elif vertices == 2:
+                DRAW.line(
+                    (0, x, barcount * 2 - 2, x),
+                    self.colour,
+                    width=1,
+                )
+                DRAW.line(
+                    (0, barcount * 2 - x - 3, barcount * 2 - 2, barcount * 2 - x - 3),
+                    self.colour,
+                    width=1,
+                )
+            elif vertices <= 1:
+                DRAW.line(
+                    (0, barcount * 2 - x * 2 - 4, barcount * 2 - 2, barcount * 2 - x * 2 - 4),
+                    self.colour,
+                    width=2,
+                )
+            elif vertices >= 32 or self.x <= 7 and not vertices & 1:
+                DRAW.ellipse(
+                    (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),
+                    None,
+                    self.colour,
+                    width=2,
+                )
+            else:
+                diag = 1
+                # if vertices & 1:
+                #     diag *= cos(pi / vertices)
+                radius = x * diag + 1
+                a = barcount - 2
+                b = a / diag + 1
+                points = []
+                for i in range(vertices + 1):
+                    z = i / vertices * tau
+                    p = (a + radius * sin(z), b - radius * cos(z))
+                    points.append(p)
+                DRAW.line(
+                    points,
+                    self.colour,
+                    width=2,
+                    joint="curve"
+                )
 
     def post_render(self, sfx, scale, **void):
         size = round(self.height2)
@@ -242,18 +287,14 @@ def spectrogram_render():
                 x = bar.x + 1
                 r1 = x * R - 1
                 r2 = x * R + 4
-                for i in range(6):
-                    z = spec.angle + i / 6 * tau
+                for i in range(vertices):
+                    z = spec.angle + i / vertices * tau
                     p1 = (c[0] + cos(z) * r1, c[1] + sin(z) * r1)
                     p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
-                    DRAW.line((p1, p2), colour, 9)
+                    DRAW.line((p1, p2), colour, 8)
             sfx = sfx.rotate(spec.rotation, resample=Image.NEAREST)
         if sfx.size != ssize2:
             sfx = sfx.resize(ssize2, resample=Image.NEAREST)
-            # if specs != 3:
-            #     sfx = sfx.resize(ssize2, resample=Image.NEAREST)
-            # else:
-            #     sfx = sfx.resize(ssize2, resample=Image.BICUBIC)
 
         if specs == 1:
             fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
@@ -293,7 +334,7 @@ while True:
         if line == b"~r":
             line = sys.stdin.buffer.readline().rstrip()
             # print(line)
-            ssize2, specs, dur, pc_ = map(json.loads, line.split(b"~"))
+            ssize2, specs, vertices, dur, pc_ = map(json.loads, line.split(b"~"))
             if fut:
                 fut.result()
             fut = submit(spectrogram_render)

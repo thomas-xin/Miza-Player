@@ -723,7 +723,13 @@ def spectrogram_render():
         ssize2 = ssize
         specs = settings.spectrogram
         packet_advanced2 = False
-        binfo = b"~r" + b"~".join(map(lambda a: json.dumps(a).encode("utf-8"), (ssize2, specs, dur, pc()))) + b"\n"
+        if specs <= 1:
+            vertices = 0
+        elif specs == 2:
+            vertices = settings.get("gradient-vertices", 4)
+        elif specs == 3:
+            vertices = settings.get("spiral-vertices", 6)
+        binfo = b"~r" + b"~".join(map(lambda a: json.dumps(a).encode("utf-8"), (ssize2, specs, vertices, dur, pc()))) + b"\n"
         rproc.stdin.write(binfo)
         rproc.stdin.flush()
         line = rproc.stdout.readline().rstrip()

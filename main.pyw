@@ -653,6 +653,9 @@ def setup_buttons():
     except:
         print_exc()
 
+def send_status():
+    pass
+
 cached_fns = {}
 def _enqueue_local(*files, probe=True):
     try:
@@ -912,14 +915,14 @@ def render_lyrics(entry):
             try:
                 lyrics = lyrics_scraper.result()(name)
             except LookupError:
-                lyrics = None
+                lyrics = ""
             except:
                 print_exc()
-                lyrics = None
+                lyrics = ""
             if lyrics:
                 lyrics_cache[name] = lyrics
             else:
-                entry.lyrics = None
+                entry.lyrics = lyrics
                 return
         if options.spectrogram:
             return
@@ -1165,6 +1168,7 @@ def start_player(pos=None, force=False):
     player.pos = pos
     player.index = player.pos * 30
     player.end = duration or inf
+    globals()["tick"] = -1200
     return stream, duration
 
 def start():
@@ -1492,6 +1496,7 @@ def update_menu():
         player.paused ^= True
         mixer.state(player.paused)
         toolbar.pause.speed = toolbar.pause.maxspeed
+        globals()["tick"] = -2
         if player.paused:
             c = (255, 0, 0)
         else:
@@ -1572,6 +1577,7 @@ def update_menu():
             mixer.state(player.paused)
             toolbar.pause.speed = toolbar.pause.maxspeed
             sidebar.menu = 0
+            globals()["tick"] = -2
         toolbar.pause.outer = 255
         toolbar.pause.inner = 191
         toolbar.updated = False
@@ -1709,6 +1715,7 @@ def get_ripple(i, mode="toolbar"):
     return [round(i * 255) for i in colorsys.hls_to_rgb(h, l, s)]
 
 
+# importing doesn't work; target files are simply functions that used to be here and cannot independently run without sharing global variables
 with open("misc/sidebar.py", "rb") as f:
     b = f.read()
 exec(compile(b, "sidebar.py", "exec"))
@@ -2688,9 +2695,10 @@ def draw_menu():
                     
                     def reset_lyrics():
                         globals()["lyrics_entry"] = None
-                    
+
                     sidebar.menu = cdict(
                         buttons=(
+                            ("Copy", lambda: pyperclip.copy(lyrics_cache[queue[0].name][1])),
                             ("Change Image", change_image),
                             ("Search Lyrics", search_lyrics),
                             ("Reset Lyrics", reset_lyrics),
@@ -2847,12 +2855,13 @@ kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
 try:
-    for tick in itertools.count(0, 2):
+    tick = 0
+    while True:
         if not tick % 6000:
             if utc() - os.path.getmtime(collections2f) > 3600:
                 submit(update_collections2)
                 common.repo_fut = submit(update_repo)
-            submit(requests.post, "http://i.mizabot.xyz/mphb?playing=" + str(is_active() and not player.paused))
+            submit(send_status)
         fut = common.__dict__.pop("repo-update", None)
         if fut:
             if fut is True:
@@ -3031,8 +3040,12 @@ try:
                                 no_lyrics,
                                 (player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
                             )
+                        if entry.lyrics == "":
+                            title = f"No lyrics found for {entry.name}."
+                        else:
+                            title = 'No genius.com API key found. Please view "auth.json" for more information.'
                         message_display(
-                            f"No lyrics found for {entry.name}.",
+                            title,
                             size,
                             (player.rect[2] >> 1, size),
                             (255, 0, 0),
@@ -3130,7 +3143,9 @@ try:
                     options.screenpos = rect[:2]
                     screenpos2 = None
         pygame.event.clear()
+        tick += 2
 except Exception as ex:
+    submit(requests.delete, mp)
     pygame.quit()
     if type(ex) is not StopIteration:
         print_exc()

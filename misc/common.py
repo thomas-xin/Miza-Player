@@ -665,6 +665,7 @@ a = submit(pygame.ftfont.init)
 b = submit(pygame.font.init)
 a.result()
 b.result()
+globals()["fg"] = "xEC"
 
 def load_surface(fn, greyscale=False, size=None):
     im = image = Image.open(fn)

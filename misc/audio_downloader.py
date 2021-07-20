@@ -1,6 +1,6 @@
 # This file mostly contains code copied from the Miza discord bot's voice command category
 
-import youtube_dl, contextlib, requests, random, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures
+import youtube_dl, contextlib, requests, random, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures, json, itertools
 from math import *
 from traceback import print_exc
 
@@ -56,24 +56,13 @@ except FileNotFoundError:
     AUTH = {}
 
 google_api_key = AUTH.get("google_api_key")
-try:
-    genius_key = AUTH["genius_key"]
-    if not genius_key:
-        raise
-except:
-    genius_key = None
-    print("WARNING: genius_key not found. Unable to use API to search song lyrics.")
+if not google_api_key:
+    print("WARNING: google_api_key not found. Unable to use API to efficiently scrape playlists.")
     with open("auth.json", "w") as f:
-        if google_api_key:
-            f.write("{\n"
-+ f'    "google_api_key": "{google_api_key}",' + """
-    "genius_key": ""
-}""")
-        else:
-            f.write("""{
-	"google_api_key": "",
-    "genius_key": ""
-}""")
+        f.write("""{
+	"google_api_key": ""
+}
+# Please create an api key at https://developers.google.com/maps/documentation/javascript/get-api-key to improve YouTube playlist scrape efficiency.""")
 
 
 class cdict(dict):
@@ -1187,7 +1176,7 @@ class AudioDownloader:
     def extract(self, item, force=False, count=1, mode=None, search=True):
         page = None
         output = deque()
-        if google_api_key and ("youtube.com" in item or "youtu.be/" in item):
+        if "youtube.com" in item or "youtu.be/" in item:
             p_id = None
             for x in ("?list=", "&list="):
                 if x in item:
@@ -1195,23 +1184,29 @@ class AudioDownloader:
                     p_id = p_id.split("&", 1)[0]
                     break
             if p_id:
-                try:
-                    output.extend(self.get_youtube_playlist(p_id))
-                    # Scroll to highlighted entry if possible
-                    v_id = None
-                    for x in ("?v=", "&v="):
-                        if x in item:
-                            v_id = item[item.index(x) + len(x):]
-                            v_id = v_id.split("&", 1)[0]
-                            break
-                    if v_id:
-                        for i, e in enumerate(output):
-                            if v_id in e.url:
-                                output.rotate(-i)
+                if google_api_key and self.cache:
+                    try:
+                        output.extend(self.get_youtube_playlist(p_id))
+                        # Scroll to highlighted entry if possible
+                        v_id = None
+                        for x in ("?v=", "&v="):
+                            if x in item:
+                                v_id = item[item.index(x) + len(x):]
+                                v_id = v_id.split("&", 1)[0]
                                 break
-                    return output
-                except:
-                    print_exc()
+                        if v_id:
+                            for i, e in enumerate(output):
+                                if v_id in e.url:
+                                    output.rotate(-i)
+                                    break
+                        return output
+                    except:
+                        print_exc()
+                else:
+                    try:
+                        return list(map(cdict, json.loads(requests.get("http://i.mizabot.xyz/ytdl?q=" + item).content)))
+                    except:
+                        pass
         elif regexp("(play|open|api)\\.spotify\\.com").search(item):
             # Spotify playlist searches contain up to 100 items each
             if "playlist" in item:
@@ -1706,17 +1701,12 @@ def get_lyrics(search):
         item = verify_search(to_alphanumeric(search))
         if not item:
             item = search
-    # print(item)
-    url = "https://api.genius.com/search"
+    url = f"https://genius.com/api/search/multi?q={item}"
     for i in range(2):
-        header = {"Authorization": f"Bearer {genius_key}"}
-        # if i == 0:
-        #     search = item
-        # else:
-        #     search = "".join(reversed(item.split()))
+        header = {"User-Agent": "Mozilla/6.0"}
         data = {"q": item}
         rdata = requests.get(url, data=data, headers=header, timeout=18).json()
-        hits = rdata["response"]["hits"]
+        hits = itertools.chain(*(sect["hits"] for sect in rdata["response"]["sections"]))
         name = None
         path = None
         for h in hits:

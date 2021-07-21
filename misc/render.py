@@ -205,7 +205,7 @@ class Bar(Particle):
                 diag = 1
                 # if vertices & 1:
                 #     diag *= cos(pi / vertices)
-                radius = x * diag + 1
+                radius = self.x * diag + 1
                 a = barcount - 2
                 b = a / diag + 1
                 points = []
@@ -293,10 +293,10 @@ def spectrogram_render():
                     p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
                     DRAW.line((p1, p2), colour, 8)
             sfx = sfx.rotate(spec.rotation, resample=Image.NEAREST)
-        if sfx.size != ssize2:
-            sfx = sfx.resize(ssize2, resample=Image.NEAREST)
 
         if specs == 1:
+            if sfx.size != ssize2:
+                sfx = sfx.resize(ssize2, resample=Image.NEAREST)
             fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
             if Bar.fsize != fsize:
                 Bar.fsize = fsize
@@ -315,7 +315,7 @@ def spectrogram_render():
             bar.update(dur=dur)
 
         if write:
-            sys.stdout.buffer.write(b"~s" + "~".join(map(str, ssize2)).encode("utf-8") + b"\n")
+            sys.stdout.buffer.write(b"~s" + "~".join(map(str, sfx.size)).encode("utf-8") + b"\n")
             sys.stdout.buffer.write(spectrobytes)
         else:
             sys.stdout.write("~s\n")

@@ -3014,11 +3014,27 @@ try:
                     if options.get("spectrogram"):
                         rect = player.rect
                         surf = player.spec
+                        prect = rect[:2]
                         if tuple(rect[2:]) != surf.get_size():
-                            player.spec = surf = pygame.transform.scale(surf, rect[2:])
+                            if options.spectrogram == 3:
+                                srect = limit_size(*surf.get_size(), *rect[2:])
+                                prect += (np.array(rect[2:]) - srect) / 2
+                                rects = deque()
+                                if srect[0] < rect[2]:
+                                    rects.append(rect[:2] + (prect[0], rect[3]))
+                                    rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
+                                elif srect[1] < rect[3]:
+                                    rects.append(rect[:2] + (rect[2], prect[1]))
+                                    rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
+                                print(rects)
+                                for rect in rects:
+                                    DISP.fill(0, rect)
+                            else:
+                                srect = rect[2:]
+                            player.spec = surf = pygame.transform.scale(surf, srect)
                         DISP.blit(
                             surf,
-                            rect[:2],
+                            prect,
                         )
                 if (queue or lyrics_entry) and not options.spectrogram:
                     size = max(16, min(32, (screensize[0] - sidebar_width) // 36))

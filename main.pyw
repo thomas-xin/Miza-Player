@@ -20,6 +20,13 @@ if not os.path.exists("playlists"):
     os.mkdir("playlists")
 
 
+def create_pattern():
+    pattern = cdict(
+        time=(4, 4),
+        measures=alist(),
+    )
+    project.patterns.append(pattern)
+    return pattern
 project = cdict(
     settings=cdict(
         time=(4, 4),
@@ -27,11 +34,12 @@ project = cdict(
     ),
     instruments={},
     instrument_layout=alist(),
-    measures=alist(),
+    patterns=alist(),
+    create_pattern=create_pattern,
 )
 project_name = "untitled"
 instruments = project.instruments
-measures = project.measures
+patterns = project.patterns
 
 player = cdict(
     paused=False,
@@ -44,7 +52,16 @@ player = cdict(
         amplitude=0,
         velocity=0,
         energy=0,
-    )
+    ),
+    editor=cdict(
+        scrolling=False,
+        scroll_x=0,
+        scroll_y=0,
+        targ_x=0,
+        targ_y=0,
+        zoom_x=1,
+        zoom_y=1,
+    ),
 )
 sidebar = cdict(
     queue=alist(),
@@ -429,6 +446,10 @@ def setup_buttons():
         edit = button_images.edit.result()
         def edit_1():
             toolbar.editor ^= 1
+            sidebar.scrolling = False
+            sidebar.scroll.pos = 0
+            sidebar.scroll.target = 0
+            pause_toggle(True)
             if toolbar.editor:
                 mixer.submit(f"~setting spectrogram -1")
             else:
@@ -787,7 +808,7 @@ def load_project(fn):
         project.update(pdata)
         sidebar.instruments.__init__(cdict() for _ in range(len(project.instrument_layout)))
         globals()["instruments"] = project.instruments
-        globals()["measures"] = project.measures
+        globals()["patterns"] = project.patterns
         globals()["project_name"] = fn.rsplit(".", 1)[0]
     except:
         print_exc()
@@ -1457,6 +1478,17 @@ def download(entries, fn):
         print_exc()
 
 
+def pause_toggle(state=None):
+    if state is None:
+        player.paused ^= True
+    else:
+        player.paused = state
+    mixer.state(player.paused)
+    toolbar.pause.speed = toolbar.pause.maxspeed
+    globals()["tick"] = -2
+    sidebar.menu = 0
+
+
 def update_menu():
     global sidebar_width, toolbar_height
     ts = toolbar.pause.setdefault("timestamp", 0)
@@ -1493,10 +1525,7 @@ def update_menu():
         for i, entry in enumerate(queue[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base):
             entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
     if kspam[K_SPACE]:
-        player.paused ^= True
-        mixer.state(player.paused)
-        toolbar.pause.speed = toolbar.pause.maxspeed
-        globals()["tick"] = -2
+        pause_toggle()
         if player.paused:
             c = (255, 0, 0)
         else:
@@ -1573,11 +1602,7 @@ def update_menu():
             toolbar.resizer = True
     if in_circ(mpos, toolbar.pause.pos, max(4, toolbar.pause.radius - 2)):
         if any(mclick):
-            player.paused ^= True
-            mixer.state(player.paused)
-            toolbar.pause.speed = toolbar.pause.maxspeed
-            sidebar.menu = 0
-            globals()["tick"] = -2
+            pause_toggle()
         toolbar.pause.outer = 255
         toolbar.pause.inner = 191
         toolbar.updated = False
@@ -1722,6 +1747,9 @@ exec(compile(b, "sidebar.py", "exec"))
 with open("misc/sidebar2.py", "rb") as f:
     b = f.read()
 exec(compile(b, "sidebar2.py", "exec"))
+with open("misc/piano.py", "rb") as f:
+    b = f.read()
+exec(compile(b, "piano.py", "exec"))
 
 
 no_lyrics_path = options.get("no_lyrics_path", "misc/Default/no_lyrics.png")
@@ -1742,8 +1770,7 @@ def load_bubble(bubble_path):
                 im = globals()["h-img"].resize((diameter,) * 2, resample=Image.NEAREST)
                 if "RGB" not in im.mode:
                     im = im.convert("RGBA")
-                b = im.tobytes()
-                surf = pygame.image.frombuffer(b, im.size, im.mode)
+                surf = pil2pyg(im)
                 im.close()
                 globals()["h-cache"][diameter] = surf
             blit_complex(
@@ -1772,8 +1799,7 @@ def load_spinner(spinner_path):
                 im = globals()["s-img"].resize((diameter,) * 2, resample=Image.BICUBIC)
                 if "RGB" not in im.mode:
                     im = im.convert("RGBA")
-                b = im.tobytes()
-                surf = pygame.image.frombuffer(b, im.size, im.mode)
+                surf = pil2pyg(im)
                 im.close()
                 globals()["s-cache"][diameter] = surf
             blit_complex(
@@ -2043,8 +2069,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
                 surface=surf,
                 font="Comic Sans MS",
             )
-        b = pygame.image.tostring(surf, "RGBA")
-        im = Image.frombuffer("RGBA", mrect[2:], b)
+        im = pyg2pil(surf)
         a = im.getchannel("A")
         arr = np.linspace(sidebar.more_angle * 510, sidebar.more_angle * 510 - 255, 160)
         np.clip(arr, 0, 255, out=arr)
@@ -2052,8 +2077,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
         a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Image.NEAREST)
         A = ImageChops.multiply(a, a2)
         im.putalpha(A)
-        b = im.tobytes()
-        surf = pygame.image.frombuffer(b, im.size, im.mode)
+        surf = pil2pyg(im)
         DISP2.blit(
             surf,
             (offs2 + 8, 376),
@@ -2659,7 +2683,7 @@ def draw_menu():
                 alpha=a,
                 font="Comic Sans MS",
             )
-    if mclick[0] or mclick[1]:
+    if not toolbar.editor and (mclick[0] or mclick[1]):
         text_rect = (0, 0, 128, 64)
         if in_rect(mpos, text_rect):
             if mclick[1]:
@@ -2935,7 +2959,7 @@ try:
                 player.fut = submit(start)
         elif not queue:
             player.pop("fut").result()
-        if not minimised and (not unfocused or not tick % 14) and (unfocused or not player.paused and queue or not tick % 6 or toolbar.ripples or sidebar.ripples or any(mheld)):
+        if not minimised and (not unfocused or not tick % 14) and ((not isnan(mpos[0]) or is_active()) or unfocused or not player.paused and queue or not tick % 6 or toolbar.ripples or sidebar.ripples or any(mheld)):
             lpos = mpos
             mprev = mheld
             mheld = get_pressed()
@@ -3009,32 +3033,57 @@ try:
                 progress.num = 0
                 progress.alpha = 0
                 # player.pop("spec", None)
-            if not tick + 2 & 7:
+            if not tick + 6 & 7 and toolbar.editor:
+                render_piano()
+                if modified:
+                    modified.add(tuple(screensize))
+                else:
+                    modified.add(player.rect)
+            if not tick + 2 & 3 and not toolbar.editor:
                 if player.get("spec"):
                     if options.get("spectrogram"):
                         rect = player.rect
                         surf = player.spec
-                        prect = rect[:2]
-                        if tuple(rect[2:]) != surf.get_size():
+                        if not tick + 6 & 7:
+                            specf = False
+                            im = pyg2pil(surf)
+                            if tuple(rect[2:]) != surf.get_size():
+                                if options.spectrogram == 3:
+                                    srect = limit_size(*surf.get_size(), *rect[2:])
+                                else:
+                                    srect = rect[2:]
+                                if tuple(srect[2:]) != surf.get_size():
+                                    specf = True
+                                    player.specr_fut = submit(im.resize, srect, resample=Image.NEAREST)
+                                    # player.specr_fut = submit(pygame.transform.scale, surf, srect)
+                            if not specf:
+                                player.specr_fut = concurrent.futures.Future()
+                                player.specr_fut.set_result(im)
+                        else:
                             if options.spectrogram == 3:
                                 srect = limit_size(*surf.get_size(), *rect[2:])
-                                prect += (np.array(rect[2:]) - srect) / 2
-                                rects = deque()
-                                if srect[0] < rect[2]:
-                                    rects.append(rect[:2] + (prect[0], rect[3]))
-                                    rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
-                                elif srect[1] < rect[3]:
-                                    rects.append(rect[:2] + (rect[2], prect[1]))
-                                    rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
-                                for rect in rects:
-                                    DISP.fill(0, rect)
                             else:
                                 srect = rect[2:]
-                            player.spec = surf = pygame.transform.scale(surf, srect)
-                        DISP.blit(
-                            surf,
-                            prect,
-                        )
+                            prect = rect[:2]
+                            prect += (np.array(rect[2:]) - srect) / 2
+                            fut = player.get("specr_fut", None)
+                            if fut:
+                                if options.spectrogram == 3:
+                                    rects = deque()
+                                    if srect[0] < rect[2]:
+                                        rects.append(rect[:2] + (prect[0], rect[3]))
+                                        rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
+                                    elif srect[1] < rect[3]:
+                                        rects.append(rect[:2] + (rect[2], prect[1]))
+                                        rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
+                                    for rect in rects:
+                                        DISP.fill(0, rect)
+                                surf = player.spec = pil2pyg(fut.result())
+                                DISP.blit(
+                                    surf,
+                                    prect,
+                                )
+            if not tick + 2 & 7 and not toolbar.editor:
                 if (queue or lyrics_entry) and not options.spectrogram:
                     size = max(16, min(32, (screensize[0] - sidebar_width) // 36))
                     entry = lyrics_entry or queue[0]
@@ -3133,7 +3182,7 @@ try:
                         4,
                         filled=False,
                     )
-            if not tick + 6 & 7 or tuple(screensize) in modified:
+            if not toolbar.editor and (not tick + 6 & 7 or tuple(screensize) in modified):
                 if options.get("insights"):
                     for i, k in enumerate(("peak", "amplitude", "velocity", "energy")):
                         v = player.stats.get(k, 0) if is_active() else 0
@@ -3171,7 +3220,10 @@ try:
             if event.type == QUIT:
                 raise StopIteration
             elif event.type == MOUSEWHEEL:
-                sidebar.scroll.target -= event.y * 16
+                if in_rect(mpos, sidebar.rect):
+                    sidebar.scroll.target -= event.y * 16
+                elif toolbar.editor and in_rect(mpos, player.rect):
+                    player.editor.targ_y += event.y * 3.5
             elif event.type == VIDEORESIZE:
                 flags = get_window_flags()
                 if flags == 3:

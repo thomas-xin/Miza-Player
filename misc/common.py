@@ -669,6 +669,16 @@ a.result()
 b.result()
 globals()["fg"] = "xEC"
 
+def pyg2pil(surf):
+    mode = "RGBA" if surf.get_flags() & SRCALPHA else "RGB"
+    b = pygame.image.tostring(surf, mode)
+    return Image.frombuffer(mode, surf.get_size(), b)
+
+def pil2pyg(im):
+    mode = im.mode
+    b = im.tobytes()
+    return pygame.image.frombuffer(b, im.size, mode)
+
 def load_surface(fn, greyscale=False, size=None):
     im = image = Image.open(fn)
     if im.mode == "P":
@@ -684,8 +694,7 @@ def load_surface(fn, greyscale=False, size=None):
         if "RGB" not in im2.mode:
             im2 = im2.convert("RGB" + ("A" if "A" in im.mode else ""))
         im = im2
-    b = im.tobytes()
-    surf = pygame.image.frombuffer(b, im.size, im.mode)
+    surf = pil2pyg(im)
     image.close()
     return surf.convert_alpha() if "A" in im.mode else surf.convert()
 
@@ -715,8 +724,7 @@ def quadratic_gradient(size=gsize, t=None):
     if not quadratics[x]:
         hue = qhue.point(lambda i: i + x & 255)
         img = Image.merge("HSV", (hue, qsat, qval)).convert("RGB")
-        b = img.tobytes()
-        quadratics[x] = pygame.image.frombuffer(b, gsize, "RGB")
+        quadratics[x] = pil2pyg(img)
     surf = quadratics[x]
     if surf.get_size() != size:
         surf = pygame.transform.scale(surf, size)
@@ -743,8 +751,7 @@ def radial_gradient(size=(rgw,) * 2, t=None):
     if not radials[x]:
         hue = rhue.point(lambda i: i + x & 255)
         img = Image.merge("HSV", (hue, rsat, rval)).convert("RGB")
-        b = img.tobytes()
-        radials[x] = pygame.image.frombuffer(b, (rgw,) * 2, "RGB")
+        radials[x] = pil2pyg(img)
     surf = radials[x]
     if surf.get_size() != size:
         surf = pygame.transform.scale(surf, size)

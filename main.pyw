@@ -3026,7 +3026,6 @@ try:
                                 elif srect[1] < rect[3]:
                                     rects.append(rect[:2] + (rect[2], prect[1]))
                                     rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
-                                print(rects)
                                 for rect in rects:
                                     DISP.fill(0, rect)
                             else:
@@ -3224,7 +3223,7 @@ except Exception as ex:
                     futs.add(submit(os.remove, e.path))
                 elif fn[0] == "~":
                     s = e.stat()
-                    if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 7:
+                    if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 7 or utc() - s.st_mtime > 86400 * 14:
                         futs.add(submit(os.remove, e.path))
             else:
                 futs.add(submit(os.remove, e.path))

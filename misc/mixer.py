@@ -729,6 +729,8 @@ def spectrogram_render():
             vertices = settings.get("gradient-vertices", 4)
         elif specs == 3:
             vertices = settings.get("spiral-vertices", 6)
+        if vertices > 64:
+            vertices = 64
         binfo = b"~r" + b"~".join(map(lambda a: json.dumps(a).encode("utf-8"), (ssize2, specs, vertices, dur, pc()))) + b"\n"
         rproc.stdin.write(binfo)
         rproc.stdin.flush()
@@ -1361,7 +1363,7 @@ while not sys.stdin.closed and failed < 8:
             if command.startswith("~download"):
                 st, fn2 = command[10:].split(" ", 1)
                 # fn2 = "cache/~" + h + ".pcm"
-                if not os.path.exists(fn2):
+                if not os.path.exists(fn2) or time.time() - os.path.getmtime(fn2) > 86400 * 7:
                     cmd = ffmpeg_start
                     if is_url(st):
                         cmd += ffmpeg_stream
@@ -1436,7 +1438,7 @@ while not sys.stdin.closed and failed < 8:
             ext = construct_options()
             if is_url(stream):
                 fn = "cache/~" + sh + ".pcm"
-                if os.path.exists(fn) and os.path.getsize(fn) / 48000 / 2 / 2 >= duration - 1:
+                if os.path.exists(fn) and abs(os.path.getsize(fn) / 48000 / 2 / 2 - duration) < 1:
                     stream = fn
                     fn = None
                     file = None

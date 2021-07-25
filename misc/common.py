@@ -1487,6 +1487,10 @@ def org2xm(org, dat=None):
         else:
             r_dat = "misc/ORG210EN.DAT"
             orig = True
+            if not os.path.exists(r_dat):
+                with requests.get("https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true", stream=True) as resp:
+                    with open(r_dat, "wb") as f:
+                        f.write(resp.content)
     args = ["misc/org2xm.exe", r_org, r_dat]
     if compat:
         args.append("c")

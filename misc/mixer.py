@@ -1343,7 +1343,7 @@ while not sys.stdin.closed and failed < 8:
                 i = int(command[6:])
                 if i and not paused:
                     paused = concurrent.futures.Future()
-                elif paused:
+                elif not i and paused:
                     paused.set_result(None)
                     paused = None
                 packet_advanced = paused

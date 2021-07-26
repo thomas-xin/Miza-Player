@@ -22,14 +22,16 @@ if not os.path.exists("playlists"):
 
 def create_pattern():
     pattern = cdict(
-        time=(4, 4),
+        timesig=project.settings.timesig,
+        keysig=project.settings.keysig,
         measures=alist(),
     )
     project.patterns.append(pattern)
     return pattern
 project = cdict(
     settings=cdict(
-        time=(4, 4),
+        timesig=(4, 4),
+        keysig=0,
         speed=144,
     ),
     instruments={},
@@ -445,11 +447,11 @@ def setup_buttons():
         reset_menu(full=False)
         edit = button_images.edit.result()
         def edit_1():
+            pause_toggle(True)
             toolbar.editor ^= 1
             sidebar.scrolling = False
             sidebar.scroll.pos = 0
             sidebar.scroll.target = 0
-            pause_toggle(True)
             if toolbar.editor:
                 mixer.submit(f"~setting spectrogram -1")
             else:
@@ -2909,13 +2911,15 @@ mheld = mclick = mrelease = mprev = (None,) * 5
 kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
+status_freq = 6000
 try:
     tick = 0
     while True:
-        if not tick % 6000:
+        if not tick % 36000:
             if utc() - os.path.getmtime(collections2f) > 3600:
                 submit(update_collections2)
                 common.repo_fut = submit(update_repo)
+        if not tick % (status_freq + (status_freq & 1)):
             submit(send_status)
         fut = common.__dict__.pop("repo-update", None)
         if fut:

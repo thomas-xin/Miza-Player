@@ -716,7 +716,7 @@ qhue = Image.fromarray(gradient, "L")
 qsat = qval = Image.new("L", gsize, 255)
 quadratics = [None] * 256
 
-def quadratic_gradient(size=gsize, t=None):
+def quadratic_gradient(size=gsize, t=None, curve=None):
     size = tuple(size)
     if t is None:
         t = pc()
@@ -728,6 +728,16 @@ def quadratic_gradient(size=gsize, t=None):
     surf = quadratics[x]
     if surf.get_size() != size:
         surf = pygame.transform.scale(surf, size)
+        if curve:
+            h = size[1]
+            m = h + 1 >> 1
+            for i in range(1, m):
+                tx = t - curve * (i / (m - 1))
+                g = quadratic_gradient((size[0], 1), tx)
+                y = h // 2 - (not h & 1)
+                surf.blit(g, (0, y - i))
+                y = h // 2
+                surf.blit(g, (0, y + i))
     return surf
 
 rgw = 256
@@ -1325,6 +1335,7 @@ def text_size(text, size, font="OpenSansEmoji"):
 md_font = {}
 def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False):
     # text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
+    text = str(text)
     colour = tuple(verify_colour(colour))
     data = (text, colour, background, size, font)
     try:

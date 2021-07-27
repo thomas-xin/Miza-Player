@@ -1091,6 +1091,8 @@ def prepare(entry, force=False, download=False):
             data = resp[0]
             if force:
                 stream = ytdl.get_stream(entry, force=True, download=False)
+        except requests.ConnectionError:
+            return time.sleep(2)
         except:
             entry.url = ""
             print_exc()
@@ -1540,7 +1542,7 @@ def update_menu():
                 alpha=255,
             ))
     if toolbar.resizing:
-        toolbar_height = min(128, max(64, screensize[1] - mpos2[1] + 2))
+        toolbar_height = min(144, max(64, screensize[1] - mpos2[1] + 2))
         if options.toolbar_height != toolbar_height:
             options.toolbar_height = toolbar_height
             reset_menu()
@@ -1558,7 +1560,7 @@ def update_menu():
             if queue and isfinite(e_dur(queue[0].duration)):
                 submit(seek_abs, player.pos)
     if sidebar.resizing:
-        sidebar_width = min(512, max(144, screensize[0] - mpos2[0] + 2))
+        sidebar_width = min(screensize[0] - 8, max(144, screensize[0] - mpos2[0] + 2))
         if options.sidebar_width != sidebar_width:
             options.sidebar_width = sidebar_width
             reset_menu()
@@ -2339,7 +2341,7 @@ def draw_menu():
             (xv2 + pos[0] - width // 2, pos[1] - width // 2, length - xv2, width),
             min(4, width >> 1),
         )
-        rainbow = quadratic_gradient((length, width), pc() / 2)
+        rainbow = quadratic_gradient((length, width), pc() / 2, curve=0.03125)
         DISP.blit(
             rainbow,
             (pos[0] - width // 2 + xv, pos[1] - width // 2),
@@ -2357,7 +2359,7 @@ def draw_menu():
                 (pos[0] - width // 2, pos[1] - width // 2, xv, width),
                 min(4, width >> 1),
             )
-        rainbow = quadratic_gradient((length, width))
+        rainbow = quadratic_gradient((length, width), curve=0.03125)
         DISP.blit(
             rainbow,
             (pos[0] - width // 2, pos[1] - width // 2),
@@ -3228,6 +3230,7 @@ try:
                     sidebar.scroll.target -= event.y * 16
                 elif toolbar.editor and in_rect(mpos, player.rect):
                     player.editor.targ_y += event.y * 3.5
+                    player.editor.targ_x += event.x * 3.5
             elif event.type == VIDEORESIZE:
                 flags = get_window_flags()
                 if flags == 3:

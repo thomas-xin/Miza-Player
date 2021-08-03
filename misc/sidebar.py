@@ -182,6 +182,11 @@ def render_sidebar(dur=0):
                     entry.pop("selected", None)
                 sidebar.pop("last_selected", None)
                 lq = nan
+        elif kclick[K_ESCAPE]:
+            for entry in queue:
+                entry.pop("selected", None)
+            sidebar.pop("last_selected", None)
+            lq = nan
         if len(queue) > 1:
             entry = queue[1]
             if (entry.duration is None or entry.get("research")):

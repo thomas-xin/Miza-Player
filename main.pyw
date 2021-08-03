@@ -24,7 +24,7 @@ def create_pattern():
     pattern = cdict(
         timesig=project.settings.timesig,
         keysig=project.settings.keysig,
-        measures=alist(),
+        measures={},
     )
     project.patterns.append(pattern)
     return pattern
@@ -56,6 +56,23 @@ player = cdict(
         energy=0,
     ),
     editor=cdict(
+        mode="I",
+        selection=cdict(
+            point=None,
+            freeform=False,
+            bounded=True,
+            notes=set(),
+            orig=(None, None),
+        ),
+        note=cdict(
+            instrument=None,
+            length=1,
+            volume=0.25,
+            pan=0,
+            effects=alist(),
+        ),
+        fade=1,
+        pattern=0,
         scrolling=False,
         scroll_x=0,
         scroll_y=0,
@@ -65,6 +82,10 @@ player = cdict(
         zoom_y=1,
     ),
 )
+def change_mode(mode):
+    player.editor.fade = player.editor.mode == mode
+    player.editor.mode = mode
+player.editor.change_mode = change_mode
 sidebar = cdict(
     queue=alist(),
     instruments=alist(),
@@ -140,6 +161,20 @@ def settings_reset():
     s.seek(0)
     mixer.stdin.write(s.read().encode("utf-8"))
     mixer.stdin.flush()
+
+def add_instrument():
+    x = 0
+    while x in project.instruments:
+        x += 1
+    project.instruments[x] = cdict(
+        name=f"Instrument {x}",
+        colour=tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1)),
+        synth=cdict(synth_default),
+    )
+    project.instrument_layout.append(x)
+    sidebar.instruments.append(cdict())
+    if player.editor.note.instrument is None:
+        player.editor.note.instrument = x
 
 def setup_buttons():
     try:
@@ -236,17 +271,6 @@ def setup_buttons():
                     ("BandCamp", enqueue_search, "bc"),
                 ),
             )
-        def add_instrument():
-            x = 0
-            while x in project.instruments:
-                x += 1
-            project.instruments[x] = cdict(
-                name=f"Instrument {x}",
-                colour=tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1)),
-                synth=cdict(synth_default),
-            )
-            project.instrument_layout.append(x)
-            sidebar.instruments.append(cdict())
         sidebar.buttons.append(cdict(
             name="Search",
             name2="New instrument",
@@ -881,7 +905,7 @@ def reset_menu(full=True, reset=False):
     toolbar.updated = False
     toolbar.rect = (0, screensize[1] - toolbar_height, screensize[0], toolbar_height)
     toolbar.pause.radius = toolbar_height // 2 - 2
-    toolbar.pause.pos = (toolbar.pause.radius + 2, screensize[1] - toolbar.pause.radius - 2)
+    toolbar.pause.pos = (toolbar_height >> 1, screensize[1] - toolbar_height // 2)
     progress.pos = (round(toolbar.pause.pos[0] + toolbar.pause.radius * 1.5 + 4), screensize[1] - toolbar_height * 2 // 3 + 1)
     progress.box = toolbar_height * 3 // 2 + 8
     progress.length = max(0, screensize[0] - progress.pos[0] - toolbar.pause.radius // 2 - progress.box)
@@ -1224,7 +1248,7 @@ def skip():
     return None, inf
 
 def seek_abs(pos):
-    start_player(pos) if queue else (None, inf)
+    return start_player(pos) if queue else (None, inf)
 
 def seek_rel(pos):
     if not pos:
@@ -1249,6 +1273,11 @@ def seek_rel(pos):
     else:
         seek_abs(max(0, player.pos + pos))
 
+def restart_mixer():
+    global mixer
+    mixer = start_mixer()
+    return seek_rel(0)
+
 def play():
     try:
         while True:
@@ -1264,7 +1293,8 @@ def play():
                 b = mixer.stderr.read(req)
                 while len(b) < req:
                     if not mixer.is_running():
-                        raise StopIteration
+                        restart_mixer()
+                        continue
                     b += mixer.stderr.read(req - len(b))
                 osci = pygame.image.frombuffer(b, osize, "RGB")
                 osci.set_colorkey((0,) * 3)
@@ -1276,7 +1306,8 @@ def play():
                 b = mixer.stderr.read(req)
                 while len(b) < req:
                     if not mixer.is_running():
-                        raise StopIteration
+                        restart_mixer()
+                        continue
                     b += mixer.stderr.read(req - len(b))
                 spec = pygame.image.frombuffer(b, ssize, "RGB")
                 player.spec = spec
@@ -1333,8 +1364,8 @@ def pos():
                     s = ""
             if not s:
                 if not mixer.is_running():
-                    print(mixer.stderr.read())
-                    raise StopIteration
+                    restart_mixer()
+                    continue
                 continue
             player.last = pc()
             s = s[1:]
@@ -1576,12 +1607,12 @@ def update_menu():
         elif kspam[K_DOWN]:
             submit(seek_rel, -30)
         elif kspam[K_RIGHT]:
-            if kheld[K_LCTRL] or kheld[K_RCTRL]:
+            if CTRL[kheld]:
                 submit(seek_abs, inf)
             else:
                 submit(seek_rel, 5)
         elif kspam[K_LEFT]:
-            if kheld[K_LCTRL] or kheld[K_RCTRL]:
+            if CTRL[kheld]:
                 submit(seek_abs, 0)
             else:
                 submit(seek_rel, -5)
@@ -1614,12 +1645,13 @@ def update_menu():
     else:
         toolbar.pause.outer = 191
         toolbar.pause.inner = 127
-    if in_rect(mpos, progress.rect):
+    if in_rect(mpos, progress.rect) and not toolbar.editor:
         if mclick[0]:
             progress.seeking = True
             if queue and isfinite(e_dur(queue[0].duration)):
                 mixer.clear()
         elif mclick[1]:
+            sidebar.menu = 0
             enter = easygui.get_string(
                 "Seek to position",
                 "Miza Player",
@@ -1722,6 +1754,8 @@ def update_menu():
         [e.pop("surf", None) for e in sidebar.instruments]
         lyrics_cache.clear()
         lyrics_renders.clear()
+    if toolbar.editor:
+        update_piano()
 
 
 def get_ripple(i, mode="toolbar"):
@@ -2027,7 +2061,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
             ("ripples", "Ripples", "Clicking anywhere on the sidebar or toolbar produces a visual ripple effect."),
             ("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
         )
-        mrect = (offs2 + 8, 376, sidebar_width - 16, 160)
+        mrect = (offs2 + 8, 376, min(192, sidebar_width - 16), 160)
         surf = pygame.Surface(mrect[2:], SRCALPHA)
         for i, t in enumerate(more):
             s, name, description = t
@@ -2073,25 +2107,50 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
                 surface=surf,
                 font="Comic Sans MS",
             )
-        im = pyg2pil(surf)
-        a = im.getchannel("A")
-        arr = np.linspace(sidebar.more_angle * 510, sidebar.more_angle * 510 - 255, 160)
-        np.clip(arr, 0, 255, out=arr)
-        arr = arr.astype(np.uint8)
-        a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Image.NEAREST)
-        A = ImageChops.multiply(a, a2)
-        im.putalpha(A)
-        surf = pil2pyg(im)
+        if sidebar.more_angle < 63 / 64:
+            im = pyg2pil(surf)
+            a = im.getchannel("A")
+            arr = np.linspace(sidebar.more_angle * 510, sidebar.more_angle * 510 - 255, mrect[3])
+            np.clip(arr, 0, 255, out=arr)
+            arr = arr.astype(np.uint8)
+            a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Image.NEAREST)
+            A = ImageChops.multiply(a, a2)
+            im.putalpha(A)
+            surf = pil2pyg(im)
+        else:
+            if sidebar_width >= 192:
+                r = (screensize[0] - 68, 557, 64, 32)
+                if in_rect(mpos, r):
+                    if mclick[0]:
+                        submit(update_collections2)
+                        common.repo_fut = submit(update_repo)
+                        if common.repo_fut.result():
+                            easygui.show_message(
+                                "No new updates found.",
+                                "Miza Player",
+                            )
+                    c = (112, 127, 64)
+                else:
+                    c = (96, 112, 80)
+                bevel_rectangle(DISP, c, r, bevel=4)
+                message_display(
+                    "Update",
+                    16,
+                    rect_centre(r),
+                    colour=(255,) * 3,
+                    surface=DISP,
+                    font="Comic Sans MS",
+                )
         DISP2.blit(
             surf,
-            (offs2 + 8, 376),
+            mrect[:2],
         )
     rect = (offs2 + sidebar_width // 2 - 32, 344, 64, 32)
     crect = (screensize[0] - sidebar_width // 2 - 32, 395) + rect[2:]
     hovered = in_rect(mpos, crect)
     if hovered and any(mclick):
         sidebar.more = not sidebar.more
-    rat = 0.01 ** dur
+    rat = 0.05 ** dur
     sidebar.more_angle = sidebar.more_angle * rat + sidebar.more * (1 - rat)
     lum = 223 if hovered else 191
     c = options.get("sidebar_colour", (64, 0, 96))
@@ -2289,7 +2348,7 @@ def draw_menu():
                     ("Change Image", change_bubble),
                 ),
             )
-    highlighted = progress.seeking or in_rect(mpos, progress.rect)
+    highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
     crosshair |= highlighted
     osci_rect = (screensize[0] - 8 - progress.box, screensize[1] - toolbar_height, progress.box, toolbar_height * 2 // 3 - 3)
     if (toolbar.updated or not tick & 7) and toolbar.colour:
@@ -2320,52 +2379,53 @@ def draw_menu():
         length = progress.length
         width = progress.width
         ratio = player.pos / player.end
-        if highlighted:
-            bevel_rectangle(
-                DISP,
-                progress.select_colour,
-                progress.rect,
-                3,
-                filled=False,
-            )
-        xv = round(length * progress.vis / player.end) if not progress.seeking or player.end < inf else mpos2[0] - pos[0] + width // 2
-        xv = max(0, min(xv, length))
-        xv2 = max(0, xv - 4)
-        if highlighted:
-            c = (48,) * 3
-        else:
-            c = (32,) * 3
-        bevel_rectangle(
-            DISP,
-            c,
-            (xv2 + pos[0] - width // 2, pos[1] - width // 2, length - xv2, width),
-            min(4, width >> 1),
-        )
-        rainbow = quadratic_gradient((length, width), pc() / 2, curve=0.03125)
-        DISP.blit(
-            rainbow,
-            (pos[0] - width // 2 + xv, pos[1] - width // 2),
-            (xv, 0, length - xv, width),
-            special_flags=BLEND_RGB_MULT,
-        )
-        if progress.vis or not player.end < inf:
+        if not toolbar.editor:
             if highlighted:
-                c = (223,) * 3
+                bevel_rectangle(
+                    DISP,
+                    progress.select_colour,
+                    progress.rect,
+                    3,
+                    filled=False,
+                )
+            xv = round(length * progress.vis / player.end) if not progress.seeking or player.end < inf else mpos2[0] - pos[0] + width // 2
+            xv = max(0, min(xv, length))
+            xv2 = max(0, xv - 4)
+            if highlighted:
+                c = (48,) * 3
             else:
-                c = (191,) * 3
+                c = (32,) * 3
             bevel_rectangle(
                 DISP,
                 c,
-                (pos[0] - width // 2, pos[1] - width // 2, xv, width),
+                (xv2 + pos[0] - width // 2, pos[1] - width // 2, length - xv2, width),
                 min(4, width >> 1),
             )
-        rainbow = quadratic_gradient((length, width), curve=0.03125)
-        DISP.blit(
-            rainbow,
-            (pos[0] - width // 2, pos[1] - width // 2),
-            (0, 0, xv, width),
-            special_flags=BLEND_RGB_MULT,
-        )
+            rainbow = quadratic_gradient((length, width), pc() / 2, curve=0.03125)
+            DISP.blit(
+                rainbow,
+                (pos[0] - width // 2 + xv, pos[1] - width // 2),
+                (xv, 0, length - xv, width),
+                special_flags=BLEND_RGB_MULT,
+            )
+            if progress.vis or not player.end < inf:
+                if highlighted:
+                    c = (223,) * 3
+                else:
+                    c = (191,) * 3
+                bevel_rectangle(
+                    DISP,
+                    c,
+                    (pos[0] - width // 2, pos[1] - width // 2, xv, width),
+                    min(4, width >> 1),
+                )
+            rainbow = quadratic_gradient((length, width), curve=0.03125)
+            DISP.blit(
+                rainbow,
+                (pos[0] - width // 2, pos[1] - width // 2),
+                (0, 0, xv, width),
+                special_flags=BLEND_RGB_MULT,
+            )
         for i, button in enumerate(toolbar.buttons):
             if i and toolbar.editor:
                 break
@@ -2601,92 +2661,93 @@ def draw_menu():
                 4,
                 filled=False,
             )
-        bsize = min(40, toolbar_height // 3)
-        s = f"{time_disp(player.pos)}/{time_disp(player.end)}"
-        message_display(
-            s,
-            min(24, toolbar_height // 3),
-            (screensize[0] - 8 - bsize, screensize[1]),
-            surface=DISP,
-            align=2,
-            font="Comic Sans MS",
-        )
-        x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
-        x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
-        r = progress.spread * toolbar_height / 2
-        if r:
-            ripple_f = globals().get("s-ripple", concentric_circle)
-            ripple_f(
-                DISP,
-                colour=(127, 127, 255),
-                pos=(x, progress.pos[1]),
-                radius=r,
-                fill_ratio=0.5,
+        if not toolbar.editor:
+            bsize = min(40, toolbar_height // 3)
+            s = f"{time_disp(player.pos)}/{time_disp(player.end)}"
+            message_display(
+                s,
+                min(24, toolbar_height // 3),
+                (screensize[0] - 8 - bsize, screensize[1]),
+                surface=DISP,
+                align=2,
+                font="Comic Sans MS",
             )
-        for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
-            ri = max(1, round(p.life ** 1.1 / 7 ** 0.1))
-            col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-            a = round(min(255, (p.life - 2.5) * 12))
-            point = [cos(p.angle) * p.rad, sin(p.angle) * p.rad]
-            pos = (p.centre[0] + point[0], p.centre[1] + point[1])
-            if ri > 2:
+            x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
+            x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
+            r = progress.spread * toolbar_height / 2
+            if r:
+                ripple_f = globals().get("s-ripple", concentric_circle)
+                ripple_f(
+                    DISP,
+                    colour=(127, 127, 255),
+                    pos=(x, progress.pos[1]),
+                    radius=r,
+                    fill_ratio=0.5,
+                )
+            for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
+                ri = max(1, round(p.life ** 1.1 / 7 ** 0.1))
+                col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
+                a = round(min(255, (p.life - 2.5) * 12))
+                point = [cos(p.angle) * p.rad, sin(p.angle) * p.rad]
+                pos = (p.centre[0] + point[0], p.centre[1] + point[1])
+                if ri > 2:
+                    reg_polygon_complex(
+                        DISP,
+                        pos,
+                        col,
+                        0,
+                        ri,
+                        ri,
+                        alpha=a,
+                        thickness=2,
+                        repetition=ri - 2,
+                        soft=True,
+                    )
+                else:
+                    pygame.draw.circle(
+                        DISP,
+                        col + [a],
+                        pos,
+                        ri,
+                    )
+            d = abs(pc() % 2 - 1)
+            hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
+            col = [round(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
+            for i in shuffle(range(3)):
+                a = progress.angle + i / 3 * tau
+                point = [cos(a) * r, sin(a) * r]
+                p = (x + point[0], progress.pos[1] + point[1])
+                ri = max(7, progress.width // 2 + 2)
                 reg_polygon_complex(
                     DISP,
-                    pos,
+                    p,
                     col,
                     0,
                     ri,
                     ri,
-                    alpha=a,
+                    alpha=159 if r else 255,
                     thickness=2,
                     repetition=ri - 2,
                     soft=True,
                 )
-            else:
-                pygame.draw.circle(
-                    DISP,
-                    col + [a],
-                    pos,
-                    ri,
+            a = int(progress.alpha)
+            if a >= 16:
+                n = round(progress.num)
+                if n >= 0:
+                    s = "+" + str(n)
+                    c = (0, 255, 0)
+                else:
+                    s = str(n)
+                    c = (255, 0, 0)
+                message_display(
+                    s,
+                    min(20, toolbar_height // 3),
+                    (x, progress.pos[1] - 16),
+                    c,
+                    surface=DISP,
+                    alpha=a,
+                    font="Comic Sans MS",
                 )
-        d = abs(pc() % 2 - 1)
-        hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
-        col = [round(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
-        for i in shuffle(range(3)):
-            a = progress.angle + i / 3 * tau
-            point = [cos(a) * r, sin(a) * r]
-            p = (x + point[0], progress.pos[1] + point[1])
-            ri = max(7, progress.width // 2 + 2)
-            reg_polygon_complex(
-                DISP,
-                p,
-                col,
-                0,
-                ri,
-                ri,
-                alpha=159 if r else 255,
-                thickness=2,
-                repetition=ri - 2,
-                soft=True,
-            )
-        a = int(progress.alpha)
-        if a >= 16:
-            n = round(progress.num)
-            if n >= 0:
-                s = "+" + str(n)
-                c = (0, 255, 0)
-            else:
-                s = str(n)
-                c = (255, 0, 0)
-            message_display(
-                s,
-                min(20, toolbar_height // 3),
-                (x, progress.pos[1] - 16),
-                c,
-                surface=DISP,
-                alpha=a,
-                font="Comic Sans MS",
-            )
     if not toolbar.editor and (mclick[0] or mclick[1]):
         text_rect = (0, 0, 128, 64)
         if in_rect(mpos, text_rect):
@@ -2841,6 +2902,8 @@ def draw_menu():
                 alpha,
                 colour=col,
             )
+    if toolbar.editor:
+        editor_toolbar()
     if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
         if toolbar.editor:
             render_dragging_2()
@@ -2894,10 +2957,12 @@ for i in range(26):
 for i in range(1, 11):
     globals()[f"K_{i % 10}"] = i + 29
 code = ""
+K_BACKSPACE = 42
 K_SPACE = 44
 K_EQUALS = 46
 K_LEFTBRACKET = 47
 K_RIGHTBRACKET = 48
+K_BACKSLASH = 49
 K_SEMICOLON = 51
 K_BACKQUOTE = 53
 K_COMMA = 54
@@ -2909,11 +2974,12 @@ enext = set()
 foc = True
 minimised = False
 mpos = mpos2 = (-inf,) * 2
-mheld = mclick = mrelease = mprev = (None,) * 5
+mheld = mclick = mc2 = mc3 = mc4 = mrelease = mprev = (None,) * 5
 kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
 status_freq = 6000
+alphakeys = [0] * 34
 try:
     tick = 0
     while True:
@@ -2965,11 +3031,18 @@ try:
                 player.fut = submit(start)
         elif not queue:
             player.pop("fut").result()
-        if not minimised and (not unfocused or not tick % 14) and ((not isnan(mpos[0]) or is_active()) or unfocused or not player.paused and queue or not tick % 6 or toolbar.ripples or sidebar.ripples or any(mheld)):
+        if not minimised and (not unfocused or not tick % 14) and ((not isnan(mpos[0]) or is_active()) or unfocused or not player.paused and queue or not tick % 6 or toolbar.ripples or sidebar.ripples):
             lpos = mpos
             mprev = mheld
             mheld = get_pressed()
+            mc4 = list(mc3) if type(mc3) is tuple else mc3
+            mc3 = list(mc2) if type(mc2) is tuple else mc2
+            mc2 = list(mclick) if type(mclick) is tuple else mclick
             mclick = [x and not y for x, y in zip(mheld, mprev)]
+            for i in range(len(mclick)):
+                mc2[i] = mc2[i] or mclick[i]
+                mc3[i] = mc3[i] or mclick[i]
+                mc4[i] = mc4[i] or mclick[i]
             mrelease = [not x and y for x, y in zip(mheld, mprev)]
             mpos2 = mouse_rel_pos()
             mpos3 = pygame.mouse.get_pos()
@@ -2981,7 +3054,7 @@ try:
             kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
             kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
             krelease = [not x and y for x, y in zip(kheld, kprev)]
-            kspam = kclick
+            kspam = KeyList(x or y >= 60 for x, y in zip(kclick, kheld))
             # if any(kclick):
             #     print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
             if kclick[K_BACKQUOTE]:
@@ -3010,22 +3083,22 @@ try:
                         "Miza Player",
                         code or "",
                     )
-            if not tick & 15:
-                kspam = KeyList(x or y >= 240 for x, y in zip(kclick, kheld))
             if any(kclick) or any(krelease):
-                alphakeys = [0] * 32
-                if not kheld[K_LCTRL] and not kheld[K_LSHIFT] and not kheld[K_RCTRL] and not kheld[K_RSHIFT]:
+                alphakeys[:] = [False] * len(alphakeys)
+                if not CTRL[kheld] and not SHIFT[kheld] and not ALT[kheld]:
                     notekeys = "zsxdcvgbhnjmq2w3er5t6y7ui9o0p"
-                    alphakeys = [kheld[globals()[f"K_{c}"]] for c in notekeys] + [0] * 3
-                    alphakeys[-3] = kheld[K_LEFTBRACKET]
-                    alphakeys[-2] = kheld[K_EQUALS]
-                    alphakeys[-1] = kheld[K_RIGHTBRACKET]
+                    alphakeys = [kheld[globals()[f"K_{c}"]] for c in notekeys] + [0] * 5
+                    alphakeys[-5] = kheld[K_LEFTBRACKET]
+                    alphakeys[-4] = kheld[K_EQUALS]
+                    alphakeys[-3] = kheld[K_RIGHTBRACKET]
+                    alphakeys[-2] = kheld[K_BACKSPACE]
+                    alphakeys[-1] = kheld[K_BACKSLASH]
                     alphakeys[12] |= kheld[K_COMMA]
                     alphakeys[13] |= kheld[K_l]
                     alphakeys[14] |= kheld[K_PERIOD]
                     alphakeys[15] |= kheld[K_SEMICOLON]
                     alphakeys[16] |= kheld[K_SLASH]
-                mixer.submit("~keys " + repr(alphakeys))
+                    mixer.submit("~keys " + repr(alphakeys))
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
                 try:
                     update_menu()
@@ -3251,6 +3324,7 @@ try:
         tick += 2
 except Exception as ex:
     submit(requests.delete, mp)
+    pygame.closed = True
     pygame.quit()
     if type(ex) is not StopIteration:
         print_exc()

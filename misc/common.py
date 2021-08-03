@@ -77,14 +77,6 @@ if hasmisc:
     if update_collections:
         from install_update_p import *
 
-import psutil
-
-if hasmisc:
-    submit(import_audio_downloader)
-    mixer = psutil.Popen(argp + ["misc/mixer.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-else:
-    mixer = cdict()
-
 def state(i):
     mixer.stdin.write(f"~state {int(i)}\n".encode("utf-8"))
     mixer.stdin.flush()
@@ -118,16 +110,6 @@ def mixer_submit(s, force, debug):
         sys.stdout.write(s)
     mixer.stdin.write(s.encode("utf-8"))
     mixer.stdin.flush()
-
-mixer.state = lambda i=0: state(i)
-mixer.clear = lambda: clear()
-mixer.drop = lambda i=0: drop(i)
-mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
-
-write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
-import pygame
-sys.stdout.write = write
-
 
 asettings = cdict(
     volume=(0, 5),
@@ -212,15 +194,71 @@ if _control:
 options.control = control
 orig_options = copy.deepcopy(options)
 
-
 if os.name != "nt":
     raise NotImplementedError("This program is currently implemented to use Windows API only.")
+import psutil
 
-import ctypes, struct, io
-user32 = ctypes.windll.user32
-user32.SetProcessDPIAware()
-appid = "Miza Player (" + str(os.getpid()) + ")"
-ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
+def start_mixer():
+    global mixer, hwnd, pygame, user32, ctypes, struct, io
+    if "pygame" in globals() and getattr(pygame, "closed", None):
+        return
+    mixer = psutil.Popen(argp + ["misc/mixer.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if "pygame" not in globals():
+        import ctypes, struct, io
+        user32 = ctypes.windll.user32
+        user32.SetProcessDPIAware()
+        appid = "Miza Player (" + str(os.getpid()) + ")"
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
+        write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
+        import pygame
+        sys.stdout.write = write
+        start_display()
+    else:
+        print("Mixer subprocess has crashed; restarting...")
+    mixer.state = lambda i=0: state(i)
+    mixer.clear = lambda: clear()
+    mixer.drop = lambda i=0: drop(i)
+    mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
+    hwnd = pygame.display.get_wm_info()["window"]
+    if hasmisc:
+        s = io.StringIO()
+        s.write(("%" + str(hwnd) + "\n"))
+        for k, v in options.audio.items():
+            s.write(f"~setting #{k} {v}\n")
+        s.write(f"~setting #gradient-vertices {options.control.setdefault('gradient-vertices', 4)}\n")
+        s.write(f"~setting #spiral-vertices {options.control.setdefault('spiral-vertices', 6)}\n")
+        s.write(f"~setting #shuffle {options.control.setdefault('shuffle', 0)}\n")
+        s.write(f"~setting unfocus {options.control.setdefault('unfocus', 1)}\n")
+        s.write(f"~setting #silenceremove {options.control.setdefault('silenceremove', 0)}\n")
+        s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
+        s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
+        s.write(f"~synth 1.5 1 0 0.75 0 1\n")
+        s.seek(0)
+        mixer.stdin.write(s.read().encode("utf-8"))
+        try:
+            mixer.stdin.flush()
+        except OSError:
+            print(mixer.stderr.read(), end="")
+            raise
+    return mixer
+
+def start_display():
+    global DISP, screensize2
+    if hasmisc:
+        icon = pygame.image.load("misc/icon.png")
+        pygame.display.set_icon(icon)
+    pygame.display.set_caption("Miza Player")
+    DISP = pygame.display.set_mode(options.screensize, pygame.RESIZABLE, vsync=True)
+    screensize2 = list(options.screensize)
+    # displaysize = [user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)]
+    # print(displaysize)
+    pygame.display.set_allow_screensaver(True)
+
+if hasmisc:
+    submit(import_audio_downloader)
+    mixer = start_mixer()
+else:
+    mixer = cdict()
 
 psize = struct.calcsize("P")
 if psize == 8:
@@ -272,41 +310,20 @@ def get_pressed():
         mheld[i] = bool(user32.GetAsyncKeyState(n) & 32768)
     return mheld
 
-if hasmisc:
-    icon = pygame.image.load("misc/icon.png")
-    pygame.display.set_icon(icon)
-pygame.display.set_caption("Miza Player")
-DISP = pygame.display.set_mode(options.screensize, pygame.RESIZABLE, vsync=True)
-screensize2 = list(options.screensize)
-
-# displaysize = [user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)]
-# print(displaysize)
-
-hwnd = pygame.display.get_wm_info()["window"]
-pygame.display.set_allow_screensaver(True)
-if hasmisc:
-    s = io.StringIO()
-    s.write(("%" + str(hwnd) + "\n"))
-    for k, v in options.audio.items():
-        s.write(f"~setting #{k} {v}\n")
-    s.write(f"~setting #gradient-vertices {options.control.setdefault('gradient-vertices', 4)}\n")
-    s.write(f"~setting #spiral-vertices {options.control.setdefault('spiral-vertices', 6)}\n")
-    s.write(f"~setting #shuffle {options.control.setdefault('shuffle', 0)}\n")
-    s.write(f"~setting unfocus {options.control.setdefault('unfocus', 1)}\n")
-    s.write(f"~setting #silenceremove {options.control.setdefault('silenceremove', 0)}\n")
-    s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
-    s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
-    s.write(f"~synth 1.5 1 0 0.75 0 1\n")
-    s.seek(0)
-    mixer.stdin.write(s.read().encode("utf-8"))
-    try:
-        mixer.stdin.flush()
-    except OSError:
-        print(mixer.stderr.read(), end="")
-        raise
 
 in_rect = lambda point, rect: point[0] >= rect[0] and point[0] < rect[0] + rect[2] and point[1] >= rect[1] and point[1] < rect[1] + rect[3]
 in_circ = lambda point, dest, radius=1: hypot(dest[0] - point[0], dest[1] - point[1]) <= radius
+
+def int_rect(r1, r2):
+    x1, y1, x2, y2, = r1
+    x2 += x1
+    y2 += y1
+    x3, y3, x4, y4 = r2
+    x4 += x3
+    y4 += y3
+    return max(x1, x3) < min(x2, x4) and max(y1, y3) < min(y2, y4)
+
+rect_centre = lambda rect: (rect[0] + rect[2] // 2, rect[1] + rect[3] // 2)
 
 class WR(ctypes.Structure):
     _fields_ = [
@@ -513,6 +530,7 @@ def update_repo():
                     raise EOFError
             else:
                 print("No updates found.")
+                return True
         except EOFError:
             with open(commitf, "w") as f:
                 f.write(commit)
@@ -632,6 +650,15 @@ def round_min(x):
             return round_min(x.real)
         else:
             return round_min(complex(x).real) + round_min(complex(x).imag) * (1j)
+
+def round_random(x):
+    y = round_min(x)
+    if type(y) is int:
+        return y
+    x, y = divmod(x, 1)
+    if random.random() <= y:
+        x += 1
+    return int(x)
 
 def bit_crush(dest, b=0, f=round):
     if type(b) == int:
@@ -872,158 +899,126 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
     rect = list(map(round, rect))
     if len(colour) > 3:
         colour, alpha = colour[:-1], colour[-1]
-    if min(alpha, rect[2], rect[3]) > 0:
-        br_surf = globals().setdefault("br_surf", {})
-        colour = verify_colour(colour)
-        if alpha == 255 and angle == 0 and (any(i > 160 for i in colour) or all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour)):
-            if cache:
-                data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)
-            else:
-                data = None
-            try:
-                surf = br_surf[data]
-            except KeyError:
-                surf = pygame.Surface(rect[2:]).convert()
-                if not filled:
-                    surf.fill((1, 2, 3))
-                    surf.set_colorkey((1, 2, 3))
-                r = rect
-                rect = [0] * 2 + rect[2:]
-                for c in range(bevel):
-                    p = [rect[0] + c, rect[1] + c]
-                    q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
-                    v1 = 128 - c / bevel * 128
-                    v2 = c / bevel * 96 - 96
-                    col1 = col2 = colour
-                    if v1:
-                        col1 = [min(i + v1, 255) for i in col1]
-                    if v2:
-                        col2 = [max(i + v2, 0) for i in col1]
-                    try:
-                        draw_hline(surf, p[0], q[0], p[1], col1)
-                        draw_vline(surf, p[0], p[1], q[1], col1)
-                        draw_hline(surf, p[0], q[0], q[1], col2)
-                        draw_vline(surf, q[0], p[1], q[1], col2)
-                    except:
-                        print_exc()
-                if filled:
-                    if grad_col is None:
-                        draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
-                    else:
-                        gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
-                rect = r
-                if data:
-                    br_surf[data] = surf
-            if dest:
-                dest.blit(surf, rect[:2])
-                return rect
-            return surf.convert()
-        ctr = max(colour)
-        contrast = min(round(ctr) + 2 >> 2 << 2, 255)
-        data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
-        s = br_surf.get(data)
-        if s is None:
-            colour2 = (contrast,) * 3
-            s = pygame.Surface(rect[2:], SRCALPHA)
-            s.fill((1, 2, 3))
-            s.set_colorkey((1, 2, 3))
+    if min(alpha, rect[2], rect[3]) <= 0:
+        return
+    s = dest.get_size()
+    r = (0, 0) + s
+    if not int_rect(r, rect):
+        return
+    br_surf = globals().setdefault("br_surf", {})
+    colour = verify_colour(colour)
+    if alpha == 255 and angle == 0 and (any(i > 160 for i in colour) or all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour)):
+        if cache:
+            data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)
+        else:
+            data = None
+        try:
+            surf = br_surf[data]
+        except KeyError:
+            surf = pygame.Surface(rect[2:]).convert()
+            if not filled:
+                surf.fill((1, 2, 3))
+                surf.set_colorkey((1, 2, 3))
+            r = rect
+            rect = [0] * 2 + rect[2:]
             for c in range(bevel):
-                p = [c, c]
-                q = [i - c - 1 for i in rect[2:]]
+                p = [rect[0] + c, rect[1] + c]
+                q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
                 v1 = 128 - c / bevel * 128
                 v2 = c / bevel * 96 - 96
-                col1 = col2 = colour2
+                col1 = col2 = colour
                 if v1:
                     col1 = [min(i + v1, 255) for i in col1]
                 if v2:
                     col2 = [max(i + v2, 0) for i in col1]
-                draw_hline(s, p[0], q[0], p[1], col1)
-                draw_vline(s, p[0], p[1], q[1], col1)
-                draw_hline(s, p[0], q[0], q[1], col2)
-                draw_vline(s, q[0], p[1], q[1], col2)
+                try:
+                    draw_hline(surf, p[0], q[0], p[1], col1)
+                    draw_vline(surf, p[0], p[1], q[1], col1)
+                    draw_hline(surf, p[0], q[0], q[1], col2)
+                    draw_vline(surf, q[0], p[1], q[1], col2)
+                except:
+                    print_exc()
             if filled:
                 if grad_col is None:
-                    draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+                    draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
                 else:
-                    gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
-            if cache:
-                br_surf[data] = s
-        if ctr > 0:
-            colour = tuple(round(i * 255 / ctr) for i in colour)
-        else:
-            colour = (0,) * 3
-        return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
+                    gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+            rect = r
+            if data:
+                br_surf[data] = surf
+        if dest:
+            dest.blit(surf, rect[:2])
+            return rect
+        return surf.convert()
+    ctr = max(colour)
+    contrast = min(round(ctr) + 2 >> 2 << 2, 255)
+    data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
+    s = br_surf.get(data)
+    if s is None:
+        colour2 = (contrast,) * 3
+        s = pygame.Surface(rect[2:], SRCALPHA)
+        s.fill((1, 2, 3))
+        s.set_colorkey((1, 2, 3))
+        for c in range(bevel):
+            p = [c, c]
+            q = [i - c - 1 for i in rect[2:]]
+            v1 = 128 - c / bevel * 128
+            v2 = c / bevel * 96 - 96
+            col1 = col2 = colour2
+            if v1:
+                col1 = [min(i + v1, 255) for i in col1]
+            if v2:
+                col2 = [max(i + v2, 0) for i in col1]
+            draw_hline(s, p[0], q[0], p[1], col1)
+            draw_vline(s, p[0], p[1], q[1], col1)
+            draw_hline(s, p[0], q[0], q[1], col2)
+            draw_vline(s, q[0], p[1], q[1], col2)
+        if filled:
+            if grad_col is None:
+                draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+            else:
+                gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+        if cache:
+            br_surf[data] = s
+    if ctr > 0:
+        colour = tuple(round(i * 255 / ctr) for i in colour)
+    else:
+        colour = (0,) * 3
+    return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
 
 def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True):
     rect = list(map(round, rect))
     if len(colour) > 3:
         colour, alpha = colour[:-1], colour[-1]
-    if min(alpha, rect[2], rect[3]) > 0:
-        rb_surf = globals().setdefault("rb_surf", {})
-        colour = list(map(lambda i: min(i, 255), colour))
-        if alpha == 255 and angle == 0 and (any(i > 160 for i in colour) or all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour)):
-            if cache:
-                data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)
-            else:
-                data = None
-            try:
-                surf = rb_surf[data]
-            except KeyError:
-                surf = pygame.Surface(rect[2:]).convert()
-                surf.fill((1, 2, 3))
-                surf.set_colorkey((1, 2, 3))
-                r = rect
-                rect = [0] * 2 + rect[2:]
-                s = surf
-                for c in range(bevel):
-                    p = [rect[0] + c, rect[1] + c]
-                    q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
-                    b = bevel - c
-                    v1 = 128 - c / bevel * 128
-                    v2 = c / bevel * 96 - 96
-                    col1 = col2 = colour
-                    if v1:
-                        col1 = [min(i + v1, 255) for i in col1]
-                    if v2:
-                        col2 = [max(i + v2, 0) for i in col1]
-                    n = b <= 1
-                    draw_hline(s, p[0] + b - n, q[0] - b, p[1], col1)
-                    draw_vline(s, p[0], p[1] + b, q[1] - b + n, col1)
-                    draw_hline(s, p[0] + b, q[0] - b + n, q[1], col2)
-                    draw_vline(s, q[0], p[1] + b - n, q[1] - b, col2)
-                    if b > 1:
-                        draw_arc(s, col1, [p[0] + b, p[1] + b], b, 180, 270)
-                        draw_arc(s, colour, [q[0] - b, p[1] + b], b, 270, 360)
-                        draw_arc(s, colour, [p[0] + b, q[1] - b], b, 90, 180)
-                        draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
-                if filled:
-                    if grad_col is None:
-                        draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
-                    else:
-                        gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
-                rect = r
-                if data:
-                    rb_surf[data] = surf
-            if dest:
-                dest.blit(surf, rect[:2])
-                return rect
-            return surf.convert()
-        ctr = max(colour)
-        contrast = min(round(ctr) + 2 >> 2 << 2, 255)
-        data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
-        s = rb_surf.get(data)
-        if s is None:
-            colour2 = (contrast,) * 3
-            s = pygame.Surface(rect[2:], SRCALPHA)
-            s.fill((1, 2, 3))
-            s.set_colorkey((1, 2, 3))
+    if min(alpha, rect[2], rect[3]) <= 0:
+        return
+    s = dest.get_size()
+    r = (0, 0) + s
+    if not int_rect(r, rect):
+        return
+    rb_surf = globals().setdefault("rb_surf", {})
+    colour = list(map(lambda i: min(i, 255), colour))
+    if alpha == 255 and angle == 0 and (any(i > 160 for i in colour) or all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour)):
+        if cache:
+            data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)
+        else:
+            data = None
+        try:
+            surf = rb_surf[data]
+        except KeyError:
+            surf = pygame.Surface(rect[2:]).convert()
+            surf.fill((1, 2, 3))
+            surf.set_colorkey((1, 2, 3))
+            r = rect
+            rect = [0] * 2 + rect[2:]
+            s = surf
             for c in range(bevel):
-                p = [c, c]
-                q = [i - c - 1 for i in rect[2:]]
+                p = [rect[0] + c, rect[1] + c]
+                q = [a + b - c - 1 for a, b in zip(rect[:2], rect[2:])]
                 b = bevel - c
                 v1 = 128 - c / bevel * 128
                 v2 = c / bevel * 96 - 96
-                col1 = col2 = colour2
+                col1 = col2 = colour
                 if v1:
                     col1 = [min(i + v1, 255) for i in col1]
                 if v2:
@@ -1035,21 +1030,63 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
                 draw_vline(s, q[0], p[1] + b - n, q[1] - b, col2)
                 if b > 1:
                     draw_arc(s, col1, [p[0] + b, p[1] + b], b, 180, 270)
-                    draw_arc(s, colour2, [q[0] - b, p[1] + b], b, 270, 360)
-                    draw_arc(s, colour2, [p[0] + b, q[1] - b], b, 90, 180)
+                    draw_arc(s, colour, [q[0] - b, p[1] + b], b, 270, 360)
+                    draw_arc(s, colour, [p[0] + b, q[1] - b], b, 90, 180)
                     draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
             if filled:
                 if grad_col is None:
-                    draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+                    draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
                 else:
-                    gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
-            if cache:
-                rb_surf[data] = s
-        if ctr > 0:
-            colour = tuple(round(i * 255 / ctr) for i in colour)
-        else:
-            colour = (0,) * 3
-        return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
+                    gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+            rect = r
+            if data:
+                rb_surf[data] = surf
+        if dest:
+            dest.blit(surf, rect[:2])
+            return rect
+        return surf.convert()
+    ctr = max(colour)
+    contrast = min(round(ctr) + 2 >> 2 << 2, 255)
+    data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
+    s = rb_surf.get(data)
+    if s is None:
+        colour2 = (contrast,) * 3
+        s = pygame.Surface(rect[2:], SRCALPHA)
+        s.fill((1, 2, 3))
+        s.set_colorkey((1, 2, 3))
+        for c in range(bevel):
+            p = [c, c]
+            q = [i - c - 1 for i in rect[2:]]
+            b = bevel - c
+            v1 = 128 - c / bevel * 128
+            v2 = c / bevel * 96 - 96
+            col1 = col2 = colour2
+            if v1:
+                col1 = [min(i + v1, 255) for i in col1]
+            if v2:
+                col2 = [max(i + v2, 0) for i in col1]
+            n = b <= 1
+            draw_hline(s, p[0] + b - n, q[0] - b, p[1], col1)
+            draw_vline(s, p[0], p[1] + b, q[1] - b + n, col1)
+            draw_hline(s, p[0] + b, q[0] - b + n, q[1], col2)
+            draw_vline(s, q[0], p[1] + b - n, q[1] - b, col2)
+            if b > 1:
+                draw_arc(s, col1, [p[0] + b, p[1] + b], b, 180, 270)
+                draw_arc(s, colour2, [q[0] - b, p[1] + b], b, 270, 360)
+                draw_arc(s, colour2, [p[0] + b, q[1] - b], b, 90, 180)
+                draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
+        if filled:
+            if grad_col is None:
+                draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+            else:
+                gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+        if cache:
+            rb_surf[data] = s
+    if ctr > 0:
+        colour = tuple(round(i * 255 / ctr) for i in colour)
+    else:
+        colour = (0,) * 3
+    return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
 
 reg_polygon_cache = {}
 
@@ -1185,6 +1222,10 @@ def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=25
         return blit_complex(dest, s, p, alpha=alpha, colour=colour)
 
 def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, ratio=0, reduction=0.3):
+    s = surface.get_size()
+    r = (-4, -4, s[0] + 8, s[1] + 8)
+    if not int_rect(r, rect):
+        return
     if flash:
         n = 4
         a = (ratio * speed * n) % (flash * n)
@@ -1335,7 +1376,7 @@ def text_size(text, size, font="OpenSansEmoji"):
 md_font = {}
 def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False):
     # text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
-    text = str(text)
+    text = str(text if type(text) is not float else round_min(text))
     colour = tuple(verify_colour(colour))
     data = (text, colour, background, size, font)
     try:
@@ -1376,6 +1417,22 @@ class KeyList(list):
 
     def __getitem__(self, k):
         return super().__getitem__(k & -1073741825)
+
+class MultiKey:
+
+    __slot__ = ("keys",)
+
+    def __init__(self, *keys):
+        self.keys = keys
+
+    def __call__(self, k):
+        return any(k[i] for i in self.keys) 
+
+    __getitem__ = __call__
+
+CTRL = MultiKey(K_LCTRL, K_RCTRL)
+SHIFT = MultiKey(K_LSHIFT, K_RSHIFT)
+ALT = MultiKey(K_LALT, K_RALT)
 
 
 PRINT.start()

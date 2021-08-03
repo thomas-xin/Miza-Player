@@ -234,6 +234,7 @@ def render_sidebar_2(dur=0):
                             sidebar.pop("last_selected", None)
                             lq = nan
                         else:
+                            player.editor.note.instrument = i
                             entry.selected = True
                             if entry.pencil:
                                 sidebar.abspos = 2
@@ -316,6 +317,10 @@ def render_sidebar_2(dur=0):
             instrument_ids = project.instrument_layout.pops(pops, keep=True)
             for i in instrument_ids:
                 project.instruments.pop(i, None)
+                if player.editor.note.instrument == i:
+                    player.editor.note.instrument = None
+            if player.editor.note.instrument is None and project.instruments:
+                player.editor.note.instrument = next(iter(project.instruments))
         if not sidebar.get("dragging"):
             for i, entry in enumerate(queue[base:base + maxitems], base):
                 if not entry.get("selected"):

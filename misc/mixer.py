@@ -1276,7 +1276,7 @@ def ensure_parent():
 ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
 settings = cdict()
-alphakeys = prevkeys = [0] * 32
+alphakeys = prevkeys = [0] * 34
 buffoffs = 0
 osize = (0, 0)
 ssize = (0, 0)
@@ -1429,7 +1429,11 @@ while not sys.stdin.closed and failed < 8:
             if fut:
                 if paused:
                     paused.set_result(None)
-                fut.result(timeout=4)
+                try:
+                    fut.result(timeout=4)
+                except:
+                    print_exc()
+                    fut = None
                 if paused:
                     paused = concurrent.futures.Future()
             if reading:

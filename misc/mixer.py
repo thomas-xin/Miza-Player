@@ -147,6 +147,8 @@ def aff():
         print_exc()
 
 afut = submit(aff)
+aout = concurrent.futures.Future()
+aout.set_result(cdict(close=lambda: None))
 
 OUTPUT_FILE = None
 

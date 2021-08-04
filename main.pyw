@@ -1275,8 +1275,14 @@ def seek_rel(pos):
 
 def restart_mixer():
     global mixer
-    mixer = start_mixer()
-    return seek_rel(0)
+    if mixer:
+        if mixer.is_running():
+            for p in mixer.children(True):
+                p.kill()
+            mixer.kill()
+        mixer = None
+        mixer = start_mixer()
+        return seek_abs(player.pos)
 
 def play():
     try:
@@ -1285,6 +1291,10 @@ def play():
             if "~" not in b:
                 if b:
                     print(b)
+                else:
+                    time.sleep(0.1)
+                    if not mixer.is_running():
+                        restart_mixer()
                 continue
             if b[0] == "o":
                 b = b[1:]
@@ -1292,8 +1302,10 @@ def play():
                 req = int(np.prod(osize) * 3)
                 b = mixer.stderr.read(req)
                 while len(b) < req:
-                    if not mixer.is_running():
-                        restart_mixer()
+                    if not b:
+                        time.sleep(0.1)
+                        if not mixer.is_running():
+                            restart_mixer()
                         continue
                     b += mixer.stderr.read(req - len(b))
                 osci = pygame.image.frombuffer(b, osize, "RGB")
@@ -1305,8 +1317,10 @@ def play():
                 req = int(np.prod(ssize) * 3)
                 b = mixer.stderr.read(req)
                 while len(b) < req:
-                    if not mixer.is_running():
-                        restart_mixer()
+                    if not b:
+                        time.sleep(0.1)
+                        if not mixer.is_running():
+                            restart_mixer()
                         continue
                     b += mixer.stderr.read(req - len(b))
                 spec = pygame.image.frombuffer(b, ssize, "RGB")
@@ -1363,9 +1377,7 @@ def pos():
                     print(s, end="")
                     s = ""
             if not s:
-                if not mixer.is_running():
-                    restart_mixer()
-                    continue
+                time.sleep(0.05)
                 continue
             player.last = pc()
             s = s[1:]

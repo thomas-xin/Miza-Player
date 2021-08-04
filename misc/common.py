@@ -198,6 +198,8 @@ if os.name != "nt":
     raise NotImplementedError("This program is currently implemented to use Windows API only.")
 import psutil
 
+OUTPUT_DEVICE = None
+
 def start_mixer():
     global mixer, hwnd, pygame, user32, ctypes, struct, io
     if "pygame" in globals() and getattr(pygame, "closed", None):
@@ -233,6 +235,8 @@ def start_mixer():
         s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
         s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
         s.write(f"~synth 1.5 1 0 0.75 0 1\n")
+        if OUTPUT_DEVICE:
+            s.write(f"~output {OUTPUT_DEVICE}\n")
         s.seek(0)
         mixer.stdin.write(s.read().encode("utf-8"))
         try:
@@ -580,7 +584,12 @@ def unquote(s):
     return urllib.parse.unquote_plus(s)
 
 
-afut = submit(pyaudio.PyAudio)
+def pyafut():
+    pya = pyaudio.PyAudio()
+    globals()["OUTPUT_DEVICE"] = pya.get_default_output_device_info()["name"]
+    return pya
+
+afut = submit(pyafut)
 
 pt = None
 def pc():

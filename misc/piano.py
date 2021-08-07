@@ -100,7 +100,7 @@ def update_piano():
     editor.fade = editor.fade * rat + 1 - rat
     r = 1 + 1 / (duration * 6)
     if not project.patterns:
-        project.create_pattern()
+        create_pattern()
     if not project.instruments:
         add_instrument()
     if kspam[K_LEFT]:
@@ -302,7 +302,7 @@ def n_rect(n):
     keys = ceil((player.rect[3] - 16) / note_spacing + 1)
     centre = 48 + (keys + 1 >> 1) + floor(editor.scroll_y)
     x = PW + (n_pos(n) + (n_measure(n) - editor.scroll_x / timesig[0]) * timesig[0]) * note_width
-    y = note_spacing * (centre - n_pitch(n) - 1.5) + 1
+    y = note_spacing * (centre - n_pitch(n) - 1.5 + editor.scroll_y % 1) + 1
     w = n_length(n) * note_width
     h = note_height
     return x, y, w, h
@@ -366,6 +366,9 @@ def render_piano():
         for p in editor.selection.points:
             p[0] -= vx
             p[1] -= vy
+        for p in piano_particles:
+            if p:
+                p.pos = [p.pos[0] - vx, p.pos[1] - vy]
 
     offs_x = (editor.scroll_x * timesig[1]) % 1 * barlength
     itx = floor(editor.scroll_x * timesig[1])
@@ -454,18 +457,18 @@ def render_piano():
             pitch = note
             xy[1] = offs_y - note_spacing
             highlighted = selecting and not keyed or playing
-            if highlighted:
-                c = note_colour(note % 12, 0.75, 1)
-                r = (0, offs_y - note_spacing, PW, note_height)
+            c = note_colour(note % 12, 0.75, 1)
+            r = (0, offs_y - note_spacing, PW, note_height)
+            bevel_rectangle(DISP, c, r, bevel=ceil(note_height / 5))
+            octave = note // 12
+            if not note % 12 and note_height > 6:
+                s = ceil(note_height * 0.75)
+                message_display(f"C{octave}", s, (46, offs_y - note_spacing + note_height), colour=(0,) * 3, surface=DISP, align=2)
+            if name.endswith("#"):
+                c = note_colour(note % 12, 0.75, 0.6)
+                r = (0, offs_y - note_spacing + ceil(note_height / 10), PW * 5 / 8, note_height - ceil(note_height / 10) * 2)
                 bevel_rectangle(DISP, c, r, bevel=ceil(note_height / 5))
-                octave = note // 12
-                if not note % 12 and note_height > 6:
-                    s = ceil(note_height * 0.75)
-                    message_display(f"C{octave}", s, (46, offs_y - note_spacing + note_height), colour=(0,) * 3, surface=DISP, align=2)
-                if name.endswith("#"):
-                    c = note_colour(note % 12, 0.75, 0.6)
-                    r = (0, offs_y - note_spacing + ceil(note_height / 10), PW * 5 / 8, note_height - ceil(note_height / 10) * 2)
-                    bevel_rectangle(DISP, c, r, bevel=ceil(note_height / 5))
+            if highlighted:
                 c = (255, 255, 255, 48)
                 r = (PW, offs_y - note_spacing + 1, player.rect[2] - PW, note_height)
                 bevel_rectangle(DISP, c, r, bevel=0)
@@ -488,8 +491,8 @@ def render_piano():
                     draw_vline(DISP, x, offs_y - note_spacing + 1, offs_y - 1, (255,) * 3)
         offs_y += note_spacing
     if all(xy):
-        npos = round_min((xy[0] - PW) / note_width % timesig[0])
-        measurepos = int((xy[0] - PW) / timesig[0] / note_width)
+        npos = round_min(((xy[0] - PW) / note_width + editor.scroll_x) % timesig[0])
+        measurepos = int(((xy[0] - PW) / note_width + editor.scroll_x) / timesig[0])
     else:
         measurepos = npos = None
     measures = pattern.measures
@@ -628,6 +631,13 @@ def render_piano():
                                     if id(n) not in editor.selection.notes:
                                         editor.selection.notes.add(id(n))
                                     editor.selection.orig = (measurepos, npos, pitch)
+                                    editor.note.update(
+                                        instrument=n_instrument(n),
+                                        length=n_length(n),
+                                        volume=n_volume(n),
+                                        pan=n_pan(n),
+                                        effects=n_effects(n),
+                                    )
                                     raise StopIteration
                             elif mheld[1] and mpos != _mlast and not isnan(_mlast[0]):
                                 l1 = (_mlast, mpos2)
@@ -765,10 +775,10 @@ def render_piano():
     if hovered and mc4[0] or editor.get("x-scrolling"):
         editor["x-scrolling"] = True
         x = mpos2[0]
-        editor.targ_x = ((x - PW) / (player.rect[2] - PW)) * measurecount
+        editor.targ_x = ((x - PW) / (player.rect[2] - PW)) * measurecount * timesig[0]
     if not any(mheld):
         editor.pop("x-scrolling", None)
-    x = (editor.scroll_x / measurecount) * (player.rect[2] - PW) - round(ratio / 2)
+    x = (editor.scroll_x / measurecount / timesig[0]) * (player.rect[2] - PW) - round(ratio / 2)
     r = [x, player.rect[3] - 16, ratio, 16]
     c = (223,) * 3 + A
     bevel_rectangle(DISP, c, r, bevel=4)

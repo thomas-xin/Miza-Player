@@ -37,9 +37,8 @@ project = cdict(
     instruments={},
     instrument_layout=alist(),
     patterns=alist(),
-    create_pattern=create_pattern,
 )
-project_name = "untitled"
+project_name = "Untitled"
 instruments = project.instruments
 patterns = project.patterns
 
@@ -486,8 +485,10 @@ def setup_buttons():
             sidebar.scroll.target = 0
             if toolbar.editor:
                 mixer.submit(f"~setting spectrogram -1")
+                pygame.display.set_caption(f"Miza Player ~ {project_name}")
             else:
                 mixer.submit(f"~setting spectrogram {options.spectrogram}")
+                pygame.display.set_caption("Miza Player")
         toolbar.buttons.append(cdict(
             name="Editor",
             image=edit,
@@ -829,6 +830,8 @@ def load_project(fn):
     if not toolbar.editor:
         toolbar.editor = 1
         mixer.submit(f"~setting spectrogram -1")
+    player.editor_surf = None
+    globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
     try:
         with open(fn, "rb") as f:
             b = f.read(7)
@@ -851,6 +854,8 @@ def save_project(fn):
     if not toolbar.editor:
         toolbar.editor = 1
         mixer.submit(f"~setting spectrogram -1")
+    player.editor_surf = None
+    globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
     try:
         b = pickle.dumps(project)
         pdata = io.BytesIO()

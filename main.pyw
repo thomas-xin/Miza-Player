@@ -59,8 +59,9 @@ player = cdict(
         mode="I",
         selection=cdict(
             point=None,
+            points=alist(),
             freeform=False,
-            bounded=True,
+            bounded=False,
             notes=set(),
             orig=(None, None),
         ),
@@ -86,6 +87,13 @@ def change_mode(mode):
     player.editor.fade = player.editor.mode == mode
     player.editor.mode = mode
 player.editor.change_mode = change_mode
+def cancel_selection():
+    selection = player.editor.selection
+    selection.point = 0
+    selection.points.clear()
+    selection.notes.clear()
+    selection.pop("all", None)
+player.editor.selection.cancel = cancel_selection
 sidebar = cdict(
     queue=alist(),
     instruments=alist(),
@@ -2261,9 +2269,10 @@ def draw_menu():
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
         if toolbar.editor:
             render_sidebar_2(dur)
+            async_wait = lambda: time.sleep(sys.float_info.min)
         else:
-            queue.remove(None)
             render_sidebar(dur)
+            async_wait = lambda: time.sleep(sys.float_info.min)
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
         Z = -sidebar.scroll.pos
         maxb = (sidebar_width - 12) // 44
@@ -3110,13 +3119,14 @@ try:
                     alphakeys[14] |= kheld[K_PERIOD]
                     alphakeys[15] |= kheld[K_SEMICOLON]
                     alphakeys[16] |= kheld[K_SLASH]
-                    mixer.submit("~keys " + repr(alphakeys))
+                    mixer.submit("~keys " + ",".join(str(i) for i, v in enumerate(alphakeys) if v))
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
                 try:
                     update_menu()
                 except:
                     print_exc()
                 draw_menu()
+                async_wait()
             if not queue and not is_active() and not any(kheld):
                 player.pos = 0
                 player.end = inf
@@ -3126,6 +3136,7 @@ try:
                 # player.pop("spec", None)
             if not tick + 6 & 7 and toolbar.editor:
                 render_piano()
+                async_wait()
                 if modified:
                     modified.add(tuple(screensize))
                 else:
@@ -3304,7 +3315,7 @@ try:
             sidebar.particles.clear()
             progress.particles.clear()
         d = 1 / 240
-        delay = max(0, last_tick - pc() + d)
+        delay = max(sys.float_info.min, last_tick - pc() + d)
         last_tick = max(last_tick + d, pc() - 0.25)
         time.sleep(delay)
         for event in pygame.event.get():

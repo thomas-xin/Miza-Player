@@ -11,6 +11,8 @@ deque = collections.deque
 suppress = contextlib.suppress
 hwnd = int(sys.stdin.readline()[1:])
 
+async_wait = lambda: time.sleep(sys.float_info.min)
+
 is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 globals()["unfocus-time"] = 0
 def is_minimised():
@@ -148,7 +150,7 @@ def aff():
 
 afut = submit(aff)
 aout = concurrent.futures.Future()
-aout.set_result(cdict(close=lambda: None))
+aout.set_result(cdict(get_write_available=lambda: None, close=lambda: None))
 
 OUTPUT_FILE = None
 
@@ -768,9 +770,11 @@ def spectrogram_update():
         lastspec = t
         dft = np.fft.rfft(spec_buffer)
         np.multiply(spec_buffer, (1 / 3) ** dur, out=spec_buffer)
+        async_wait()
         arr = np.zeros(barcount, dtype=np.complex64)
         np.add.at(arr, fftrans, dft)
         arr[0] = 0
+        async_wait()
         amp = np.abs(arr, dtype=np.float32)
         b = amp.tobytes()
         rproc.stdin.write(b"~e" + b)
@@ -1128,7 +1132,8 @@ def waveget(period, offs=0):
 
 def synthesize():
     global prevkeys, den, da, db, dc
-    dt = max(1, sum(1 for i in alphakeys if i)) + 1
+    totalkeys = alphakeys.union(prevkeys) if alphakeys or prevkeys else ()
+    dt = max(1, len(totalkeys)) + 1
     if db != dt:
         if da != 0:
             dc = 0
@@ -1136,44 +1141,43 @@ def synthesize():
         db = dt
     su = settings.get("unison", 1)
     s = None
-    for i, a in enumerate(alphakeys):
-        if a or prevkeys[i]:
-            if su == 1:
-                partials = [i]
-            else:
-                partials = np.linspace(i - sqrt(su / 8) / 3, i + sqrt(su / 8) / 3, round(su))
-            for j in partials:
-                freq = 110 * 2 ** ((j + 3 + settings.get("pitch", 0) + settings.get("nightcore", 0)) / 12)
-                period = SR / freq
-                synth_period = period * ceil(4096 / period)
-                offs = buffoffs % synth_period
-                wave = waveget(synth_period)
-                c = SR // 48
-                if a:
-                    xa = np.linspace(0, period, len(wave), endpoint=False)
-                    wave = np.interp(np.linspace(offs, FR + offs, FR, endpoint=False) % period, xa, wave)
-                    # print(buffoffs + FR, offs, len(wave), period)
-                    if not prevkeys[i]:
-                        x = min(int((period - offs) % period), FR - c)
-                        wave[:x] = 0
-                        wave[x:x + c] *= cm
-                        # print(wave[x:x + 3])
-                    if s is not None:
-                        wave += s
-                    s = wave
-                elif prevkeys[i]:
-                    x = min(int((period - offs - c) % period), FR - c)
-                    if s is None:
-                        s = np.zeros(FR, dtype=np.float64)
-                    xa = np.linspace(0, period, len(wave), endpoint=False)
-                    wave = np.interp(np.linspace(offs, x + c + offs, x + c, endpoint=False) % period, xa, wave)
-                    samplespace = np.linspace(-2, 2, x + c)
-                    samplespace = scipy.special.erf(samplespace)
-                    samplespace -= 1
-                    wave *= samplespace
-                    wave *= -0.5
-                    s[:x + c] += wave
-                    # print(wave[x + c - 3:x + c])
+    for i in totalkeys:
+        if su == 1:
+            partials = [i]
+        else:
+            partials = np.linspace(i - sqrt(su / 8) / 3, i + sqrt(su / 8) / 3, round(su))
+        for j in partials:
+            freq = 110 * 2 ** ((j + 3 + settings.get("pitch", 0) + settings.get("nightcore", 0)) / 12)
+            period = SR / freq
+            synth_period = period * ceil(4096 / period)
+            offs = buffoffs % synth_period
+            wave = waveget(synth_period)
+            c = SR // 48
+            if i in alphakeys:
+                xa = np.linspace(0, period, len(wave), endpoint=False)
+                wave = np.interp(np.linspace(offs, FR + offs, FR, endpoint=False) % period, xa, wave)
+                # print(buffoffs + FR, offs, len(wave), period)
+                if i not in prevkeys:
+                    x = min(int((period - offs) % period), FR - c)
+                    wave[:x] = 0
+                    wave[x:x + c] *= cm
+                    # print(wave[x:x + 3])
+                if s is not None:
+                    wave += s
+                s = wave
+            elif i in prevkeys:
+                x = min(int((period - offs - c) % period), FR - c)
+                if s is None:
+                    s = np.zeros(FR, dtype=np.float64)
+                xa = np.linspace(0, period, len(wave), endpoint=False)
+                wave = np.interp(np.linspace(offs, x + c + offs, x + c, endpoint=False) % period, xa, wave)
+                samplespace = np.linspace(-2, 2, x + c)
+                samplespace = scipy.special.erf(samplespace)
+                samplespace -= 1
+                wave *= samplespace
+                wave *= -0.5
+                s[:x + c] += wave
+                # print(wave[x + c - 3:x + c])
     if s is not None:
         globals()["buffoffs"] += FR
         m = 32767 / su
@@ -1278,7 +1282,7 @@ def ensure_parent():
 ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
 settings = cdict()
-alphakeys = prevkeys = [0] * 34
+alphakeys = prevkeys = ()
 buffoffs = 0
 osize = (0, 0)
 ssize = (0, 0)
@@ -1325,8 +1329,9 @@ while not sys.stdin.closed and failed < 8:
                     sf.result()
                 continue
             if command.startswith("~keys"):
-                alphakeys = json.loads(command[6:])
-                if aout.done() and any(alphakeys):
+                s = command[6:]
+                alphakeys = set(map(int, s.split(","))) if s else set()
+                if aout.done() and alphakeys or prevkeys:
                     channel2 = aout.result()
                 continue
             if command == "~clear":

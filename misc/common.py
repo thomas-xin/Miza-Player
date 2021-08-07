@@ -1,5 +1,6 @@
 import os, sys, json, traceback, subprocess, copy, time, concurrent.futures
 
+async_wait = lambda: time.sleep(sys.float_info.min)
 utc = time.time
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 from concurrent.futures import thread
@@ -317,6 +318,18 @@ def get_pressed():
 
 in_rect = lambda point, rect: point[0] >= rect[0] and point[0] < rect[0] + rect[2] and point[1] >= rect[1] and point[1] < rect[1] + rect[3]
 in_circ = lambda point, dest, radius=1: hypot(dest[0] - point[0], dest[1] - point[1]) <= radius
+def in_polygon(point, polygon):
+    count = 0
+    if polygon[0] != polygon[-1]:
+        polygon = list(polygon)
+        polygon.append(polygon[0])
+    q = None
+    for p in polygon:
+        if q:
+            if intervals_intersect((p, q), (point, (-2147483647, -2147483648))):
+                count += 1
+        q = p
+    return count & 1
 
 def int_rect(r1, r2):
     x1, y1, x2, y2, = r1
@@ -326,8 +339,73 @@ def int_rect(r1, r2):
     x4 += x3
     y4 += y3
     return max(x1, x3) < min(x2, x4) and max(y1, y3) < min(y2, y4)
+def int_polygon(p1, p2):
+    if p1[0] != p1[-1]:
+        p1 = list(p1)
+        p1.append(p1[0])
+    if p2[0] != p2[-1]:
+        p2 = list(p2)
+        p2.append(p2[0])
+    q = s = None
+    for p in p1:
+        if q:
+            for r in p2:
+                if s:
+                    if intervals_intersect((p, q), (r, s)):
+                        return True
+                s = r
+        q = p
+
+def interval_interval_dist(line1, line2):
+    if intervals_intersect(line1, line2):
+        return 0
+    distances = (
+        point_interval_dist(line1[0], line2),
+        point_interval_dist(line1[1], line2),
+        point_interval_dist(line2[0], line1),
+        point_interval_dist(line2[1], line1),
+    )
+    return min(distances)
+
+def point_interval_dist(point, line):
+    px, py = point
+    x1, x2 = line[0][0], line[1][0]
+    y1, y2 = line[0][1], line[1][1]
+    dx = x2 - x1
+    dy = y2 - y1
+    if dx == dy == 0:
+        return hypot(px - x1, py - y1)
+    t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+    if t < 0:
+        dx = px - x1
+        dy = py - y1
+    elif t > 1:
+        dx = px - x2
+        dy = py - y2
+    else:
+        dx = px - x1 - t * dx
+        dy = py - y1 - t * dy
+    return hypot(dx, dy)
+
+def intervals_intersect(line1, line2):
+    x11, y11 = line1[0]
+    x12, y12 = line1[1]
+    x21, y21 = line2[0]
+    x22, y22 = line2[1]
+    dx1 = x12 - x11
+    dy1 = y12 - y11
+    dx2 = x22 - x21
+    dy2 = y22 - y21
+    delta = dx2 * dy1 - dy2 * dx1
+    if delta == 0:
+        return False
+    s = (dx1 * (y21 - y11) + dy1 * (x11 - x21)) / delta
+    t = (dx2 * (y11 - y21) + dy2 * (x21 - x11)) / -delta
+    return (0 <= s <= 1) and (0 <= t <= 1)
 
 rect_centre = lambda rect: (rect[0] + rect[2] // 2, rect[1] + rect[3] // 2)
+rect_points = lambda rect: (rect[:2], (rect[0] + rect[2], rect[1]), (rect[0], rect[1] + rect[3]), (rect[0] + rect[2], rect[1] + rect[3]))
+point_dist = lambda p, q: hypot(p[0] - q[0], p[1] - q[1])
 
 class WR(ctypes.Structure):
     _fields_ = [

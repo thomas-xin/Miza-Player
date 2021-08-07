@@ -135,7 +135,8 @@ def render_sidebar_2(dur=0):
         # DISP2.set_colorkey(sc)
         if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
             submit(enqueue_auto, *pyperclip.paste().splitlines())
-        if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
+        in_sidebar = in_rect(mpos, sidebar.rect)
+        if in_sidebar and mclick[0] or not mheld[0]:
             sidebar.pop("dragging", None)
         if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue):
             sidebar.pop("last_selected")
@@ -154,7 +155,7 @@ def render_sidebar_2(dur=0):
         otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
         etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
         target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
-        if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
+        if mclick[0] and not sidebar.scrolling and in_sidebar and not in_rect(mpos, sidebar.scroll.rect) and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
             if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                 for entry in queue:
                     entry.pop("selected", None)
@@ -200,7 +201,7 @@ def render_sidebar_2(dur=0):
                 if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
                     entry.flash = 16
                     copies.append(entry.url)
-            elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a]:
+            elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a] and in_sidebar:
                 entry.selected = True
                 sidebar.last_selected = entry
                 lq = i

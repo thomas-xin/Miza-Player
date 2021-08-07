@@ -17,12 +17,14 @@ def note_colour(i, s=1, v=1):
     return verify_colour(x * 255 for x in colorsys.hsv_to_rgb(i / 12, s, v))
 PW = 48
 piano_particles = []
+_targ_x = None
+_mlast = (nan, nan)
 
 def spawn_particle(p=None, **kwargs):
     p = p or kwargs
     if type(p) is not cdict:
         p = cdict(p)
-    if len(piano_particles) >= 1024:
+    if len(piano_particles) >= 512:
         i = random.randint(0, len(piano_particles) - 1)
         piano_particles[i] = p
     else:
@@ -83,7 +85,10 @@ def blinds_render(self):
         y = self.pos[1] + i * h
         if x2 > x1:
             rendered = True
-            bevel_rectangle(DISP, self.col, (x1, y, x2 - x1, h), bevel=0, alpha=191)
+            hls = list(colorsys.rgb_to_hls(*(c / 255 for c in self.col)))
+            hls[1] = min(1, hls[1] + max(0, 1 - 4 * abs(blind[0] * blind[1] * self.frame / self.width)))
+            col = tuple(c * 255 for c in colorsys.hls_to_rgb(*hls))
+            bevel_rectangle(DISP, col, (x1, y, x2 - x1, h), bevel=0, alpha=191)
     if not rendered:
         delete_particle(self)
 
@@ -198,7 +203,6 @@ def editor_toolbar():
             np.clip(arr, 0, 255, out=arr)
             arr = np.tile(arr.astype(np.uint8), (mrect[3], 1))
             a2 = Image.fromarray(arr, "L")
-            print(im, a, a2)
             A = ImageChops.multiply(a, a2)
             im.putalpha(A)
             surf = pil2pyg(im)
@@ -333,11 +337,11 @@ def create_note(n, particles=True):
 def delete_note(n, particles=True):
     pattern = project.patterns[editor.pattern]
     m = n_measure(n)
+    editor.selection.notes.discard(id(n))
     pattern.measures[m].remove(n)
     if not pattern.measures[m]:
         pattern.measures.pop(m)
     player.editor_surf = None
-    editor.selection.notes.remove(id(n))
     if particles:
         col = n_colour(n)
         r = n_rect(n)
@@ -352,6 +356,17 @@ def render_piano():
     note_spacing = note_height + 1
     keys = ceil((player.rect[3] - 16) / note_spacing + 1)
     barlength = timesig[0] * timesig[1]
+
+    if _targ_x is not None:
+        vx = (editor.targ_x - _targ_x) * note_width
+        vy = (editor.targ_y - _targ_y) * note_spacing
+        if editor.selection.point:
+            editor.selection.point[0] -= vx
+            editor.selection.point[1] -= vy
+        for p in editor.selection.points:
+            p[0] -= vx
+            p[1] -= vy
+
     offs_x = (editor.scroll_x * timesig[1]) % 1 * barlength
     itx = floor(editor.scroll_x * timesig[1])
     offs_y = editor.scroll_y % 1 * note_spacing
@@ -391,7 +406,7 @@ def render_piano():
             if not (i + itx) % (barlength):
                 message_display((i + itx) // barlength, 12, (x + 3, 0), colour=(255, 255, 0), surface=surf, align=0)
 
-        min_measure = int(editor.scroll_x / timesig[0])
+        min_measure = max(0, floor(editor.scroll_x / timesig[0] - (player.rect[2] - PW) / timesig[0] / note_width))
         max_measure = ceil(editor.scroll_x / timesig[0] + (player.rect[2] - PW) / timesig[0] / note_width)
         for i in range(min_measure, max_measure):
             try:
@@ -423,7 +438,8 @@ def render_piano():
 
     DISP.blit(surf, player.rect[:2])
     xy = [None, None]
-    selecting = editor.mode == "S" or CTRL[kheld]
+    keyed = any(alphakeys)
+    selecting = editor.mode == "S" or CTRL[kheld] or editor.selection.point
 
     offs_y = editor.scroll_y % 1 * note_spacing
     offs_y = round(offs_y - note_spacing / 2)
@@ -434,10 +450,11 @@ def render_piano():
         rect = (16, offs_y - note_spacing, player.rect[2], note_spacing)
         selected = in_rect(mpos, rect) and in_rect(mpos, player.rect[:3] + (player.rect[3] - 16,))
         playing = (36 <= note < 70) and alphakeys[note - 36]
-        if selected or playing:
+        if selected or keyed or playing:
             pitch = note
             xy[1] = offs_y - note_spacing
-            if selecting:
+            highlighted = selecting and not keyed or playing
+            if highlighted:
                 c = note_colour(note % 12, 0.75, 1)
                 r = (0, offs_y - note_spacing, PW, note_height)
                 bevel_rectangle(DISP, c, r, bevel=ceil(note_height / 5))
@@ -457,13 +474,13 @@ def render_piano():
                 space = round(note_width / timesig[1])
                 x = PW + n * space
                 xy[0] = x
-                if selecting:
+                if highlighted:
                     r = (x, 0, space, player.rect[3])
                     bevel_rectangle(DISP, c, r, bevel=0)
                     for i in range(ceil(player.rect[3] / 24)):
                         y = round(24 * i + (pc() * 72) % 24)
                         draw_hline(DISP, x, x + space - 1, y, (255,) * 3)
-            if selecting:
+            if highlighted:
                 for i in range(ceil(player.rect[2] / 24 - 2)):
                     x = round(24 * i + PW + (pc() * 72) % 24)
                     if x >= player.rect[2]:
@@ -476,45 +493,119 @@ def render_piano():
     else:
         measurepos = npos = None
     measures = pattern.measures
-    if all(xy) or editor.selection.point:
+    if (all(xy) or mheld[1] and not isnan(_mlast[0])) or editor.selection.point:
         if selecting:
-            if editor.selection.point:
-                c = (255, 127, 255, 64 + 192 * abs(pc() % 1 - 0.5))
+            if kheld[K_a] and not editor.selection.get("all"):
+                for measure in measures.values():
+                    for n in measure:
+                        editor.selection.notes.add(id(n))
+                        editor.selection.all = True
+            elif editor.selection.point:
+                c = ([159, 0, 159] if editor.selection.bounded else [255, 127, 255])
+                c.append(64 + 192 * abs(pc() % 1 - 0.5))
+                q = mpos2
                 if not editor.selection.freeform:
                     p = editor.selection.point
-                    q = mpos2
-                    r = [min(p[0], q[0]), min(p[1], q[1])]
-                    r += [max(p[0], q[0]) - r[0], max(p[1], q[1]) - r[1]]
+                    if p == q:
+                        r = None
+                    else:
+                        r = [min(p[0], q[0]), min(p[1], q[1])]
+                        r += [max(p[0], q[0]) - r[0], max(p[1], q[1]) - r[1]]
                     if not mheld[0]:
                         editor.selection.point = 0
-                        min_measure = int(editor.scroll_x / timesig[0])
-                        max_measure = ceil(editor.scroll_x / timesig[0] + (player.rect[2] - PW) / timesig[0] / note_width)
+                        min_measure = max(0, floor((r[0] - PW) / note_width / timesig[0] - (player.rect[2] - PW) / timesig[0] / note_width))
+                        max_measure = ceil((r[0] + r[2] - PW) / note_width / timesig[0] + (player.rect[2] - PW) / timesig[0] / note_width)
                         for i in range(min_measure, max_measure):
                             try:
                                 notes = pattern.measures[i]
                             except KeyError:
                                 continue
-                            for n in notes[-1024:]:
-                                if int_rect(n_rect(n), r):
+                            for n in notes:
+                                if r:
+                                    if not editor.selection.bounded:
+                                        check = int_rect(n_rect(n), r)
+                                    else:
+                                        check = all(in_rect(p, r) for p in rect_points(n_rect(n)))
+                                else:
+                                    check = in_rect(mpos, n_rect(n))
+                                if check:
                                     if id(n) not in editor.selection.notes:
                                         editor.selection.notes.add(id(n))
-                    bevel_rectangle(DISP, c, r, bevel=4)
+                    elif r:
+                        bevel_rectangle(DISP, c, r, bevel=4)
+                else:
+                    points = editor.selection.points
+                    if not points:
+                        points.append(editor.selection.point)
+                    if point_dist(points[-1], q) >= 3:
+                        if len(points) >= 2:
+                            a, b = points[-2:]
+                            try:
+                                d1 = (b[0] - a[0]) / (b[1] - a[1])
+                            except ZeroDivisionError:
+                                d1 = inf if b[0] - a[0] >= 0 else -inf
+                            try:
+                                d2 = (q[0] - b[0]) / (q[1] - b[1])
+                            except ZeroDivisionError:
+                                d2 = inf if q[0] - b[0] >= 0 else -inf
+                            if d1 == d2:
+                                points[-1] = q
+                            else:
+                                points.append(q)
+                        else:
+                            points.append(q)
+                        if len(points) > 1024:
+                            editor.selection.points = points = points[::2]
+                    if not mheld[0]:
+                        editor.selection.point = 0
+                        low = high = nan
+                        for p in points:
+                            if not p[0] >= low:
+                                low = p[0]
+                            if not p[1] <= high:
+                                high = p[1]
+                        min_measure = max(0, floor((low - PW) / note_width / timesig[0] - (player.rect[2] - PW) / timesig[0] / note_width))
+                        max_measure = ceil((high - PW) / note_width / timesig[0] + (player.rect[2] - PW) / timesig[0] / note_width)
+                        for i in range(min_measure, max_measure):
+                            try:
+                                notes = pattern.measures[i]
+                            except KeyError:
+                                continue
+                            for n in notes:
+                                if len(points) >= 3:
+                                    if not editor.selection.bounded:
+                                        check = any(in_polygon(p, points) for p in rect_points(n_rect(n))) or int_polygon(rect_points(n_rect(n)), points)
+                                    else:
+                                        check = all(in_polygon(p, points) for p in rect_points(n_rect(n)))
+                                else:
+                                    check = in_rect(mpos, n_rect(n))
+                                if check:
+                                    if id(n) not in editor.selection.notes:
+                                        editor.selection.notes.add(id(n))
+                        points.clear()
+                    elif len(points) > 2:
+                        gfxdraw.filled_polygon(DISP, points, c)
+                    elif len(points) == 2:
+                        pygame.draw.line(DISP, c, *points, width=2)
             elif in_rect(mpos, player.rect):
                 if mc4[0]:
-                    editor.selection.point = mpos2
                     if not CTRL[kheld] and not SHIFT[kheld]:
-                        editor.selection.notes.clear()
+                        editor.selection.cancel()
+                    editor.selection.point = mpos2
+                elif mheld[1]:
+                    editor.selection.cancel()
                 pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
                 pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
                 pygame.draw.circle(DISP, (255, 0, 0), mpos2, 9, width=2)
-        elif editor.mode == "I" and all(xy):
+
+        elif editor.mode == "I" and (all(xy) or mheld[1] and not isnan(_mlast[0])) and not keyed:
             if mheld[1]:
-                editor.selection.notes.clear()
+                editor.selection.cancel()
                 pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 8, mpos2[1] + 6), (mpos2[0] + 6, mpos2[1] - 8), width=2)
                 pygame.draw.circle(DISP, (255, 0, 0), mpos2, 12, width=2)
             hnote = False
-            min_measure = int(editor.scroll_x / timesig[0])
-            max_measure = floor(editor.scroll_x / timesig[0] + (mpos2[0] - PW) / timesig[0] / note_width) + 1
+            min_measure = max(0, floor(editor.scroll_x / timesig[0] - (player.rect[2] - PW) / timesig[0] / note_width))
+            max_measure = ceil(editor.scroll_x / timesig[0] + (mpos2[0] - PW) / timesig[0] / note_width)
             try:
                 for i in range(min_measure, max_measure):
                     try:
@@ -524,20 +615,34 @@ def render_piano():
                     else:
                         for n in notes[-1024:]:
                             r = n_rect(n)
-                            if in_rect(mpos, r):
+                            if in_rect(mpos2, r):
                                 if not hnote:
                                     hnote = n
                                 if mheld[1]:
                                     delete_note(n)
-                                    raise StopIteration
+                                    continue
                                 if mc4[0]:
                                     if not CTRL[kheld] and not SHIFT[kheld]:
                                         if id(n) not in editor.selection.notes:
-                                            editor.selection.notes.clear()
+                                            editor.selection.cancel()
                                     if id(n) not in editor.selection.notes:
                                         editor.selection.notes.add(id(n))
                                     editor.selection.orig = (measurepos, npos, pitch)
                                     raise StopIteration
+                            elif mheld[1] and mpos != _mlast and not isnan(_mlast[0]):
+                                l1 = (_mlast, mpos2)
+                                l2 = (r[:2], (r[0] + r[2], r[1]))
+                                if intervals_intersect(l1, l2):
+                                    delete_note(n)
+                                    continue
+                                l2 = (r[:2], (r[0], r[1] + r[3]))
+                                if intervals_intersect(l1, l2):
+                                    delete_note(n)
+                                    continue
+                                l2 = ((r[0] + r[2], r[1]), (r[0] + r[2], r[1] + r[3]))
+                                if intervals_intersect(l1, l2):
+                                    delete_note(n)
+                                    continue
             except StopIteration:
                 pass
             if editor.note.instrument is not None:
@@ -547,7 +652,7 @@ def render_piano():
                 else:
                     if mc4[0]:
                         if not CTRL[kheld] and not SHIFT[kheld]:
-                            editor.selection.notes.clear()
+                            editor.selection.cancel()
                         m = measurepos
                         N = [m, editor.note.instrument, npos, pitch, editor.note.length]
                         if editor.note.volume != 0.25 or editor.note.pan or editor.note.effects:
@@ -566,7 +671,7 @@ def render_piano():
     ntuple = (measurepos, npos, pitch)
     if CTRL[kheld] or SHIFT[kheld]:
         move = None
-    elif mheld[0] and all(xy) and all(editor.selection.orig) and editor.selection.orig != ntuple:
+    elif mheld[0] and all(xy) and None not in editor.selection.orig and editor.selection.orig != ntuple:
         move = [x - y for x, y in zip(ntuple, editor.selection.orig)]
         m = move.pop(0)
         move[0] += m * timesig[0]
@@ -574,12 +679,21 @@ def render_piano():
             move = None
     else:
         move = None
-    for n in map(note_from_id, editor.selection.notes):
+    if move:
+        for n in map(note_from_id, editor.selection.notes):
+            if n:
+                x = n_measure(n) * timesig[0] + n_pos(n) + move[0]
+                if x < 0:
+                    move[0] -= x
+    for i in deque(editor.selection.notes):
+        n = note_from_id(i)
+        if not n:
+            editor.selection.notes.discard(i)
+            continue
         if kheld[K_DELETE]:
             delete_note(n)
             continue
         if move:
-            print(measures)
             x, y = move
             x += n_measure(n) * timesig[0] + n_pos(n)
             a, b = divmod(x, timesig[0])
@@ -593,8 +707,6 @@ def render_piano():
             else:
                 n[2] = b
                 n[3] += y
-            print(n)
-            print(measures)
         col = n_colour(n) + (191,)
         r = n_rect(n)
         speed = 0.75 / n_length(n) ** 0.5
@@ -664,3 +776,6 @@ def render_piano():
     for p in piano_particles:
         if p and p.get("render"):
             p.render(p)
+    globals()["_mlast"] = mpos
+    globals()["_targ_x"] = editor.targ_x
+    globals()["_targ_y"] = editor.targ_y

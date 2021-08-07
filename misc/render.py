@@ -1,8 +1,10 @@
-import sys, numpy, math, random, json, collections, colorsys, traceback, concurrent.futures
+import sys, time, numpy, math, random, json, collections, colorsys, traceback, concurrent.futures
 from math import *
 from traceback import print_exc
 np = numpy
 from PIL import Image, ImageDraw, ImageFont
+
+async_wait = lambda: time.sleep(sys.float_info.min)
 
 
 from concurrent.futures import thread
@@ -292,6 +294,7 @@ def spectrogram_render():
                     p1 = (c[0] + cos(z) * r1, c[1] + sin(z) * r1)
                     p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
                     DRAW.line((p1, p2), colour, 8)
+            async_wait()
             sfx = sfx.rotate(spec.rotation, resample=Image.NEAREST)
 
         if specs == 1:
@@ -306,6 +309,7 @@ def spectrogram_render():
             high = highbars[0]
             for bar in reversed(highbars):
                 bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
+        async_wait()
         spectrobytes = sfx.tobytes()
 
         write = specs == 3

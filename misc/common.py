@@ -65,11 +65,53 @@ def as_str(s):
     return str(s)
 
 
+ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+
 collections2f = "misc/collections2.tmp"
 try:
     update_collections = utc() - os.path.getmtime(collections2f) > 3600
 except FileNotFoundError:
     update_collections = True
+    import requests
+    print("Verifying FFmpeg installation...")
+    with requests.get("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", stream=True) as resp:
+        try:
+            v = resp.url.rsplit("/", 1)[-1].split("-", 1)[-1].rsplit(".", 1)[0].split("-", 1)[0]
+            r = subprocess.run(ffmpeg, stderr=subprocess.PIPE)
+            s = r.stderr[:r.stderr.index(b"\n")].decode("utf-8", "replace").strip().lower()
+            if s.startswith("ffmpeg"):
+                s = s[6:].lstrip()
+            if s.startswith("version"):
+                s = s[7:].lstrip()
+            s = s.split("-", 1)[0]
+            if s != v:
+                print(f"FFmpeg version outdated ({v} > {s})")
+                raise FileNotFoundError
+            print(f"FFmpeg version {s} found; skipping installation...")
+        except FileNotFoundError:
+            print(f"Downloading FFmpeg version {v}...")
+            fut = submit(subprocess.run, [sys.executable, "downloader.py", "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"], cwd="misc")
+            import zipfile, io
+            fut.result()
+            print("Download complete; extracting new FFmpeg installation...")
+            f = os.listdir("misc/files")
+            f = f"misc/files/{f[0]}"
+            with zipfile.ZipFile(f) as z:
+                names = [name for name in z.namelist() if "/bin/" in name and ".exe" in name]
+                for i, name in enumerate(names):
+                    print(f"{i}/{len(names)}")
+                    fn = name.rsplit("/", 1)[-1]
+                    with open(fn, "wb") as y:
+                        with z.open(name, "r") as x:
+                            while True:
+                                b = x.read(1048576)
+                                if not b:
+                                    break
+                                y.write(b)
+            print("FFmpeg extraction complete.")
+            submit(os.remove, f)
+
 
 hasmisc = os.path.exists("misc")
 argp = [sys.executable]
@@ -143,6 +185,12 @@ control_default = cdict(
     ripples=1,
     autoupdate=0,
 )
+editor_default = cdict(
+    mode="I",
+    freeform=False,
+    bounded=False,
+    autoswap=False,
+)
 ssettings = cdict(
     shape=(0, 3),
     amplitude=(-1, 8),
@@ -188,11 +236,19 @@ oaudio = cdict(audio_default)
 if _audio:
     oaudio.update(_audio)
 options.audio = oaudio
+
 _control = options.get("control")
 control = cdict(control_default)
 if _control:
     control.update(_control)
 options.control = control
+
+_editor = options.get("editor")
+editor = cdict(editor_default)
+if _editor:
+    editor.update(_editor)
+options.editor = editor
+
 orig_options = copy.deepcopy(options)
 
 if os.name != "nt":
@@ -739,13 +795,13 @@ def round_min(x):
             return round_min(complex(x).real) + round_min(complex(x).imag) * (1j)
 
 def round_random(x):
-    y = round_min(x)
-    if type(y) is int:
+    y = int(x)
+    if y == x:
         return y
-    x, y = divmod(x, 1)
-    if random.random() <= y:
-        x += 1
-    return int(x)
+    x %= 1
+    if random.random() <= x:
+        y += 1
+    return y
 
 def bit_crush(dest, b=0, f=round):
     if type(b) == int:
@@ -793,12 +849,22 @@ def pil2pyg(im):
     b = im.tobytes()
     return pygame.image.frombuffer(b, im.size, mode)
 
-def load_surface(fn, greyscale=False, size=None):
+SURFS = {}
+def load_surface(fn, greyscale=False, size=None, force=False):
+    if type(fn) is str:
+        tup = (fn, greyscale, size)
+    else:
+        tup = None
+    if not force:
+        try:
+            return SURFS[tup]
+        except KeyError:
+            pass
     im = image = Image.open(fn)
     if im.mode == "P":
         im = im.convert("RGBA")
     if size:
-        im = im.resize(size)
+        im = im.resize(size, Image.LANCZOS)
     if greyscale:
         if "A" in im.mode:
             A = im.getchannel("A")
@@ -810,7 +876,10 @@ def load_surface(fn, greyscale=False, size=None):
         im = im2
     surf = pil2pyg(im)
     image.close()
-    return surf.convert_alpha() if "A" in im.mode else surf.convert()
+    out = surf.convert_alpha() if "A" in im.mode else surf.convert()
+    if tup:
+        SURFS[tup] = out
+    return out
 
 verify_colour = lambda c: [max(0, min(255, abs(i))) for i in c]
 
@@ -1528,7 +1597,7 @@ PRINT.start()
 # Runs ffprobe on a file or url, returning the duration if possible.
 def _get_duration_2(filename, _timeout=12):
     command = (
-        "ffprobe",
+        ffprobe,
         "-v",
         "error",
         "-select_streams",

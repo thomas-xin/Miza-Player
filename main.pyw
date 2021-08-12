@@ -21,22 +21,26 @@ if not os.path.exists("playlists"):
 
 
 def create_pattern():
-    pattern = cdict(
-        timesig=project.settings.timesig,
-        keysig=project.settings.keysig,
-        measures={},
-    )
-    project.patterns.append(pattern)
+    pattern = cdict(project.settings)
+    x = 0
+    while x in project.patterns:
+        x += 1
+    pattern.measures = {}
+    pattern.name = f"Pattern {x}"
+    pattern.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1))
+    pattern.id = x
+    project.patterns[x] = pattern
     return pattern
 project = cdict(
     settings=cdict(
         timesig=(4, 4),
         keysig=0,
-        speed=144,
+        tempo=144,
     ),
     instruments={},
     instrument_layout=alist(),
-    patterns=alist(),
+    patterns={},
+    playlist=[],
 )
 project_name = "Untitled"
 instruments = project.instruments
@@ -55,12 +59,9 @@ player = cdict(
         energy=0,
     ),
     editor=cdict(
-        mode="I",
         selection=cdict(
             point=None,
             points=alist(),
-            freeform=False,
-            bounded=False,
             notes=set(),
             orig=(None, None),
         ),
@@ -80,11 +81,12 @@ player = cdict(
         targ_y=0,
         zoom_x=1,
         zoom_y=1,
+        played=set(),
     ),
 )
 def change_mode(mode):
-    player.editor.fade = player.editor.mode == mode
-    player.editor.mode = mode
+    player.editor.fade = options.editor.mode == mode
+    options.editor.mode = mode
 player.editor.change_mode = change_mode
 def cancel_selection():
     selection = player.editor.selection
@@ -92,6 +94,7 @@ def cancel_selection():
     selection.points.clear()
     selection.notes.clear()
     selection.pop("all", None)
+    selection.pop("cpy", None)
 player.editor.selection.cancel = cancel_selection
 sidebar = cdict(
     queue=alist(),
@@ -106,7 +109,7 @@ toolbar = cdict(
     pause=cdict(
         speed=0,
         angle=0,
-        maxspeed=4,
+        maxspeed=5,
     ),
     progress=cdict(
         vis=0,
@@ -690,7 +693,7 @@ def setup_buttons():
                         filetypes=ftypes,
                     )
                     if fn:
-                        os.system(f"ffmpeg -hide_banner -y -v error -f s16le -ar 48k -ac 2 -i {sidebar.recording} {fn}")
+                        os.system(f"{ffmpeg} -hide_banner -y -v error -f s16le -ar 48k -ac 2 -i {sidebar.recording} {fn}")
                 sidebar.recording = ""
             mixer.submit(f"~record " + sidebar.recording)
         def record_menu():
@@ -831,6 +834,7 @@ def load_project(fn):
         toolbar.editor = 1
         mixer.submit(f"~setting spectrogram -1")
     player.editor_surf = None
+    player.editor.targ_x = 0
     globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
     try:
         with open(fn, "rb") as f:
@@ -917,20 +921,20 @@ def reset_menu(full=True, reset=False):
     toolbar.colour = None
     toolbar.updated = False
     toolbar.rect = (0, screensize[1] - toolbar_height, screensize[0], toolbar_height)
-    toolbar.pause.radius = toolbar_height // 2 - 2
-    toolbar.pause.pos = (toolbar_height >> 1, screensize[1] - toolbar_height // 2)
-    progress.pos = (round(toolbar.pause.pos[0] + toolbar.pause.radius * 1.5 + 4), screensize[1] - toolbar_height * 2 // 3 + 1)
-    progress.box = toolbar_height * 3 // 2 + 8
+    toolbar.pause.radius = min(64, toolbar_height // 2 - 2)
+    toolbar.pause.pos = (toolbar.pause.radius + 2, screensize[1] - toolbar_height + toolbar.pause.radius + 2)
+    progress.pos = (round(toolbar.pause.pos[0] + toolbar.pause.radius * 1.5 + 4), screensize[1] - toolbar_height + toolbar.pause.radius * 2 // 3 + 1)
+    progress.box = toolbar.pause.radius * 6 // 2 + 8
     progress.length = max(0, screensize[0] - progress.pos[0] - toolbar.pause.radius // 2 - progress.box)
-    progress.width = min(16, toolbar_height // 6)
+    progress.width = min(16, toolbar.pause.radius // 3)
     progress.rect = (progress.pos[0] - progress.width // 2 - 3, progress.pos[1] - progress.width // 2 - 3, progress.length + 6, progress.width + 6)
     progress.seeking = False
     bsize = min(40, toolbar_height // 3)
     for i, button in enumerate(toolbar.buttons):
         if i:
-            button.pos = (toolbar_height + 8 + (bsize + 4) * (i - 1), screensize[1] - toolbar_height // 3 - 8)
+            button.pos = (toolbar.pause.radius * 2 + 8 + (bsize + 4) * (i - 1), screensize[1] - toolbar_height + toolbar.pause.radius * 2 - bsize - 4)
         else:
-            button.pos = (screensize[0] - bsize - 4, screensize[1] - toolbar_height // 3 - 4)
+            button.pos = (screensize[0] - bsize - 4, screensize[1] - bsize - 4)
         rect = button.pos + (bsize,) * 2
         sprite = button.get("sprite", button.image)
         isize = (bsize - 6,) * 2
@@ -945,7 +949,7 @@ def reset_menu(full=True, reset=False):
         button.rect = rect
     toolbar.resizing = False
     toolbar.resizer = False
-    osize2 = (progress.box, toolbar_height * 2 // 3 - 3)
+    osize2 = (progress.box, toolbar.pause.radius * 4 // 3 - 3)
     if osize != osize2:
         osize = osize2
         mixer.submit(f"~osize {' '.join(map(str, osize))}")
@@ -1469,7 +1473,7 @@ def enqueue(entry, start=True):
         print_exc()
     return None, inf
 
-ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 concat_buff = b"\x00" * (48000 * 2 * 2)
 
 def download(entries, fn):
@@ -1547,6 +1551,7 @@ def pause_toggle(state=None):
     toolbar.pause.speed = toolbar.pause.maxspeed
     globals()["tick"] = -2
     sidebar.menu = 0
+    player.editor.played.clear()
 
 
 def update_menu():
@@ -1570,7 +1575,7 @@ def update_menu():
         player.amp = 0
         player.pop("osci", None)
     progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
-    toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * 2)
+    toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * (-2 if player.paused else 2))
     toolbar.pause.speed *= 0.995 ** (duration * 480)
     sidebar.scroll.target = max(0, min(sidebar.scroll.target, len(queue) * 32 - screensize[1] + options.toolbar_height + 36 + 32))
     r = ratio if sidebar.scrolling else (ratio - 1) / 3 + 1
@@ -1598,12 +1603,17 @@ def update_menu():
                 alpha=255,
             ))
     if toolbar.resizing:
-        toolbar_height = min(144, max(64, screensize[1] - mpos2[1] + 2))
+        toolbar_height = max(64, screensize[1] - mpos2[1] + 2)
         if options.toolbar_height != toolbar_height:
             options.toolbar_height = toolbar_height
             reset_menu()
             toolbar.resizing = True
             modified.add(toolbar.rect)
+    if toolbar_height > screensize[1] - 64:
+        options.toolbar_height = toolbar_height = screensize[1] - 64
+        reset_menu()
+        toolbar.resizing = True
+        modified.add(toolbar.rect)
     if progress.seeking:
         orig = player.pos
         if player.end < inf:
@@ -1622,6 +1632,11 @@ def update_menu():
             reset_menu()
             sidebar.resizing = True
             modified.add(sidebar.rect)
+    if sidebar_width > screensize[0] - 8:
+        options.sidebar_width = sidebar_width = screensize[0] - 8
+        reset_menu()
+        sidebar.resizing = True
+        modified.add(sidebar.rect)
     if queue and isfinite(e_dur(queue[0].duration)):
         if kspam[K_PAGEUP]:
             submit(seek_rel, 300)
@@ -1906,16 +1921,16 @@ def spinnies():
                 progress.particles.pops(pops)
             except IndexError:
                 pass
-            x = progress.pos[0] + round(progress.length * progress.vis / player.end) - progress.width // 2 if not progress.seeking or player.end < inf else mpos2[0]
+            x = progress.pos[0] + round_random(progress.length * progress.vis / player.end) - progress.width // 2 if not progress.seeking or player.end < inf else mpos2[0]
             x = min(progress.pos[0] - progress.width // 2 + progress.length, max(progress.pos[0] - progress.width // 2, x))
-            r = ceil(progress.spread * toolbar_height) >> 1
             d = abs(pc() % 2 - 1)
             hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
             for i in shuffle(range(3)):
-                a = progress.angle + i / 3 * tau
-                point = [cos(a) * r, sin(a) * r]
-                p = (x + point[0], progress.pos[1] + point[1])
+                r = round_random(progress.spread * toolbar.pause.radius)
                 if r:
+                    a = progress.angle + i / 3 * tau
+                    point = [cos(a) * r, sin(a) * r]
+                    p = (x + point[0], progress.pos[1] + point[1])
                     progress.particles.append(cdict(
                         centre=(x, progress.pos[1]),
                         angle=a,
@@ -2144,7 +2159,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
             surf = pil2pyg(im)
         else:
             if sidebar_width >= 192:
-                r = (screensize[0] - 68, 557, 64, 32)
+                r = (screensize[0] - 68 + offs + sidebar_width, 557, 64, 32)
                 if in_rect(mpos, r):
                     if mclick[0]:
                         submit(update_collections2)
@@ -2376,7 +2391,7 @@ def draw_menu():
             )
     highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
     crosshair |= highlighted
-    osci_rect = (screensize[0] - 8 - progress.box, screensize[1] - toolbar_height, progress.box, toolbar_height * 2 // 3 - 3)
+    osci_rect = (screensize[0] - 8 - progress.box, screensize[1] - toolbar_height + toolbar.pause.radius - osize[1] / 2) + osize
     if (toolbar.updated or not tick & 7) and toolbar.colour:
         bevel_rectangle(
             DISP,
@@ -2395,7 +2410,7 @@ def draw_menu():
                     pos=(ripple.pos[0], ripple.pos[1] - screensize[1] + toolbar_height),
                     radius=ripple.radius,
                     fill_ratio=1 / 3,
-                    alpha=sqrt(max(0, ripple.alpha)) * 16,
+                    alpha=max(0, ripple.alpha / 255) ** 0.75 * 255,
                 )
             DISP.blit(
                 DISP2,
@@ -2571,7 +2586,7 @@ def draw_menu():
                     resp = requests.get(f"https://cdn.discordapp.com/emojis/{z}.png")
                 try:
                     if not surf:
-                        surf = load_surface(io.BytesIO(resp.content), greyscale=True)
+                        surf = load_surface(io.BytesIO(resp.content), greyscale=True, size=(128, 128))
                         globals()["alt-surf"] = surf
                     globals()["alt-play"] = pygame.transform.smoothscale(surf, (radius << 1,) * 2)
                 except:
@@ -2664,12 +2679,12 @@ def draw_menu():
                 c = (255, 0, 0)
             else:
                 c = (127, 0, 127)
-            y = screensize[1] - toolbar_height * 2 // 3 - 2
+            y = osci_rect[1] + osci_rect[3] // 2
             pygame.draw.line(
                 DISP,
                 c,
-                (screensize[0] - 8 - progress.box, y),
-                (screensize[0] - 8 - 1, y)
+                (osci_rect[0], y),
+                (osci_rect[0] + osci_rect[2], y)
             )
         if player.flash_o > 0:
             bevel_rectangle(
@@ -2700,7 +2715,7 @@ def draw_menu():
             )
             x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
             x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
-            r = progress.spread * toolbar_height / 2
+            r = progress.spread * toolbar.pause.radius
             if r:
                 ripple_f = globals().get("s-ripple", concentric_circle)
                 ripple_f(
@@ -2711,7 +2726,7 @@ def draw_menu():
                     fill_ratio=0.5,
                 )
             for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
-                ri = max(1, round(p.life ** 1.1 / 7 ** 0.1))
+                ri = max(1, round_random(p.life ** 1.2 * toolbar.pause.radius / 72))
                 col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
                 a = round(min(255, (p.life - 2.5) * 12))
                 point = [cos(p.angle) * p.rad, sin(p.angle) * p.rad]
@@ -2795,7 +2810,7 @@ def draw_menu():
                         )
                         if no_lyrics_path:
                             options.no_lyrics_path = no_lyrics_path
-                            globals()["no_lyrics_fut"] = submit(load_surface, no_lyrics_path)
+                            globals()["no_lyrics_fut"] = submit(load_surface, no_lyrics_path, force=True)
 
                     def search_lyrics():
                         query = easygui.get_string(
@@ -2856,13 +2871,10 @@ def draw_menu():
                 mixer.submit(f"~setting spectrogram {options.spectrogram}")
                 if not options.spectrogram and queue:
                     submit(render_lyrics, queue[0])
-        elif in_rect(mpos, osci_rect) and not toolbar.resizer:
-            if mclick[1]:
-                pass
-            else:
-                player.flash_o = 32
-                options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
-                mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
+    if mclick[0] and in_rect(mpos, osci_rect) and not toolbar.resizer:
+        player.flash_o = 32
+        options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
+        mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
     if sidebar.menu:
         if sidebar.menu.get("scale", 0) < 1:
             sidebar.menu.scale = min(1, sidebar.menu.get("scale", 0) + dur * 3 / sqrt(len(sidebar.menu.buttons)))
@@ -3010,9 +3022,13 @@ try:
     tick = 0
     while True:
         if not tick % 36000:
-            if utc() - os.path.getmtime(collections2f) > 3600:
-                submit(update_collections2)
-                common.repo_fut = submit(update_repo)
+            try:
+                if utc() - os.path.getmtime(collections2f) > 3600:
+                    submit(update_collections2)
+                    common.repo_fut = submit(update_repo)
+            except FileNotFoundError:
+                submit(update_repo)
+                update_collections2()
         if not tick % (status_freq + (status_freq & 1)):
             submit(send_status)
         fut = common.__dict__.pop("repo-update", None)
@@ -3053,7 +3069,7 @@ try:
                 toolbar.ripples.clear()
                 sidebar.ripples.clear()
         if not player.get("fut"):
-            if queue:
+            if queue and not toolbar.editor:
                 player.fut = submit(start)
         elif not queue:
             player.pop("fut").result()
@@ -3080,7 +3096,7 @@ try:
             kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
             kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
             krelease = [not x and y for x, y in zip(kheld, kprev)]
-            kspam = KeyList(x or y >= 60 for x, y in zip(kclick, kheld))
+            kspam = KeyList(0 < x < 8 or y >= 60 for x, y in zip(kclick, kheld))
             # if any(kclick):
             #     print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
             if kclick[K_BACKQUOTE]:
@@ -3380,7 +3396,7 @@ except Exception as ex:
         fn = e.name
         if e.is_file(follow_symlinks=False):
             if fn.endswith(".pcm"):
-                if fn[0] == "\x7f":
+                if fn[0] in "\x7f&":
                     futs.add(submit(os.remove, e.path))
                 elif fn[0] == "~":
                     s = e.stat()

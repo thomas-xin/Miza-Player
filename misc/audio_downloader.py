@@ -1,6 +1,6 @@
 # This file mostly contains code copied from the Miza discord bot's voice command category
 
-import youtube_dl, contextlib, requests, random, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures, itertools
+import os, youtube_dl, contextlib, requests, random, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures, itertools
 from math import *
 from traceback import print_exc
 
@@ -549,10 +549,12 @@ def is_image(url):
 e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else 300)
 
 
+ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+
 # Runs ffprobe on a file or url, returning the duration if possible.
 def _get_duration(filename, _timeout=12):
     command = (
-        "ffprobe",
+        ffprobe,
         "-v",
         "error",
         "-select_streams",

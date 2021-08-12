@@ -37,6 +37,15 @@ def pc():
         return 0
     return t - pt
 
+def round_random(x):
+    y = int(x)
+    if y == x:
+        return y
+    x %= 1
+    if random.random() <= x:
+        y += 1
+    return y
+
 def as_str(s):
     if type(s) in (bytes, bytearray, memoryview):
         return bytes(s).decode("utf-8", "replace")
@@ -203,10 +212,12 @@ def pya_init():
 channel2 = None
 pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
 
+ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
 
 def _get_duration(filename, _timeout=12):
     command = (
-        "ffprobe",
+        ffprobe,
         "-v",
         "error",
         "-select_streams",
@@ -279,7 +290,7 @@ def probe(stream):
     except KeyError:
         pass
     command = (
-        "ffprobe",
+        ffprobe,
         "-v",
         "error",
         "-select_streams",
@@ -867,7 +878,7 @@ emptymem = memoryview(emptybuff)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
-    global file, fn, proc, drop, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, packet_advanced, packet_advanced2, packet_advanced3
+    global file, fn, proc, drop, quiet, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, packet_advanced, packet_advanced2, packet_advanced3
     skipzeros = False
     try:
         frame = pos * 30
@@ -953,7 +964,12 @@ def play(pos):
                     sample = smp
                 sbuffer = sample.astype(np.float32)
                 if settings.silenceremove and np.mean(np.abs(sample)) < 64:
-                    raise StopIteration
+                    if quiet >= 15:
+                        raise StopIteration
+                    else:
+                        quiet += 1
+                else:
+                    quiet = 0
                 lastpacket = packet
                 packet = b
                 packet_advanced = True
@@ -1279,7 +1295,35 @@ def ensure_parent():
             proc.kill()
 
 
-ffmpeg_start = ("ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+n_measure = lambda n: n[0]
+n_instrument = lambda n: n[2]
+n_pos = lambda n: n[1]
+n_pitch = lambda n: n[3]
+n_length = lambda n: n[4]
+n_volume = lambda n: n[5] if len(n) > 5 else 0.25
+n_pan = lambda n: n[6] if len(n) > 6 else 0
+n_effects = lambda n: n[7] if len(n) > 7 else ()
+
+def render_notes(samples, notes):
+    bufofs = bar * editor.timesig[0] * note_length
+    for n in notes:
+        wave = editor.waves[n_instrument(n)]
+        offs = n_pos(n) * note_length
+        length = n_length(n) * note_length
+        freq = 440 * 2 ** ((n_pitch(n) - 57) / 12)
+        slength = 48000 / freq
+        pos = round_random(offs - (bufofs + offs) % slength)
+        if length > 2 * slength:
+            over = length % slength
+            if over:
+                length += slength - over
+        positions = np.linspace(0, length / slength * len(wave), round_random(length), endpoint=False)
+        positions %= len(wave)
+        sample = np.interp(positions, np.arange(len(wave)), wave)
+        samples[pos:len(sample)] += sample
+
+
+ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
 settings = cdict()
 alphakeys = prevkeys = ()
@@ -1305,12 +1349,14 @@ paused = None
 req = 1600 * 2 * 2
 frame = 0
 drop = 0
+quiet = 0
 failed = 0
+editor = None
 submit(render)
 submit(remover)
 submit(duration_est)
-submit(ensure_parent)
 submit(piano_player)
+submit(ensure_parent)
 pc()
 waiting = None
 while not sys.stdin.closed and failed < 8:
@@ -1320,6 +1366,23 @@ while not sys.stdin.closed and failed < 8:
             command = command.rstrip().rstrip("\x00")
             failed = 0
             pos = frame / 30
+            if command.startswith("~editor"):
+                s = command[8:]
+                editor = cdict(json.loads(s))
+                note_length = 60 / editor.tempo * 48000
+                continue
+            if command.startswith("~render"):
+                s = command[8:]
+                p, b, s = s.split(" ", 2)
+                bar = int(b)
+                notes = json.loads(s)
+                samplecount = round_random(editor.timesig[0] * note_length)
+                samples = np.zeros(samplecount, dtype=np.int16)
+                render_notes(samples, notes)
+                out = samples.tobytes()
+                with open(f"cache/&p{p}b{b}", "wb") as f:
+                    f.write(out)
+                continue
             if command.startswith("~synth"):
                 it = map(float, command[7:].split())
                 if sf and not sf.done():

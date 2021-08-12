@@ -91,12 +91,11 @@ except FileNotFoundError:
             print(f"FFmpeg version {s} found; skipping installation...")
         except FileNotFoundError:
             print(f"Downloading FFmpeg version {v}...")
-            fut = submit(subprocess.run, [sys.executable, "downloader.py", "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"], cwd="misc")
+            fut = submit(subprocess.run, [sys.executable, "downloader.py", "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", "ffmpeg.zip"], cwd="misc")
             import zipfile, io
             fut.result()
             print("Download complete; extracting new FFmpeg installation...")
-            f = os.listdir("misc/files")
-            f = f"misc/files/{f[0]}"
+            f = f"misc/files/ffmpeg.zip"
             with zipfile.ZipFile(f) as z:
                 names = [name for name in z.namelist() if "/bin/" in name and ".exe" in name]
                 for i, name in enumerate(names):

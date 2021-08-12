@@ -73,6 +73,8 @@ try:
     update_collections = utc() - os.path.getmtime(collections2f) > 3600
 except FileNotFoundError:
     update_collections = True
+
+if update_collections:
     import requests
     print("Verifying FFmpeg installation...")
     with requests.get("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", stream=True) as resp:
@@ -110,6 +112,8 @@ except FileNotFoundError:
                                 y.write(b)
             print("FFmpeg extraction complete.")
             submit(os.remove, f)
+            if os.path.abspath("") not in os.getenv("PATH", "").split(os.pathsep):
+                subprocess.run(["setx", "path", os.path.abspath("") + os.pathsep + os.getenv("PATH", "")])
 
 
 hasmisc = os.path.exists("misc")

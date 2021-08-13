@@ -67,6 +67,8 @@ def as_str(s):
 
 ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+sox = "sox.exe" if os.name == "nt" else "sox"
+org2xm = "org2xm.exe" if os.name == "nt" else "org2xm"
 
 collections2f = "misc/collections2.tmp"
 try:
@@ -75,45 +77,126 @@ except FileNotFoundError:
     update_collections = True
 
 if update_collections:
+
+    def add_to_path():
+        p = os.path.abspath("sndlib")
+        PATH = set(os.getenv("PATH", "").split(os.pathsep))
+        if p not in PATH:
+            PATH.add(p)
+            s = os.pathsep.join(PATH) + os.pathsep
+            subprocess.run(["setx", "path", s])
+            os.environ["PATH"] = s
+
     import requests
     print("Verifying FFmpeg installation...")
-    with requests.get("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", stream=True) as resp:
-        try:
-            v = resp.url.rsplit("/", 1)[-1].split("-", 1)[-1].rsplit(".", 1)[0].split("-", 1)[0]
-            r = subprocess.run(ffmpeg, stderr=subprocess.PIPE)
-            s = r.stderr[:r.stderr.index(b"\n")].decode("utf-8", "replace").strip().lower()
-            if s.startswith("ffmpeg"):
-                s = s[6:].lstrip()
-            if s.startswith("version"):
-                s = s[7:].lstrip()
-            s = s.split("-", 1)[0]
-            if s != v:
-                print(f"FFmpeg version outdated ({v} > {s})")
-                raise FileNotFoundError
-            print(f"FFmpeg version {s} found; skipping installation...")
-        except FileNotFoundError:
-            print(f"Downloading FFmpeg version {v}...")
-            fut = submit(subprocess.run, [sys.executable, "downloader.py", "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", "ffmpeg.zip"], cwd="misc")
-            import zipfile, io
-            fut.result()
-            print("Download complete; extracting new FFmpeg installation...")
-            f = f"misc/files/ffmpeg.zip"
-            with zipfile.ZipFile(f) as z:
-                names = [name for name in z.namelist() if "/bin/" in name and ".exe" in name]
-                for i, name in enumerate(names):
-                    print(f"{i}/{len(names)}")
-                    fn = name.rsplit("/", 1)[-1]
-                    with open(fn, "wb") as y:
-                        with z.open(name, "r") as x:
-                            while True:
-                                b = x.read(1048576)
-                                if not b:
-                                    break
-                                y.write(b)
-            print("FFmpeg extraction complete.")
-            submit(os.remove, f)
-            if os.path.abspath("") not in os.getenv("PATH", "").split(os.pathsep):
-                subprocess.run(["setx", "path", os.path.abspath("") + os.pathsep + os.getenv("PATH", "")])
+    if os.path.exists("ffmpeg.exe"):
+        futs = set()
+        futs.add(submit(os.remove, "ffmpeg.exe"))
+        futs.add(submit(os.remove, "ffprobe.exe"))
+        futs.add(submit(os.remove, "ffplay.exe"))
+        for fut in futs:
+            try:
+                fut.result()
+            except:
+                pass
+    try:
+        v = "4.4"
+        r = subprocess.run(ffmpeg, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        s = r.stderr[:r.stderr.index(b"\n")].decode("utf-8", "replace").strip().lower()
+        if s.startswith("ffmpeg"):
+            s = s[6:].lstrip()
+        if s.startswith("version"):
+            s = s[7:].lstrip()
+        s = s.split("-", 1)[0]
+        if s < v:
+            print(f"FFmpeg version outdated ({v} > {s})")
+            raise FileNotFoundError
+        # print(f"FFmpeg version {s} found; skipping installation...")
+    except FileNotFoundError:
+        urls = """
+https://cdn.discordapp.com/attachments/699815878010732574/875783935244771358/z1.zip
+https://cdn.discordapp.com/attachments/699815878010732574/875783941947273236/z2.zip
+https://drive.google.com/u/0/uc?id=1MRIVBn9GngZdGSl_BqFQ9WLVjxMnYoDS&export=download
+https://drive.google.com/u/0/uc?id=1stdrdMrImHVT4IaLsdcGaRceAdn4VL58&export=download
+""".strip().splitlines()
+        import zipfile, io
+        if not os.path.exists("sndlib"):
+            os.mkdir("sndlib")
+        print(f"Downloading FFmpeg version {v}...")
+        futs = []
+        for url in urls:
+            futs.append(submit(requests.get, url))
+        for i, fut in enumerate(futs):
+            print(f"{i}/{len(futs)}", end="\r")
+            with fut.result() as resp:
+                f = io.BytesIO(resp.content)
+                if zipfile.is_zipfile(f):
+                    with zipfile.ZipFile(f) as z:
+                        z.extractall("sndlib")
+                else:
+                    f.seek(0)
+                    with open("sndlib/" + resp.url.rsplit("/", 1)[-1].lower(), "wb") as g:
+                        g.write(f.read())
+        print(f"{len(futs)}/{len(futs)}")
+        print("FFmpeg extraction complete.")
+        add_to_path()
+    print("Verifying SoX installation...")
+    try:
+        subprocess.run(sox, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        urls = """
+https://cdn.discordapp.com/attachments/699815878010732574/875773374893281380/sox.zip
+""".strip().splitlines()
+        import zipfile, io
+        if not os.path.exists("sndlib"):
+            os.mkdir("sndlib")
+        print(f"Downloading SoX version 14.4.2...")
+        futs = []
+        for url in urls:
+            futs.append(submit(requests.get, url))
+        for i, fut in enumerate(futs):
+            print(f"{i}/{len(futs)}", end="\r")
+            with fut.result() as resp:
+                f = io.BytesIO(resp.content)
+                if zipfile.is_zipfile(f):
+                    with zipfile.ZipFile(f) as z:
+                        z.extractall("sndlib")
+                else:
+                    f.seek(0)
+                    with open("sndlib/" + resp.url.rsplit("/", 1)[-1].lower(), "wb") as g:
+                        g.write(f.read())
+        print(f"{len(futs)}/{len(futs)}")
+        print("SoX extraction complete.")
+        add_to_path()
+    print("Verifying Org2XM installation...")
+    try:
+        subprocess.run(org2xm, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        urls = """
+https://github.com/thomas-xin/Miza/raw/master/misc/org2xm.exe
+https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true
+""".strip().splitlines()
+        import zipfile, io
+        if not os.path.exists("sndlib"):
+            os.mkdir("sndlib")
+        print(f"Downloading Org2XM...")
+        futs = []
+        for url in urls:
+            futs.append(submit(requests.get, url))
+        for i, fut in enumerate(futs):
+            print(f"{i}/{len(futs)}", end="\r")
+            with fut.result() as resp:
+                f = io.BytesIO(resp.content)
+                if zipfile.is_zipfile(f):
+                    with zipfile.ZipFile(f) as z:
+                        z.extractall("sndlib")
+                else:
+                    f.seek(0)
+                    with open("sndlib/" + resp.url.rsplit("/", 1)[-1].lower(), "wb") as g:
+                        g.write(f.read())
+        print(f"{len(futs)}/{len(futs)}")
+        print("Org2XM extraction complete.")
+        add_to_path()
 
 
 hasmisc = os.path.exists("misc")
@@ -1719,13 +1802,13 @@ def org2xm(org, dat=None):
             with open(r_dat, "wb") as f:
                 f.write(dat)
         else:
-            r_dat = "misc/ORG210EN.DAT"
+            r_dat = "sndlib/ORG210EN.DAT"
             orig = True
             if not os.path.exists(r_dat):
                 with requests.get("https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true", stream=True) as resp:
                     with open(r_dat, "wb") as f:
                         f.write(resp.content)
-    args = ["misc/org2xm.exe", r_org, r_dat]
+    args = ["org2xm.exe", r_org, r_dat]
     if compat:
         args.append("c")
     print(args)

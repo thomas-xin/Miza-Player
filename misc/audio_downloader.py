@@ -1736,7 +1736,4 @@ def get_lyrics(search):
             except:
                 if i:
                     raise
-                print_exc()
-                # print(s)
-                # print(text)
     raise LookupError(f"No results for {item}.")

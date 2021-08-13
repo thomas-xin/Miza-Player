@@ -116,14 +116,14 @@ def update_piano():
         create_pattern()
     if not project.instruments:
         add_instrument()
-    if kspam[K_LEFT]:
-        editor.targ_x -= 8 * duration
-    if kspam[K_UP]:
-        editor.targ_y += 64 * duration
-    if kspam[K_RIGHT]:
-        editor.targ_x += 8 * duration
-    if kspam[K_DOWN]:
-        editor.targ_y -= 64 * duration
+    if kspam[K_LEFT] and not (kheld[K_LEFT] - 1) % 3:
+        editor.targ_x -= 32 * duration
+    if kspam[K_UP] and not (kheld[K_UP] - 1) % 3:
+        editor.targ_y += 256 * duration
+    if kspam[K_RIGHT] and not (kheld[K_RIGHT] - 1) % 3:
+        editor.targ_x += 32 * duration
+    if kspam[K_DOWN] and not (kheld[K_DOWN] - 1) % 3:
+        editor.targ_y -= 256 * duration
     if editor.targ_x < 0:
         editor.targ_x = 0
     x, y = editor.scroll_x, editor.scroll_y
@@ -344,8 +344,8 @@ def n_rect(n):
     note_spacing = note_height + 1
     keys = ceil((player.rect[3] - 16) / note_spacing + 1)
     centre = 48 + (keys + 1 >> 1) + floor(editor.scroll_y)
-    x = PW + (n_pos(n) + (n_measure(n) - editor.scroll_x / timesig[0]) * timesig[0]) * note_width
-    y = note_spacing * (centre - n_pitch(n) - 1.5 + editor.scroll_y % 1) + 1
+    x = PW + (n_pos(n) + (n_measure(n) - editor.scroll_x) * timesig[0]) * note_width
+    y = note_spacing * (centre - n_pitch(n) - 1.5 + editor.scroll_y % 1) + 0.5
     w = n_length(n) * note_width
     h = note_height
     return x, y, w, h
@@ -418,7 +418,7 @@ def render_piano():
     offs_y = editor.targ_y % 1 * note_spacing
     offs_y = round(offs_y - note_spacing)
     surf = player.get("editor_surf")
-    swidth = 512
+    swidth = 12 * note_width * timesig[0]
     soffs = swidth >> 1
     ssize = np.array(player.rect[2:]) + swidth
     ssize[0] -= PW
@@ -435,12 +435,12 @@ def render_piano():
             name = note_names[note % 12]
             c = (127,) * 3
             if i != keys:
-                draw_hline(surf, 0, ssize[0], offs_y, c)
+                draw_hline(surf, 0, ssize[0], offs_y - 1, c)
             if name.endswith("#"):
                 c = note_colour(note % 12, 0.75, 0.125)
             else:
                 c = note_colour(note % 12, 0.5, 0.25)
-            r = (0, offs_y - note_spacing + 1, ssize[0], note_height)
+            r = (0, offs_y - note_spacing, ssize[0], note_height)
             surf.fill(c, r)
             offs_y += note_spacing
 
@@ -463,19 +463,19 @@ def render_piano():
             for n in notes[-1024:]:
                 col = n_colour(n)
                 r = list(n_rect(n))
-                r[0] += (editor.targ_x + editor.scroll_x) * timesig[0] * note_width + soffs
+                r[0] -= (editor.targ_x - editor.scroll_x) * timesig[0] * note_width - soffs
                 r[1] += (editor.targ_y - editor.scroll_y) * note_spacing + soffs
                 rounded_bev_rect(surf, col + (191,), r, bevel=ceil(note_height / 5))
 
-    x = (editor.targ_x - editor.scroll_x) * timesig[0] * note_width - soffs
+    x = (editor.scroll_x - editor.targ_x) * timesig[0] * note_width + soffs
     y = (editor.scroll_y - editor.targ_y) * note_spacing - soffs
-    r = [max(0, -x), max(0, -y), player.rect[2] - PW, player.rect[3]]
+    r = [max(0, x), max(0, -y), player.rect[2] - PW, player.rect[3]]
     if r[0] + r[2] > surf.get_width():
         r[2] = surf.get_width() - r[0]
     if r[1] + r[3] > surf.get_height():
         r[3] = surf.get_height() - r[1]
     surf = surf.subsurface(r)
-    DISP.blit(surf, (PW, 0))
+    DISP.blit(surf, (max(0, -x) + PW, max(0, y)))
     del surf
 
     xy = [None, None]
@@ -485,9 +485,6 @@ def render_piano():
     centre = 48 + (keys + 1 >> 1) + floor(editor.scroll_y)
     offs_x = (editor.scroll_x * barlength) % 1 * barlength
     itx = round(editor.scroll_x * barlength)
-    offs_y = editor.scroll_y % 1 * note_spacing
-    offs_y = round(offs_y - note_spacing / 2)
-    pitch = 0
     linec = ceil((player.rect[2] - PW) / note_width * timesig[1])
     for i in range(linec):
         x = PW + i * note_width / timesig[1] - offs_x
@@ -495,7 +492,31 @@ def render_piano():
             continue
         if not (i + itx) % (barlength):
             message_display((i + itx) // barlength, 12, (x + 3, 0), colour=(255, 255, 0), surface=DISP, align=0)
+    ssize = (PW, player.rect[3])
+    if not editor.get("piano_surf") or editor.piano_surf.get_size() != ssize:
+        editor.piano_surf = surf = pygame.Surface(ssize)
+        offs_y = editor.scroll_y % 1 * note_spacing
+        offs_y = round(offs_y - note_spacing / 2)
+        for i in range(keys + 1):
+            note = round(centre - i)
+            name = note_names[note % 12]
+            c = note_colour(note % 12, 0.375, 0.875)
+            r = (0, offs_y - note_spacing, PW, note_height)
+            bevel_rectangle(surf, c, r, bevel=ceil(note_height / 5))
+            octave = note // 12
+            if not note % 12 and note_height > 6:
+                s = ceil(note_height * 0.75)
+                message_display(f"C{octave}", s, (PW - 2, offs_y - note_spacing + note_height), colour=(0,) * 3, surface=surf, align=2)
+            if name.endswith("#"):
+                c = note_colour(note % 12, 0.375, 1 / 3)
+                r = (0, offs_y - note_spacing + ceil(note_height / 10), PW * 5 / 8, note_height - ceil(note_height / 10) * 2)
+                bevel_rectangle(surf, c, r, bevel=ceil(note_height / 5))
+            offs_y += note_spacing
+    DISP.blit(editor.piano_surf, (0, 0))
 
+    pitch = 0
+    offs_y = editor.scroll_y % 1 * note_spacing
+    offs_y = round(offs_y - note_spacing / 2)
     for i in range(keys + 1):
         note = round(centre - i)
         name = note_names[note % 12]
@@ -520,12 +541,12 @@ def render_piano():
                     bevel_rectangle(DISP, c, r, bevel=ceil(note_height / 5))
             if highlighted:
                 c = (255, 255, 255, 48)
-                r = (PW, offs_y - note_spacing + 1, player.rect[2] - PW, note_height)
+                r = (PW, offs_y - note_spacing, player.rect[2] - PW, note_height)
                 bevel_rectangle(DISP, c, r, bevel=0)
             if mpos[0] >= PW and selected:
-                n = floor((mpos[0] - PW) / note_width * timesig[1])
                 space = round(note_width / timesig[1])
-                x = PW + n * space
+                n = floor((mpos[0] - PW) / note_width * timesig[1] + offs_x / space % 1)
+                x = ceil(PW + n * space - offs_x)
                 xy[0] = x
                 if highlighted:
                     r = (x, 0, space, player.rect[3])
@@ -564,7 +585,7 @@ def render_piano():
                     else:
                         r = [min(p[0], q[0]), min(p[1], q[1])]
                         r += [max(p[0], q[0]) - r[0], max(p[1], q[1]) - r[1]]
-                    if not mheld[0]:
+                    if not mheld[0] and r:
                         editor.selection.point = 0
                         min_measure = max(0, floor((r[0] - PW) / note_width / timesig[0] - (player.rect[2] - PW) / timesig[0] / note_width))
                         max_measure = ceil((r[0] + r[2] - PW) / note_width / timesig[0] + (player.rect[2] - PW) / timesig[0] / note_width)
@@ -845,28 +866,6 @@ def render_piano():
             editor.selection.orig = (None, None)
         else:
             editor.selection.orig = ntuple
-
-    ssize = (PW, player.rect[3])
-    if not editor.get("piano_surf") or editor.piano_surf.get_size() != ssize:
-        editor.piano_surf = surf = pygame.Surface(ssize)
-        offs_y = editor.scroll_y % 1 * note_spacing
-        offs_y = round(offs_y - note_spacing / 2)
-        for i in range(keys + 1):
-            note = round(centre - i)
-            name = note_names[note % 12]
-            c = note_colour(note % 12, 0.375, 0.875)
-            r = (0, offs_y - note_spacing, PW, note_height)
-            bevel_rectangle(surf, c, r, bevel=ceil(note_height / 5))
-            octave = note // 12
-            if not note % 12 and note_height > 6:
-                s = ceil(note_height * 0.75)
-                message_display(f"C{octave}", s, (PW - 2, offs_y - note_spacing + note_height), colour=(0,) * 3, surface=surf, align=2)
-            if name.endswith("#"):
-                c = note_colour(note % 12, 0.375, 1 / 3)
-                r = (0, offs_y - note_spacing + ceil(note_height / 10), PW * 5 / 8, note_height - ceil(note_height / 10) * 2)
-                bevel_rectangle(surf, c, r, bevel=ceil(note_height / 5))
-            offs_y += note_spacing
-    DISP.blit(editor.piano_surf, (0, 0))
 
     r = player.rect[:2] + (16, player.rect[3] - 16)
     hovered = in_rect(mpos, r)

@@ -188,6 +188,7 @@ def download(url, fn, resp=None, index=0, start=None, end=None):
 fn = None
 if len(sys.argv) < 2:
     url = input("Please enter a URL to download from: ")
+    threads = 1
 else:
     args = list(sys.argv)
     url = args[1]

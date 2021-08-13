@@ -5,9 +5,7 @@ playlists
 assoc.bat
 Rockwell.ttf
 OpenSansEmoji.ttf
-ffmpeg.exe
-ffplay.exe
-ffprobe.exe
+sndlib
 training.txt
 *.json
 *.tmp

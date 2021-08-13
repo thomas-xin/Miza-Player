@@ -978,10 +978,7 @@ def render_lyrics(entry):
         except KeyError:
             try:
                 lyrics = lyrics_scraper.result()(name)
-            except LookupError:
-                lyrics = ""
             except:
-                print_exc()
                 lyrics = ""
             if lyrics:
                 lyrics_cache[name] = lyrics

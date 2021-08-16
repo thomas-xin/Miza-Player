@@ -885,6 +885,8 @@ def play(pos):
         while True:
             if paused and drop <= 0:
                 paused.result()
+            if stopped:
+                break
             p = proc
             if fn:
                 if not file:
@@ -1285,14 +1287,14 @@ def piano_player():
         print_exc()
 
 
+PROC = psutil.Process()
 def ensure_parent():
-    proc = psutil.Process()
     par = psutil.Process(os.getppid())
     while True:
         if par.is_running():
             time.sleep(0.1)
         else:
-            proc.kill()
+            PROC.kill()
 
 
 n_measure = lambda n: n[0]
@@ -1341,6 +1343,7 @@ sh = ""
 fut = None
 sf = None
 reading = None
+stopped = False
 point_fut = None
 proc = None
 fn = None
@@ -1500,8 +1503,9 @@ while not sys.stdin.closed and failed < 8:
             if fut:
                 if paused:
                     paused.set_result(None)
+                stopped = True
                 try:
-                    fut.result(timeout=4)
+                    fut.result(timeout=5)
                 except:
                     print_exc()
                     print("Previously playing song timed out, killing relevant subprocesses and skipping...")
@@ -1509,6 +1513,7 @@ while not sys.stdin.closed and failed < 8:
                     fut = None
                 if paused:
                     paused = concurrent.futures.Future()
+            stopped = False
             if reading:
                 reading.result()
                 reading = None

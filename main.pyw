@@ -1378,7 +1378,7 @@ def wait_on():
                 return
         except:
             print_exc()
-        time.sleep(0.5)
+        time.sleep(1)
     print("Device switch cancelled.")
 
 def pos():

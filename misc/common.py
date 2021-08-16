@@ -41,6 +41,11 @@ concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjus
 
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=48)
 submit = exc.submit
+def _settimeout(*args, timeout=0, **kwargs):
+    if timeout > 0:
+        time.sleep(timeout)
+    args[0](*args[1:], **kwargs)
+settimeout = lambda *args, **kwargs: submit(_settimeout, *args, **kwargs)
 print_exc = traceback.print_exc
 
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
@@ -394,7 +399,7 @@ def start_mixer():
             except OSError:
                 print(mixer.stderr.read(), end="")
                 raise
-            reset_menu(reset=True)
+            mixer.new = True
     except:
         print_exc()
     return mixer

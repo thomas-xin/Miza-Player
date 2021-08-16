@@ -6,16 +6,17 @@ modlist = """
 bs4>=0.0.1
 easygui>=0.98.2
 easygui_qt>=0.9.3
-numpy>=1.20.3
+numpy>=1.21.2
 psutil>=5.8.0
 pygame>=2.0.1
 pyperclip>=1.8.2
 python-magic-bin>=0.4.14
 PyQt5>=5.15.4
-requests>=2.25.1
+requests>=2.26.0
 samplerate>=0.1.0
-scipy>=1.6.3
-youtube-dl>=2021.4.26
+scipy>=1.7.1
+youtube-dl>=2021.6.6
+pyFluidSynth>=1.3.0
 """.split("\n")
 
 try:
@@ -26,7 +27,7 @@ except ModuleNotFoundError:
 
 x = sys.version_info[1]
 if x >= 9:
-    modlist[0] = "pillow>=8.2.0"
+    modlist[0] = "pillow>=8.3.1"
 psize = None
 
 installing = []

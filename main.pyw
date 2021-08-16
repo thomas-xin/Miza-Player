@@ -902,6 +902,7 @@ def reset_menu(full=True, reset=False):
     if ssize != ssize2 or full and reset:
         ssize = ssize2
         mixer.submit(f"~ssize {' '.join(map(str, ssize))}")
+        mixer.new = False
     player.rect = (0,) * 2 + ssize
     sidebar.colour = None
     sidebar.updated = False
@@ -950,9 +951,10 @@ def reset_menu(full=True, reset=False):
     toolbar.resizing = False
     toolbar.resizer = False
     osize2 = (progress.box, toolbar.pause.radius * 4 // 3 - 3)
-    if osize != osize2:
+    if osize != osize2 or full and reset:
         osize = osize2
         mixer.submit(f"~osize {' '.join(map(str, osize))}")
+        mixer.new = False
 
 
 submit(setup_buttons)
@@ -1393,6 +1395,8 @@ def pos():
             if not s:
                 time.sleep(0.05)
                 continue
+            if mixer.new:
+                submit(reset_menu, reset=True)
             player.last = pc()
             s = s[1:]
             if s == "s":
@@ -1901,6 +1905,8 @@ def spinnies():
         time.sleep(0.5)
     t = pc()
     while True:
+        while is_minimised():
+            time.sleep(0.1)
         dur = max(0.001, min(t - ts, 0.125))
         ts = t
         try:
@@ -3005,7 +3011,7 @@ K_COMMA = 54
 K_PERIOD = 55
 K_SLASH = 56
 K_DELETE = 76
-reset_menu(True)
+reset_menu()
 enext = set()
 foc = True
 minimised = False

@@ -418,7 +418,7 @@ def render_piano():
     offs_y = editor.targ_y % 1 * note_spacing
     offs_y = round(offs_y - note_spacing)
     surf = player.get("editor_surf")
-    swidth = 12 * note_width * timesig[0]
+    swidth = 3 * note_width * timesig[0]
     soffs = swidth >> 1
     ssize = np.array(player.rect[2:]) + swidth
     ssize[0] -= PW

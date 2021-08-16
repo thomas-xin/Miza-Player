@@ -1480,6 +1480,7 @@ while not sys.stdin.closed and failed < 8:
                 if drop <= 60 * 30:
                     continue
                 pos = (frame + drop) / 30
+                drop = 0
             elif command != "~replay":
                 pos, duration, cdc, sh = sys.stdin.readline().rstrip().split(" ", 3)
                 pos, duration = map(float, (pos, duration))
@@ -1503,6 +1504,8 @@ while not sys.stdin.closed and failed < 8:
                     fut.result(timeout=4)
                 except:
                     print_exc()
+                    print("Previously playing song timed out, killing relevant subprocesses and skipping...")
+                    drop = 0
                     fut = None
                 if paused:
                     paused = concurrent.futures.Future()

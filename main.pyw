@@ -899,7 +899,7 @@ def reset_menu(full=True, reset=False):
             DISP.fill(0)
             modified.add(tuple(screensize))
     ssize2 = (screensize[0] - sidebar_width, screensize[1] - toolbar_height)
-    if ssize != ssize2:
+    if ssize != ssize2 or full and reset:
         ssize = ssize2
         mixer.submit(f"~ssize {' '.join(map(str, ssize))}")
     player.rect = (0,) * 2 + ssize
@@ -2166,15 +2166,16 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
                                 "No new updates found.",
                                 "Miza Player",
                             )
-                    c = (112, 127, 64)
+                    c = (112, 127, 64, 223)
                 else:
-                    c = (96, 112, 80)
+                    c = (96, 112, 80, 127)
                 bevel_rectangle(DISP, c, r, bevel=4)
                 message_display(
                     "Update",
                     16,
                     rect_centre(r),
                     colour=(255,) * 3,
+                    alpha=c[-1] + 32,
                     surface=DISP,
                     font="Comic Sans MS",
                 )

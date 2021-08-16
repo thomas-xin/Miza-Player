@@ -1,5 +1,9 @@
 import os, sys, json, traceback, subprocess, copy, time, concurrent.futures
 
+if os.name != "nt":
+    raise NotImplementedError("This program is currently implemented to use Windows API and filesystem only.")
+
+
 async_wait = lambda: time.sleep(sys.float_info.min)
 utc = time.time
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
@@ -174,7 +178,7 @@ https://cdn.discordapp.com/attachments/699815878010732574/875773374893281380/sox
     except FileNotFoundError:
         urls = """
 https://github.com/thomas-xin/Miza/raw/master/misc/org2xm.exe
-https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true
+https://github.com/Clownacy/org2xm/raw/master/ORG210EN.DAT
 """.strip().splitlines()
         import zipfile, io
         if not os.path.exists("sndlib"):
@@ -337,14 +341,16 @@ options.editor = editor
 
 orig_options = copy.deepcopy(options)
 
-if os.name != "nt":
-    raise NotImplementedError("This program is currently implemented to use Windows API only.")
+
 import psutil
 
 OUTPUT_DEVICE = None
+reset_menu = lambda *args, **kwargs: None
 
 def start_mixer():
     global mixer, hwnd, pygame, user32, ctypes, struct, io
+    if "mixer" in globals() and mixer and mixer.is_running():
+        mixer.kill()
     if "pygame" in globals() and getattr(pygame, "closed", None):
         return
     mixer = psutil.Popen(argp + ["misc/mixer.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -360,33 +366,37 @@ def start_mixer():
         start_display()
     else:
         print("Mixer subprocess has crashed; restarting...")
-    mixer.state = lambda i=0: state(i)
-    mixer.clear = lambda: clear()
-    mixer.drop = lambda i=0: drop(i)
-    mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
-    hwnd = pygame.display.get_wm_info()["window"]
-    if hasmisc:
-        s = io.StringIO()
-        s.write(("%" + str(hwnd) + "\n"))
-        for k, v in options.audio.items():
-            s.write(f"~setting #{k} {v}\n")
-        s.write(f"~setting #gradient-vertices {options.control.setdefault('gradient-vertices', 4)}\n")
-        s.write(f"~setting #spiral-vertices {options.control.setdefault('spiral-vertices', 6)}\n")
-        s.write(f"~setting #shuffle {options.control.setdefault('shuffle', 0)}\n")
-        s.write(f"~setting unfocus {options.control.setdefault('unfocus', 1)}\n")
-        s.write(f"~setting #silenceremove {options.control.setdefault('silenceremove', 0)}\n")
-        s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
-        s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
-        s.write(f"~synth 1.5 1 0 0.75 0 1\n")
-        if OUTPUT_DEVICE:
-            s.write(f"~output {OUTPUT_DEVICE}\n")
-        s.seek(0)
-        mixer.stdin.write(s.read().encode("utf-8"))
-        try:
-            mixer.stdin.flush()
-        except OSError:
-            print(mixer.stderr.read(), end="")
-            raise
+    try:
+        mixer.state = lambda i=0: state(i)
+        mixer.clear = lambda: clear()
+        mixer.drop = lambda i=0: drop(i)
+        mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
+        hwnd = pygame.display.get_wm_info()["window"]
+        if hasmisc:
+            s = io.StringIO()
+            s.write(("%" + str(hwnd) + "\n"))
+            for k, v in options.audio.items():
+                s.write(f"~setting #{k} {v}\n")
+            s.write(f"~setting #gradient-vertices {options.control.setdefault('gradient-vertices', 4)}\n")
+            s.write(f"~setting #spiral-vertices {options.control.setdefault('spiral-vertices', 6)}\n")
+            s.write(f"~setting #shuffle {options.control.setdefault('shuffle', 0)}\n")
+            s.write(f"~setting unfocus {options.control.setdefault('unfocus', 1)}\n")
+            s.write(f"~setting #silenceremove {options.control.setdefault('silenceremove', 0)}\n")
+            s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
+            s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
+            s.write(f"~synth 1.5 1 0 0.75 0 1\n")
+            if OUTPUT_DEVICE:
+                s.write(f"~output {OUTPUT_DEVICE}\n")
+            s.seek(0)
+            mixer.stdin.write(s.read().encode("utf-8"))
+            try:
+                mixer.stdin.flush()
+            except OSError:
+                print(mixer.stderr.read(), end="")
+                raise
+            reset_menu(reset=True)
+    except:
+        print_exc()
     return mixer
 
 def start_display():
@@ -1546,14 +1556,20 @@ def text_objects(text, font, colour, background):
 def get_font(font):
     try:
         fn = "misc/" + font + ".ttf"
-        if font == "Rockwell":
-            with requests.get("https://drive.google.com/u/0/uc?id=1QFIyn5YPVCPitA5wZjqzJD3tRLe3sKW9&export=download") as resp:
+        if font == "OpenSansEmoji":
+            with requests.get("https://drive.google.com/u/0/uc?id=1OZs0gQ4J3vm9rEKzECatlgh5z3wfbNcZ&export=download") as resp:
+                g = io.BytesIO(resp.content)
                 with open(fn, "wb") as f:
-                    f.write(resp.content)
-        elif font == "OpenSansEmoji":
-            with requests.get("https://drive.google.com/u/0/uc?id=1sUZqTAOLd4mSW2i2xn7dqWxwRenvBkQa&export=download") as resp:
+                    with zipfile.ZipFile(g) as z:
+                        content = z.read(font + ".ttf")
+                        f.write(content)
+        elif font == "Rockwell":
+            with requests.get("https://drive.google.com/u/0/uc?id=1Lxr25oC003hfgjyzkVAjKUGuaEw9MCSf&export=download") as resp:
+                g = io.BytesIO(resp.content)
                 with open(fn, "wb") as f:
-                    f.write(resp.content)
+                    with zipfile.ZipFile(g) as z:
+                        content = z.read(font + ".ttf")
+                        f.write(content)
         if "ct_font" in globals():
             ct_font.clear()
         if "ft_font" in globals():
@@ -1571,8 +1587,10 @@ def sysfont(font, size, unicode=False):
     fn = "misc/" + font + ".ttf"
     if not os.path.exists(fn) and font not in loaded_fonts:
         if font in ("Rockwell", "OpenSansEmoji"):
-            loaded_fonts.add(font)
-            submit(get_font, font)
+            print("Downloading and applying required fonts...")
+            for fnt in ("Rockwell", "OpenSansEmoji"):
+                loaded_fonts.add(fnt)
+                submit(get_font, fnt)
     if os.path.exists(fn):
         return func.Font(fn, size)
     return func.SysFont(font, size)

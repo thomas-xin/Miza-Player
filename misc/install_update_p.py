@@ -1,6 +1,24 @@
-import sys, subprocess, traceback
+import os, sys, subprocess, traceback
 
 print("Loading and checking modules...")
+
+if "\\AppData\\" in sys.executable:
+    p = sys.executable.rsplit("\\", 1)[0]
+    paths = [p]
+    paths.append(p + "\\Scripts")
+    p = p.replace("\\Local\\Programs\\", "\\Roaming\\", 1)
+    paths.append(p + "\\Scripts")
+    paths.append(p + "\\site-packages")
+    for p in paths:
+        if not os.path.exists(p):
+            continue
+        PATH = set(i.rstrip("/\\") for i in os.getenv("PATH", "").split(os.pathsep))
+        if p not in PATH:
+            print(f"Adding {p} to PATH...")
+            PATH.add(p)
+            s = os.pathsep.join(sorted(PATH)) + os.pathsep
+            subprocess.run(["setx", "path", s])
+            os.environ["PATH"] = s
 
 modlist = """
 bs4>=0.0.1

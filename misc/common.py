@@ -89,10 +89,11 @@ if update_collections:
 
     def add_to_path():
         p = os.path.abspath("sndlib")
-        PATH = set(os.getenv("PATH", "").split(os.pathsep))
+        PATH = set(i.rstrip("/\\") for i in os.getenv("PATH", "").split(os.pathsep))
         if p not in PATH:
+            print(f"Adding {p} to PATH...")
             PATH.add(p)
-            s = os.pathsep.join(PATH) + os.pathsep
+            s = os.pathsep.join(sorted(PATH)) + os.pathsep
             subprocess.run(["setx", "path", s])
             os.environ["PATH"] = s
 

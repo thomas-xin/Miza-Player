@@ -751,30 +751,41 @@ def update_repo():
                 print("Update found!")
                 if not options.control.autoupdate:
                     globals()["repo-update"] = fut = concurrent.futures.Future()
-                with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main") as resp:
-                    b = resp.content
+                try:
+                    subprocess.run(["git"])
+                    b = None
+                except FileNotFoundError:
+                    with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main") as resp:
+                        b = resp.content
                 if not options.control.autoupdate:
                     r = fut.result()
                 else:
                     r = True
                 if r:
-                    with zipfile.ZipFile(io.BytesIO(b), allowZip64=True, strict_timestamps=False) as z:
-                        nl = z.namelist()
-                        globals()["updating"] = updating = cdict(target=len(nl), progress=0)
-                        for i, fn in enumerate(nl):
-                            updating.progress = i
-                            fn2 = fn[len("Miza-Player-main/"):]
-                            if fn2 and not fn2.endswith("/") and not fn2.endswith(".ttf"):
-                                try:
-                                    folder = fn2.rsplit("/", 1)[0]
-                                    if not os.path.exists(folder):
-                                        os.mkdir(folder)
-                                    with open(fn2, "wb") as f2:
-                                        with z.open(fn, force_zip64=True) as f:
-                                            f2.write(f.read())
-                                except PermissionError:
-                                    pass
-                        updating.progress = len(nl)
+                    globals()["updating"] = updating = cdict(target=1, progress=0)
+                    if b:
+                        with zipfile.ZipFile(io.BytesIO(b), allowZip64=True, strict_timestamps=False) as z:
+                            nl = z.namelist()
+                            updating.target = len(nl)
+                            for i, fn in enumerate(nl):
+                                updating.progress = i
+                                fn2 = fn[len("Miza-Player-main/"):]
+                                if fn2 and not fn2.endswith("/") and not fn2.endswith(".ttf"):
+                                    try:
+                                        folder = fn2.rsplit("/", 1)[0]
+                                        if not os.path.exists(folder):
+                                            os.mkdir(folder)
+                                        with open(fn2, "wb") as f2:
+                                            with z.open(fn, force_zip64=True) as f:
+                                                f2.write(f.read())
+                                    except PermissionError:
+                                        pass
+                            updating.progress = len(nl)
+                    else:
+                        subprocess.run(["git reset --hard HEAD"])
+                        updating.progress = 0.5
+                        subprocess.run(["git pull"])
+                        updating.progress = 1
                     globals().pop("updating", None)
                     if not options.control.autoupdate:
                         globals()["repo-update"] = True

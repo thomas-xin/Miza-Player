@@ -3006,7 +3006,10 @@ def save_settings():
         for entry in queue:
             url = entry.url
             name = entry.get("name") or url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
-            entries.append(dict(name=name, url=url))
+            e = dict(name=name, url=url)
+            if entry.get("duration"):
+                e["duration"] = entry["duration"]
+            entries.append(e)
         edi = player.editor.copy()
         edi.pop("change_mode")
         edi.pop("selection")

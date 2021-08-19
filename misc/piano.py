@@ -116,14 +116,26 @@ def update_piano():
         create_pattern()
     if not project.instruments:
         add_instrument()
-    if kspam[K_LEFT] and not (kheld[K_LEFT] - 1) % 3:
-        editor.targ_x -= 32 * duration
-    if kspam[K_UP] and not (kheld[K_UP] - 1) % 3:
-        editor.targ_y += 256 * duration
-    if kspam[K_RIGHT] and not (kheld[K_RIGHT] - 1) % 3:
-        editor.targ_x += 32 * duration
-    if kspam[K_DOWN] and not (kheld[K_DOWN] - 1) % 3:
-        editor.targ_y -= 256 * duration
+    if kspam[K_LEFT]:
+        if kheld[K_LEFT] == 1:
+            editor.targ_x -= 0.25
+        elif (kheld[K_LEFT] - 1) % 3:
+            editor.targ_x -= 32 * duration
+    if kspam[K_UP]:
+        if kheld[K_UP] == 1:
+            editor.targ_x += 2
+        elif (kheld[K_UP] - 1) % 3:
+            editor.targ_y += 256 * duration
+    if kspam[K_RIGHT]:
+        if kheld[K_RIGHT] == 1:
+            editor.targ_x += 0.25
+        elif (kheld[K_RIGHT] - 1) % 3:
+            editor.targ_x += 32 * duration
+    if kspam[K_DOWN]:
+        if kheld[K_DOWN] == 1:
+            editor.targ_x -= 2
+        elif (kheld[K_DOWN] - 1) % 3:
+            editor.targ_y -= 256 * duration
     if editor.targ_x < 0:
         editor.targ_x = 0
     x, y = editor.scroll_x, editor.scroll_y
@@ -414,7 +426,7 @@ def render_piano():
                 if p:
                     p.pos = [p.pos[0] - vx, p.pos[1] - vy]
 
-    offs_x = (editor.targ_x * barlength) % 1 * barlength
+    offs_x = editor.targ_x % 1 * timesig[0] * note_width
     offs_y = editor.targ_y % 1 * note_spacing
     offs_y = round(offs_y - note_spacing)
     surf = player.get("editor_surf")
@@ -446,7 +458,6 @@ def render_piano():
 
         linec = ceil(ssize[0] / note_width * timesig[1])
         for i in range(linec):
-            print(i, i + itx)
             c = 64 if (i + itx) % timesig[1] else 127 if (i + itx) % (barlength) else 255
             x = i * note_width / timesig[1] - offs_x
             if x < -0.125:
@@ -463,7 +474,7 @@ def render_piano():
             for n in notes[-1024:]:
                 col = n_colour(n)
                 r = list(n_rect(n))
-                r[0] -= (editor.targ_x - editor.scroll_x) * timesig[0] * note_width - soffs
+                r[0] -= (editor.targ_x - editor.scroll_x) * timesig[0] * note_width - soffs + PW
                 r[1] += (editor.targ_y - editor.scroll_y) * note_spacing + soffs
                 rounded_bev_rect(surf, col + (191,), r, bevel=ceil(note_height / 5))
 
@@ -483,7 +494,7 @@ def render_piano():
     selecting = options.editor.mode == "S" or CTRL[kheld] or editor.selection.point
     keys = ceil((player.rect[3] - 16) / note_spacing + 1)
     centre = 48 + (keys + 1 >> 1) + floor(editor.scroll_y)
-    offs_x = (editor.scroll_x * barlength) % 1 * barlength
+    offs_x = editor.scroll_x % 1 * timesig[0] * note_width
     itx = round(editor.scroll_x * barlength)
     linec = ceil((player.rect[2] - PW) / note_width * timesig[1])
     for i in range(linec):
@@ -546,7 +557,7 @@ def render_piano():
             if mpos[0] >= PW and selected:
                 space = round(note_width / timesig[1])
                 n = floor((mpos[0] - PW) / note_width * timesig[1] + offs_x / space % 1)
-                x = ceil(PW + n * space - offs_x)
+                x = round(PW + n * space - offs_x % space)
                 xy[0] = x
                 if highlighted:
                     r = (x, 0, space, player.rect[3])
@@ -562,8 +573,12 @@ def render_piano():
                     draw_vline(DISP, x, offs_y - note_spacing + 1, offs_y - 1, (255,) * 3)
         offs_y += note_spacing
     if all(xy):
-        npos = round_min(((xy[0] - PW) / note_width + editor.scroll_x * timesig[0]) % timesig[0])
-        measurepos = int(((xy[0] - PW) / note_width + editor.scroll_x * timesig[0]) / timesig[0])
+        measurepos = npos = None
+        x = (xy[0] - PW) / note_width + editor.scroll_x * timesig[0]
+        print(x)
+        # npos = round_min(((xy[0] - PW) / note_width + editor.scroll_x * timesig[0]) % timesig[0])
+        # measurepos = int(((xy[0] - PW) / note_width + editor.scroll_x * timesig[0]) / timesig[0])
+        # print(xy, measurepos, npos)
     else:
         measurepos = npos = None
     measures = pattern.measures

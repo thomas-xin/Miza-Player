@@ -2395,7 +2395,7 @@ def draw_menu():
             )
     highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
     crosshair |= highlighted
-    osci_rect = (screensize[0] - 8 - progress.box, screensize[1] - toolbar_height + toolbar.pause.radius - osize[1] / 2) + osize
+    osci_rect = (screensize[0] - 4 - progress.box, screensize[1] - toolbar_height + 4) + osize
     if (toolbar.updated or not tick & 7) and toolbar.colour:
         bevel_rectangle(
             DISP,
@@ -3100,7 +3100,7 @@ try:
             kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
             kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
             krelease = [not x and y for x, y in zip(kheld, kprev)]
-            kspam = KeyList(0 < x < 8 or y >= 60 for x, y in zip(kclick, kheld))
+            kspam = KeyList(x == 1 or y >= 20 for x, y in zip(kclick, kheld))
             # if any(kclick):
             #     print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
             if kclick[K_BACKQUOTE]:
@@ -3339,6 +3339,24 @@ try:
         elif minimised:
             sidebar.particles.clear()
             progress.particles.clear()
+        # if not tick & 63:
+        #     if queue:
+        #         s = time_disp(player.pos)
+        #         if s != ICON_DISP:
+        #             icon = ICON.copy()
+        #             xs = icon.get_size()
+        #             message_display(
+        #                 s,
+        #                 28,
+        #                 (xs[0] / 2, xs[1] / 5),
+        #                 colour=(255, 191, 223),
+        #                 surface=icon,
+        #                 font="Pacifico",
+        #             )
+        #             pygame.display.set_icon(icon)
+        #     elif ICON_DISP:
+        #         ICON_DISP = ""
+        #         pygame.display.set_icon(ICON)
         d = 1 / 240
         delay = max(sys.float_info.min, last_tick - pc() + d)
         last_tick = max(last_tick + d, pc() - 0.25)
@@ -3360,6 +3378,10 @@ try:
                     options.pop("maximised", None)
                     screensize2[:] = event.w, event.h
                 screensize[:] = event.w, event.h
+                if screensize[0] < 320:
+                    screensize[0] = 320
+                if screensize[1] < 240:
+                    screensize[1] = 240
                 DISP = pygame.display.set_mode(screensize, RESIZABLE)
                 reset_menu(reset=True)
                 mpos = (-inf,) * 2
@@ -3404,7 +3426,7 @@ except Exception as ex:
                     futs.add(submit(os.remove, e.path))
                 elif fn[0] == "~":
                     s = e.stat()
-                    if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 7 or utc() - s.st_mtime > 86400 * 14:
+                    if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 3 or utc() - s.st_mtime > 86400 * 14:
                         futs.add(submit(os.remove, e.path))
             else:
                 futs.add(submit(os.remove, e.path))

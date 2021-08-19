@@ -327,6 +327,15 @@ else:
         spectrogram=1,
         oscilloscope=1,
     )
+screensize = options.screensize
+if screensize[0] < 320:
+    screensize[0] = 320
+if screensize[1] < 240:
+    screensize[1] = 240
+if options.sidebar_width < 144:
+    options.sidebar_width = 144
+if options.toolbar_height < 64:
+    options.toolbar_height = 64
 _audio = options.get("audio")
 oaudio = cdict(audio_default)
 if _audio:
@@ -364,8 +373,6 @@ def start_mixer():
         import ctypes, struct, io
         user32 = ctypes.windll.user32
         user32.SetProcessDPIAware()
-        appid = "Miza Player (" + str(os.getpid()) + ")"
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
         write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
         import pygame
         sys.stdout.write = write
@@ -406,10 +413,14 @@ def start_mixer():
     return mixer
 
 def start_display():
-    global DISP, screensize2
+    global DISP, screensize2, ICON, ICON_DISP
+    appid = "Miza Player \x7f"
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
     if hasmisc:
         icon = pygame.image.load("misc/icon.png")
-        pygame.display.set_icon(icon)
+        ICON = pygame.transform.smoothscale(icon, (64, 64))
+        ICON_DISP = ""
+        pygame.display.set_icon(ICON)
     pygame.display.set_caption("Miza Player")
     DISP = pygame.display.set_mode(options.screensize, pygame.RESIZABLE, vsync=True)
     screensize2 = list(options.screensize)

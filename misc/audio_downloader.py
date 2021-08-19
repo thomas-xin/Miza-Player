@@ -723,13 +723,11 @@ class AudioDownloader:
         self.cookie = create_future_ex(self.set_cookie)
         self.downloader = youtube_dl.YoutubeDL(self.ydl_opts)
 
-    # Fetches youtube playlist page codes, split into pages of 50 items
+    # Fetches youtube playlist page codes, split into pages of 10 items
     def setup_pages(self):
         with open("misc/page_tokens.txt", "r", encoding="utf-8") as f:
-            s = f.read()
-        page10 = s.splitlines()
+            page10 = f.readlines()
         self.yt_pages = {i * 10: page10[i] for i in range(len(page10))}
-        # self.yt_pages = [page10[i] for i in range(0, len(page10), 5)]
 
     def set_cookie(self):
         resp = requests.get("https://www.youtube.com").text
@@ -1006,8 +1004,8 @@ class AudioDownloader:
             )
             out.append(temp)
         if count > 100:
-            url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=50&key={google_api_key}&playlistId={p_id}"
             page = 50
+            url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults={page}&key={google_api_key}&playlistId={p_id}"
             futs = deque()
             self.paging.result()
             for curr in range(100, page * ceil(count / page), page):

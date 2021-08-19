@@ -3064,10 +3064,11 @@ try:
         if queue:
             data.pop("pos", None)
         queue.extend(cdict(e, duration=e.get("duration")) for e in data.get("queue", ()))
-        if data.get("editor"):
-            player.editor.update(data["editor"])
         if data.get("pos"):
             player.fut = submit(start_player, data["pos"], force=True)
+        if data.get("editor"):
+            player.editor.update(data["editor"])
+            player.editor.note = cdict(player.editor.note)
         if data.get("paused"):
             pause_toggle(True)
     tick = 0

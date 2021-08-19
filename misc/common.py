@@ -782,9 +782,9 @@ def update_repo():
                                         pass
                             updating.progress = len(nl)
                     else:
-                        subprocess.run(["git reset --hard HEAD"])
+                        subprocess.run(["git", "reset", "--hard", "HEAD"])
                         updating.progress = 0.5
-                        subprocess.run(["git pull"])
+                        subprocess.run(["git", "pull"])
                         updating.progress = 1
                     globals().pop("updating", None)
                     if not options.control.autoupdate:

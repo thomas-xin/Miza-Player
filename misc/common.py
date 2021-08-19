@@ -278,6 +278,7 @@ control_default = cdict(
     silenceremove=0,
     unfocus=1,
     presearch=0,
+    preserve=0,
     ripples=1,
     autoupdate=0,
 )

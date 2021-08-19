@@ -70,7 +70,7 @@ player = cdict(
             length=1,
             volume=0.25,
             pan=0,
-            effects=alist(),
+            effects=[],
         ),
         fade=1,
         pattern=0,
@@ -2101,10 +2101,11 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
             ("silenceremove", "Skip silence", "Skips over silent or extremely quiet frames of audio."),
             ("unfocus", "Reduce unfocus FPS", "Greatly reduces FPS of display when window is left unfocused."),
             ("presearch", "Preemptive search", "Pre-emptively searches up and displays duration of songs in a playlist.\nIncreases amount of requests being sent, and may also cause lag spikes."),
+            ("preserve", "Preserve sessions", "Preserves sessions and automatically reloads them."),
             ("ripples", "Ripples", "Clicking anywhere on the sidebar or toolbar produces a visual ripple effect."),
             ("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
         )
-        mrect = (offs2 + 8, 376, min(192, sidebar_width - 16), 160)
+        mrect = (offs2 + 8, 376, min(192, sidebar_width - 16), 192)
         surf = pygame.Surface(mrect[2:], SRCALPHA)
         for i, t in enumerate(more):
             s, name, description = t
@@ -2162,7 +2163,7 @@ def render_settings(dur, hovertext, crosshair, ignore=False):
             surf = pil2pyg(im)
         else:
             if sidebar_width >= 192:
-                r = (screensize[0] - 68 + offs + sidebar_width, 557, 64, 32)
+                r = (screensize[0] - 68 + offs + sidebar_width, 589, 64, 32)
                 if in_rect(mpos, r):
                     if mclick[0]:
                         submit(update_collections2)
@@ -2993,6 +2994,37 @@ def draw_menu():
                 font=hovertext.get("font", "Comic Sans MS"),
             )
 
+def save_settings():
+    temp = options.screensize
+    options.screensize = screensize2
+    options.history = list(options.history)
+    if options != orig_options:
+        with open(config, "w", encoding="utf-8") as f:
+            json.dump(dict(options), f, indent=4)
+    if options.control.preserve:
+        entries = []
+        for entry in queue:
+            url = entry.url
+            name = entry.get("name") or url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+            entries.append(dict(name=name, url=url))
+        edi = player.editor.copy()
+        edi.pop("change_mode")
+        edi.pop("selection")
+        edi.pop("scrolling")
+        edi.pop("played")
+        edi.pop("fade")
+        data = dict(
+            queue=list(entries),
+            pos=player.pos,
+            editor=edi,
+        )
+        if player.paused:
+            data["paused"] = True
+        with open("dump.json", "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    options.history = alist(options.history)
+    options.screensize = temp
+
 
 for i in range(26):
     globals()[f"K_{chr(i + 97)}"] = i + 4
@@ -3023,9 +3055,21 @@ last_tick = 0
 status_freq = 6000
 alphakeys = [0] * 34
 try:
+    if options.control.preserve and os.path.exists("dump.json"):
+        with open("dump.json", "rb") as f:
+            data = json.load(f)
+        if queue:
+            data.pop("pos", None)
+        queue.extend(cdict(e, duration=e.get("duration")) for e in data.get("queue", ()))
+        if data.get("editor"):
+            player.editor.update(data["editor"])
+        if data.get("pos"):
+            player.fut = submit(start_player, data["pos"], force=True)
+        if data.get("paused"):
+            pause_toggle(True)
     tick = 0
     while True:
-        if not tick % 36000:
+        if not tick + 1 & 8191:
             try:
                 if utc() - os.path.getmtime(collections2f) > 3600:
                     submit(update_collections2)
@@ -3033,6 +3077,7 @@ try:
             except FileNotFoundError:
                 submit(update_repo)
                 update_collections2()
+            submit(save_settings)
         if not tick % (status_freq + (status_freq & 1)):
             submit(send_status)
         fut = common.__dict__.pop("repo-update", None)
@@ -3394,16 +3439,12 @@ try:
         tick += 2
 except Exception as ex:
     submit(requests.delete, mp)
+    save_settings()
     pygame.closed = True
     pygame.quit()
     if type(ex) is not StopIteration:
         print_exc()
     print("Exiting...")
-    options.screensize = screensize2
-    options.history = list(options.history)
-    if options != orig_options:
-        with open(config, "w", encoding="utf-8") as f:
-            json.dump(dict(options), f, indent=4)
     if mixer.is_running():
         mixer.clear()
         time.sleep(0.1)

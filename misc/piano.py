@@ -428,9 +428,9 @@ def render_piano():
 
     offs_x = editor.targ_x % 1 * timesig[0] * note_width
     offs_y = editor.targ_y % 1 * note_spacing
-    offs_y = round(offs_y - note_spacing)
+    offs_y = offs_y - note_spacing
     surf = player.get("editor_surf")
-    swidth = round(4.5 * note_width * timesig[0])
+    swidth = round(4 * note_width * timesig[0]) + 64
     soffs = swidth >> 1
     ssize = np.array(player.rect[2:]) + swidth
     ssize[0] -= PW
@@ -438,6 +438,7 @@ def render_piano():
     itx = ceil(editor.targ_x // 1 * barlength - soffs / note_width * timesig[1])
     keys = ceil((ssize[1] - 16) / note_spacing + 1)
     centre = 48 + (keys + 1 >> 1) + floor(editor.targ_y)
+    offs_y = round((offs_y + soffs) % note_spacing - 1.5 * note_spacing)
     if not surf or surf.get_size() != ssize:
         surf = player["editor_surf"] = pygame.Surface(ssize, SRCALPHA)
         print(surf)
@@ -459,7 +460,7 @@ def render_piano():
         linec = ceil(ssize[0] / note_width * timesig[1])
         for i in range(linec):
             c = 64 if (i + itx) % timesig[1] else 127 if (i + itx) % (barlength) else 255
-            x = i * note_width / timesig[1] - offs_x
+            x = i * note_width / timesig[1] - offs_x + soffs % (note_width / timesig[1])
             if x < -0.125:
                 continue
             draw_vline(surf, round(x), 0, ssize[1], (c,) * 3)
@@ -576,8 +577,7 @@ def render_piano():
         measurepos = npos = None
         x = (xy[0] - PW) / note_width + editor.scroll_x * timesig[0]
         measurepos = int(x // timesig[0])
-        npos = round_min(x - measurepos * timesig[0])
-        print(x, editor.scroll_x, editor.targ_x)
+        npos = round_min(round((x - measurepos * timesig[0]) * timesig[1]) / timesig[1])
     else:
         measurepos = npos = None
     measures = pattern.measures

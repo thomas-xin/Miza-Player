@@ -111,7 +111,7 @@ def update_piano():
         submit(editor_update, duration)
     rat = 0.05 ** duration
     editor.fade = editor.fade * rat + 1 - rat
-    r = 1 + 1 / (duration * 7)
+    r = 1 + 1 / (duration * 12)
     if not project.patterns:
         create_pattern()
     if not project.instruments:
@@ -123,7 +123,7 @@ def update_piano():
             editor.targ_x -= 32 * duration
     if kspam[K_UP]:
         if kheld[K_UP] == 1:
-            editor.targ_x += 2
+            editor.targ_y += 2
         elif (kheld[K_UP] - 1) % 3:
             editor.targ_y += 256 * duration
     if kspam[K_RIGHT]:
@@ -133,7 +133,7 @@ def update_piano():
             editor.targ_x += 32 * duration
     if kspam[K_DOWN]:
         if kheld[K_DOWN] == 1:
-            editor.targ_x -= 2
+            editor.targ_y -= 2
         elif (kheld[K_DOWN] - 1) % 3:
             editor.targ_y -= 256 * duration
     if editor.targ_x < 0:
@@ -430,12 +430,12 @@ def render_piano():
     offs_y = editor.targ_y % 1 * note_spacing
     offs_y = round(offs_y - note_spacing)
     surf = player.get("editor_surf")
-    swidth = 3 * note_width * timesig[0]
+    swidth = round(4.5 * note_width * timesig[0])
     soffs = swidth >> 1
     ssize = np.array(player.rect[2:]) + swidth
     ssize[0] -= PW
     ssize = tuple(ssize)
-    itx = ceil(editor.targ_x * barlength - soffs / note_width * timesig[1])
+    itx = ceil(editor.targ_x // 1 * barlength - soffs / note_width * timesig[1])
     keys = ceil((ssize[1] - 16) / note_spacing + 1)
     centre = 48 + (keys + 1 >> 1) + floor(editor.targ_y)
     if not surf or surf.get_size() != ssize:
@@ -495,7 +495,7 @@ def render_piano():
     keys = ceil((player.rect[3] - 16) / note_spacing + 1)
     centre = 48 + (keys + 1 >> 1) + floor(editor.scroll_y)
     offs_x = editor.scroll_x % 1 * timesig[0] * note_width
-    itx = round(editor.scroll_x * barlength)
+    itx = round(editor.scroll_x // 1 * barlength)
     linec = ceil((player.rect[2] - PW) / note_width * timesig[1])
     for i in range(linec):
         x = PW + i * note_width / timesig[1] - offs_x
@@ -575,10 +575,9 @@ def render_piano():
     if all(xy):
         measurepos = npos = None
         x = (xy[0] - PW) / note_width + editor.scroll_x * timesig[0]
-        print(x)
-        # npos = round_min(((xy[0] - PW) / note_width + editor.scroll_x * timesig[0]) % timesig[0])
-        # measurepos = int(((xy[0] - PW) / note_width + editor.scroll_x * timesig[0]) / timesig[0])
-        # print(xy, measurepos, npos)
+        measurepos = int(x // timesig[0])
+        npos = round_min(x - measurepos * timesig[0])
+        print(x, editor.scroll_x, editor.targ_x)
     else:
         measurepos = npos = None
     measures = pattern.measures
@@ -753,8 +752,7 @@ def render_piano():
                     if mc4[0]:
                         if not CTRL[kheld] and not SHIFT[kheld]:
                             editor.selection.cancel()
-                        m = measurepos
-                        N = [m, npos, editor.note.instrument, pitch, editor.note.length]
+                        N = [measurepos, npos, editor.note.instrument, pitch, editor.note.length]
                         if editor.note.volume != 0.25 or editor.note.pan or editor.note.effects:
                             N.append(editor.note.volume)
                             if editor.note.pan or editor.note.effects:

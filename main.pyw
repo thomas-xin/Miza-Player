@@ -3011,11 +3011,15 @@ def save_settings():
                 e["duration"] = entry["duration"]
             entries.append(e)
         edi = player.editor.copy()
-        edi.pop("change_mode")
-        edi.pop("selection")
-        edi.pop("scrolling")
-        edi.pop("played")
-        edi.pop("fade")
+        for k in (
+            "change_mode",
+            "selection",
+            "scrolling",
+            "played",
+            "fade",
+            "piano_surf",
+        ):
+            edi.pop(k, None)
         data = dict(
             queue=list(entries),
             pos=player.pos,
@@ -3023,6 +3027,8 @@ def save_settings():
         )
         if player.paused:
             data["paused"] = True
+        if is_minimised():
+            data["minimised"] = True
         with open("dump.json", "w", encoding="utf-8") as f:
             json.dump(data, f)
     options.history = alist(options.history)
@@ -3057,6 +3063,7 @@ kprev = kclick = KeyList((None,)) * len(kheld)
 last_tick = 0
 status_freq = 6000
 alphakeys = [0] * 34
+restarting = False
 try:
     if options.control.preserve and os.path.exists("dump.json"):
         with open("dump.json", "rb") as f:
@@ -3071,6 +3078,8 @@ try:
             player.editor.note = cdict(player.editor.note)
         if data.get("paused"):
             pause_toggle(True)
+        if data.get("minimised"):
+            pygame.display.iconify()
     tick = 0
     while True:
         if not tick + 1 & 8191:
@@ -3087,10 +3096,20 @@ try:
         fut = common.__dict__.pop("repo-update", None)
         if fut:
             if fut is True:
-                easygui.show_message(
-                    f"Miza Player has been updated successfully!\nPlease restart the program in order to apply changes.",
-                    "Success!",
-                )
+                if not options.control.autoupdate:
+                    if options.control.preserve:
+                        easygui.show_message(
+                            f"Miza Player has been updated successfully!\nThe program will now restart in order to apply changes.",
+                            "Success!",
+                        )
+                    else:
+                        easygui.show_message(
+                            f"Miza Player has been updated successfully!\nPlease restart the program in order to apply changes.",
+                            "Success!",
+                        )
+                if options.control.preserve:
+                    restarting = True
+                    raise StopIteration
             else:
                 r = easygui.get_yes_or_no(
                     "Would you like to update the application? (takes effect upon next usage)",
@@ -3444,6 +3463,8 @@ try:
 except Exception as ex:
     submit(requests.delete, mp)
     save_settings()
+    if restarting:
+        os.system("start /MIN cmd /k " + sys.executable + " main.pyw")
     pygame.closed = True
     pygame.quit()
     if type(ex) is not StopIteration:

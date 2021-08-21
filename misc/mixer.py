@@ -975,7 +975,8 @@ def play(pos):
                 wave = synther.result()
                 if settings.volume != 1 or wave is not None:
                     if settings.volume != 1:
-                        s = smp * settings.volume
+                        s = smp.astype(np.float32)
+                        s *= settings.volume
                     else:
                         s = smp
                     if wave is not None:

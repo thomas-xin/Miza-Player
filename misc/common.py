@@ -757,6 +757,8 @@ def update_repo():
                 if not options.control.autoupdate:
                     globals()["repo-update"] = fut = concurrent.futures.Future()
                 try:
+                    if not os.path.exists(".git"):
+                        raise FileNotFoundError
                     subprocess.run(["git"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     b = None
                 except FileNotFoundError:

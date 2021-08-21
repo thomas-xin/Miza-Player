@@ -565,6 +565,7 @@ def setup_buttons():
         def scramble_1():
             mixer.clear()
             random.shuffle(queue.view)
+            ensure_next()
             start()
         toolbar.buttons.append(cdict(
             name="Scramble",
@@ -1480,9 +1481,7 @@ def enqueue(entry, start=True):
         queue[0].lyrics_loading = True
         submit(render_lyrics, queue[0])
         if len(queue) > 1:
-            entry = queue[1]
-            if entry.duration is None or entry.get("research") or not entry.get("lyrics_loading") and not entry.get("lyrics"):
-                ensure_next(1)
+            ensure_next()
         flash_window()
         stream, duration = start_player()
         progress.num = 0

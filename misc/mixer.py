@@ -601,12 +601,24 @@ def construct_options(full=True):
                 + ":ratio=" + str(c) + ":level_in=" + mult + ":threshold=0.0625:makeup=" + mult
             )
     if stats.bassboost:
-        opt = "anequalizer="
-        width = 4096
-        x = round(sqrt(1 + abs(stats.bassboost)), 5)
-        coeff = width * max(0.03125, (0.25 / x))
-        ch = " f=" + str(coeff if stats.bassboost > 0 else width - coeff) + " w=" + str(coeff / 2) + " g=" + str(max(0.5, min(48, 4 * math.log2(x * 5))))
-        opt += "c0" + ch + "|c1" + ch
+        opt = "firequalizer=gain_entry="
+        entries = []
+        high = 24000
+        low = 13.75
+        bars = 4
+        small = 0
+        for i in range(bars):
+            freq = low * (high / low) ** (i / bars)
+            bb = -(i / (bars - 1) - 0.5) * stats.bassboost * 64
+            dB = log(abs(bb) + 1, 2)
+            if bb < 0:
+                dB = -dB
+            if dB < small:
+                small = dB
+            entries.append(f"entry({round(freq, 5)},{round(dB, 5)})")
+        entries.insert(0, f"entry(0,{round(small, 5)})")
+        entries.append(f"entry(24000,{round(small, 5)})")
+        opt += repr(";".join(entries))
         options.append(opt)
     if reverb:
         coeff = abs(reverb)
@@ -638,7 +650,7 @@ def construct_options(full=True):
     if options:
         if stats.compressor:
             options.append("alimiter")
-        # elif volume > 1:
+        # elif volume > 1 or abs(stats.bassboost):
         #     options.append("asoftclip=atan")
         args.append(("-af", "-filter_complex")[bool(reverb)])
         args.append(",".join(options))
@@ -890,6 +902,7 @@ def play(pos):
                 paused.result()
             if stopped:
                 break
+            synther = submit(synthesize)
             p = proc
             if fn:
                 if not file:
@@ -905,7 +918,13 @@ def play(pos):
                         continue
                 try:
                     b = file.read(req)
+                except ValueError:
+                    if proc_waiting:
+                        break
+                    else:
+                        b = b""
                 except:
+                    print_exc()
                     b = b""
             else:
                 while not getattr(proc, "readable", lambda: True)():
@@ -913,7 +932,7 @@ def play(pos):
                 try:
                     fut = submit(proc.stdout.read, req)
                     b = fut.result(timeout=4)
-                except:
+                except (AttributeError, concurrent.futures.TimeoutError):
                     b = b""
             if not b:
                 if transfer and proc and proc.is_running():
@@ -931,7 +950,8 @@ def play(pos):
                                 pass
                         point("~s")
                     if file:
-                        file.close()
+                        temp, file = file, None
+                        temp.close()
                         remove(file)
                     fn = file = proc = None
                     packet = None
@@ -952,7 +972,7 @@ def play(pos):
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
                 smp = np.frombuffer(b, dtype=np.int16)
-                wave = synthesize()
+                wave = synther.result()
                 if settings.volume != 1 or wave is not None:
                     if settings.volume != 1:
                         s = smp * settings.volume
@@ -1301,23 +1321,30 @@ def ensure_parent():
 
 
 n_measure = lambda n: n[0]
-n_instrument = lambda n: n[2]
 n_pos = lambda n: n[1]
+n_end = lambda n: n[1] + n[4]
+n_instrument = lambda n: n[2]
 n_pitch = lambda n: n[3]
 n_length = lambda n: n[4]
 n_volume = lambda n: n[5] if len(n) > 5 else 0.25
 n_pan = lambda n: n[6] if len(n) > 6 else 0
 n_effects = lambda n: n[7] if len(n) > 7 else ()
 
+lingering_notes = []
 def render_notes(samples, notes):
+    timesig = editor.timesig
+    note_length = editor.note_length
     bufofs = bar * editor.timesig[0] * note_length
-    for n in notes:
+    ling = []
+    for n in itertools.chain(notes, lingering_notes):
         wave = editor.waves[n_instrument(n)]
         offs = n_pos(n) * note_length
         length = n_length(n) * note_length
         freq = 440 * 2 ** ((n_pitch(n) - 57) / 12)
         slength = 48000 / freq
         pos = round_random(offs - (bufofs + offs) % slength)
+        if n_measure(n) < bar:
+            pos -= slength
         if length > 2 * slength:
             over = length % slength
             if over:
@@ -1325,7 +1352,14 @@ def render_notes(samples, notes):
         positions = np.linspace(0, length / slength * len(wave), round_random(length), endpoint=False)
         positions %= len(wave)
         sample = np.interp(positions, np.arange(len(wave)), wave)
+        if pos < 0:
+            sample = sample[-pos:]
+            pos = 0
         samples[pos:len(sample)] += sample
+        if n_end(n) > timesig[0]:
+            ling.append(n)
+    globals()["lingering_notes"] = ling
+    return samples
 
 
 ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
@@ -1347,6 +1381,7 @@ fut = None
 sf = None
 reading = None
 stopped = False
+proc_waiting = False
 point_fut = None
 proc = None
 fn = None
@@ -1411,7 +1446,8 @@ while not sys.stdin.closed and failed < 8:
                     except:
                         pass
                 if fn and file:
-                    file.close()
+                    temp, file = file, None
+                    temp.close()
                     submit(remove, file)
                 fn = file = proc = None
                 continue
@@ -1495,13 +1531,15 @@ while not sys.stdin.closed and failed < 8:
             if aout.done():
                 channel2 = aout.result()
             if proc:
+                proc_waiting = True
                 temp, proc = proc, None
                 try:
                     temp.kill()
                 except:
                     pass
                 if fn and file:
-                    file.close()
+                    temp, file = file, None
+                    temp.close()
                     remove(file)
             if fut:
                 if paused:
@@ -1653,6 +1691,7 @@ while not sys.stdin.closed and failed < 8:
                 point_fut.result()
             point(f"~{pos * 30} {duration}")
             fut = submit(play, pos)
+            proc_waiting = False
         else:
             failed += 1
     except:

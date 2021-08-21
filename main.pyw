@@ -26,6 +26,7 @@ def create_pattern():
     while x in project.patterns:
         x += 1
     pattern.measures = {}
+    pattern.ends = {}
     pattern.name = f"Pattern {x}"
     pattern.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1))
     pattern.id = x
@@ -1381,6 +1382,23 @@ def wait_on():
         time.sleep(1)
     print("Device switch cancelled.")
 
+def get_audio_channel():
+    i = get_device_by_name(OUTPUT_DEVICE)
+    if not i:
+        afut.result().terminate()
+        globals()["afut"] = submit(pyaudio.PyAudio)
+        i = get_device_by_name(OUTPUT_DEVICE)
+        if not i:
+            raise FileNotFoundError
+    return afut.result().open(
+        output_device_index=i,
+        rate=48000,
+        channels=2,
+        format=pyaudio.paInt16,
+        output=True,
+        frames_per_buffer=800,
+    )
+
 def pos():
     try:
         while True:
@@ -1548,7 +1566,7 @@ def pause_toggle(state=None):
         player.paused ^= True
     else:
         player.paused = state
-    mixer.state(player.paused)
+    mixer.state(player.paused or toolbar.editor)
     toolbar.pause.speed = toolbar.pause.maxspeed
     globals()["tick"] = -2
     sidebar.menu = 0
@@ -3140,11 +3158,16 @@ try:
             if minimised:
                 toolbar.ripples.clear()
                 sidebar.ripples.clear()
-        if not player.get("fut"):
-            if queue and not toolbar.editor:
-                player.fut = submit(start)
+        if not player.get("fut") and not player.paused:
+            if not toolbar.editor:
+                if queue:
+                    player.fut = submit(start)
+            elif toolbar.editor:
+                player.fut = submit(editor_update)
         elif not queue:
-            player.pop("fut").result()
+            fut = player.pop("fut", None)
+            if fut:
+                fut.result()
         if not minimised and (not unfocused or not tick % 14) and ((not isnan(mpos[0]) or is_active()) or unfocused or not player.paused and queue or not tick % 6 or toolbar.ripples or sidebar.ripples):
             lpos = mpos
             mprev = mheld

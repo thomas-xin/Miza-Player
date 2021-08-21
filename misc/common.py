@@ -246,11 +246,13 @@ def mixer_submit(s, force, debug):
             laststart.clear()
         laststart.add(ts)
     s = as_str(s)
-    if not s.endswith("\n"):
+    if not s.endswith("\n") and len(s) < 2048:
         s += "\n"
     if debug:
         sys.stdout.write(s)
     mixer.stdin.write(s.encode("utf-8"))
+    if not s.endswith("\n"):
+        mixer.stdin.write(b"\n")
     mixer.stdin.flush()
 
 asettings = cdict(

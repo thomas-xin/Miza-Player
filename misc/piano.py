@@ -92,14 +92,50 @@ def blinds_render(self):
     if not rendered:
         delete_particle(self)
 
-editor_buffer = deque()
+def render_bar(i):
+    pattern = project.patterns[editor.pattern]
 
+PLAYER_BROKEN = False
+BUFSIZ = round(48000 * 2 * 2 / 20)
 def editor_update(duration):
-    bar = editor.scroll_x
-    for i in range(max(0, bar - 4), bar + 1):
-        fn = f"cache/p{editor.patten}b{i}"
-        if not os.path.exists(fn):
-            submit(render_bar, i)
+    pattern = project.patterns[editor.pattern]
+    edi = dict(
+        timesig=pattern.timesig,
+        tempo=pattern.tempo,
+        note_length=note_length,
+    )
+    mixer.stdin.write(b"~editor ")
+    mixer.submit(json.dumps(edi))
+    channel = get_audio_channel()
+    editor.scroll_x = editor.targ_x
+    editor.targ_x = int(editor.scroll_x) + 0.001 / timesig[1]
+    while not player.paused and not PLAYER_BROKEN:
+        try:
+            player.pos = editor.scroll_x
+            player.end = max(pattern.ends.values()) if pattern.ends else player.pos
+            if editor.targ_x != int(editor.scroll_x):
+                editor.targ_x = int(editor.scroll_x)
+                for i in measure_range(pattern, editor.targ_x, editor.targ_x + 1):
+                    fn = f"cache/p{editor.patten}b{i}"
+                    if not os.path.exists(fn):
+                        submit(render_bar, i)
+            fn = f"cache/p{editor.patten}b{editor.targ_x}"
+            while not os.path.exists(fn):
+                time.sleep(0.016)
+            offs = round_random(editor.scroll_x * timesig[0] / pattern.tempo * 60 * 48000 * 2 * 2)
+            with open(fn, "rb") as f:
+                f.seek(offs)
+                b = f.read(BUFSIZ)
+            try:
+                channel.write(b)
+            except:
+                print_exc()
+                break
+            editor.scroll_x = fractions.Fraction((offs + BUFSIZ) * pattern.tempo) / (timesig[0] * 60 * 48000 * 2 * 2)
+        except:
+            print_exc()
+    editor.scroll_x = editor.targ_x = float(editor.scroll_x)
+    globals()["PLAYER_BROKEN"] = False
 
 def update_piano():
     globals()["editor"] = player.editor
@@ -107,8 +143,6 @@ def update_piano():
     t = pc()
     editor.timestamp = t
     duration = max(0.001, min(t - ts, 0.125))
-    if not player.paused:
-        submit(editor_update, duration)
     rat = 0.05 ** duration
     editor.fade = editor.fade * rat + 1 - rat
     r = 1 + 1 / (duration * 12)
@@ -123,23 +157,35 @@ def update_piano():
             editor.targ_x -= 32 * duration
     if kspam[K_UP]:
         if kheld[K_UP] == 1:
-            editor.targ_y += 2
+            if player.paused:
+                editor.targ_y += 2
+            else:
+                editor.scroll_y += 2
         elif (kheld[K_UP] - 1) % 3:
-            editor.targ_y += 256 * duration
+            if player.paused:
+                editor.targ_y += 256 * duration
+            else:
+                editor.scroll_y += 256 * duration
     if kspam[K_RIGHT]:
         if kheld[K_RIGHT] == 1:
             editor.targ_x += 0.25
         elif (kheld[K_RIGHT] - 1) % 3:
             editor.targ_x += 32 * duration
     if kspam[K_DOWN]:
-        if kheld[K_DOWN] == 1:
-            editor.targ_y -= 2
-        elif (kheld[K_DOWN] - 1) % 3:
-            editor.targ_y -= 256 * duration
+        if kheld[K_UP] == 1:
+            if player.paused:
+                editor.targ_y -= 2
+            else:
+                editor.scroll_y -= 2
+        elif (kheld[K_UP] - 1) % 3:
+            if player.paused:
+                editor.targ_y -= 256 * duration
+            else:
+                editor.scroll_y -= 256 * duration
     if editor.targ_x < 0:
         editor.targ_x = 0
-    x, y = editor.scroll_x, editor.scroll_y
-    editor.scroll_x = (editor.scroll_x * (r - 1) + editor.targ_x) / r
+    if player.paused:
+        editor.scroll_x = (editor.scroll_x * (r - 1) + editor.targ_x) / r
     editor.scroll_y = (editor.scroll_y * (r - 1) + editor.targ_y) / r
     if abs(editor.scroll_x - editor.targ_x) < 0.001:
         editor.scroll_x = editor.targ_x
@@ -340,6 +386,7 @@ def editor_toolbar():
 
 n_measure = lambda n: n[0]
 n_pos = lambda n: n[1]
+n_end = lambda n: n[1] + n[4]
 n_instrument = lambda n: n[2]
 n_pitch = lambda n: n[3]
 n_length = lambda n: n[4]
@@ -375,6 +422,8 @@ def create_note(n, particles=True):
         pattern.measures[m].append(n)
     except KeyError:
         pattern.measures[m] = [n]
+    if n_end(n) > pattern.ends.get(m, 0):
+        pattern.ends[m] = n_end(n)
     player.editor_surf = None
     if particles:
         note_width = 60 * editor.zoom_x
@@ -396,12 +445,25 @@ def delete_note(n, particles=True):
     pattern.measures[m].remove(n)
     if not pattern.measures[m]:
         pattern.measures.pop(m)
+        pattern.ends.pop(m, None)
+    elif n_end(n) >= pattern.ends.get(m, 0):
+        pattern.ends[m] = max(n_end(n) for n in pattern.measures[m])
     player.editor_surf = None
     if particles:
         col = n_colour(n)
         r = n_rect(n)
         spawn_particle(rect=r, col=col, render=blinds_render)
     return n
+
+def measure_ends(pattern, low, high):
+    timesig = pattern.timesig
+    try:
+        low2 = min(i for i in range(int(low), -1, -1) if i + pattern.ends.get(i, 0) / timesig[0] >= low)
+    except ValueError:
+        low2 = floor(low)
+    high2 = max(ceil(high), low2 + 1)
+    return low2, high2
+measure_range = lambda pattern, low, high: range(*measure_ends(pattern, low, high))
 
 def render_piano():
     pattern = project.patterns[editor.pattern]
@@ -465,9 +527,9 @@ def render_piano():
                 continue
             draw_vline(surf, round(x), 0, ssize[1], (c,) * 3)
 
-        min_measure = max(0, floor(editor.targ_x - ssize[0] / timesig[0] / note_width))
-        max_measure = ceil(editor.targ_x + ssize[0] / timesig[0] / note_width)
-        for i in range(min_measure, max_measure):
+        min_x = editor.targ_x - soffs / timesig[0] / note_width
+        max_x = editor.targ_x + (player.rect[2] + soffs) / timesig[0] / note_width
+        for i in measure_range(pattern, min_x, max_x):
             try:
                 notes = pattern.measures[i]
             except KeyError:
@@ -592,6 +654,7 @@ def render_piano():
                 c = ([159, 0, 159] if options.editor.bounded else [255, 127, 255])
                 c.append(64 + 192 * abs(pc() % 1 - 0.5))
                 q = mpos2
+                r_pos = lambda rp: (rp - PW) / note_width / timesig[0] + editor.scroll_x
                 if not options.editor.freeform:
                     p = editor.selection.point
                     if p == q:
@@ -601,9 +664,7 @@ def render_piano():
                         r += [max(p[0], q[0]) - r[0], max(p[1], q[1]) - r[1]]
                     if not mheld[0] and r:
                         editor.selection.point = 0
-                        min_measure = max(0, floor((r[0] - PW) / note_width / timesig[0] - (player.rect[2] - PW) / timesig[0] / note_width))
-                        max_measure = ceil((r[0] + r[2] - PW) / note_width / timesig[0] + (player.rect[2] - PW) / timesig[0] / note_width)
-                        for i in range(min_measure, max_measure):
+                        for i in measure_range(pattern, r_pos(r[0]), r_pos(r[0] + r[2])):
                             try:
                                 notes = pattern.measures[i]
                             except KeyError:
@@ -654,9 +715,7 @@ def render_piano():
                                 low = p[0]
                             if not p[1] <= high:
                                 high = p[1]
-                        min_measure = max(0, floor((low - PW) / note_width / timesig[0] - (player.rect[2] - PW) / timesig[0] / note_width))
-                        max_measure = ceil((high - PW) / note_width / timesig[0] + (player.rect[2] - PW) / timesig[0] / note_width)
-                        for i in range(min_measure, max_measure):
+                        for i in measure_range(pattern, r_pos(low), r_pos(high)):
                             try:
                                 notes = pattern.measures[i]
                             except KeyError:
@@ -696,10 +755,9 @@ def render_piano():
                 pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 8, mpos2[1] + 6), (mpos2[0] + 6, mpos2[1] - 8), width=2)
                 pygame.draw.circle(DISP, (255, 0, 0), mpos2, 12, width=2)
             hnote = False
-            min_measure = max(0, floor(editor.scroll_x - (player.rect[2] - PW) / timesig[0] / note_width))
-            max_measure = ceil(editor.scroll_x + (mpos2[0] - PW) / timesig[0] / note_width)
             try:
-                for i in range(min_measure, max_measure):
+                efpos = (mpos2[0] - PW) / timesig[0] / note_width + editor.scroll_x
+                for i in measure_range(pattern, efpos, efpos):
                     try:
                         notes = pattern.measures[i]
                     except KeyError:
@@ -907,7 +965,11 @@ def render_piano():
     if hovered and mc4[0] or editor.get("x-scrolling"):
         editor["x-scrolling"] = True
         x = mpos2[0]
-        editor.targ_x = ((x - PW - round(ratio / 2)) / (player.rect[2] - PW)) * measurecount
+        targ_x = ((x - PW - round(ratio / 2)) / (player.rect[2] - PW)) * measurecount
+        if player.paused:
+            editor.targ_x = targ_x
+        else:
+            editor.scroll_x = targ_x
     if not any(mheld):
         editor.pop("x-scrolling", None)
     x = editor.scroll_x / measurecount * (player.rect[2] - PW) + PW

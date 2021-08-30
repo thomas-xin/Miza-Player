@@ -187,15 +187,9 @@ def render_sidebar(dur=0):
                 entry.pop("selected", None)
             sidebar.pop("last_selected", None)
             lq = nan
-        if len(queue) > 1:
-            entry = queue[1]
-            if (entry.duration is None or entry.get("research")):
-                ensure_next(1)
         for i, entry in enumerate(queue[base:base + maxitems], base):
             if i > 1 and options.control.presearch and (entry.duration is None or entry.get("research")) and (queue[i - 1].duration or i == base):
                 ensure_next(i)
-            elif i == 1 and not entry.get("lyrics") and not entry.get("lyrics_loading"):
-                ensure_next(1)
             if entry.get("selected") and sidebar.get("dragging"):
                 x = 4 + offs
                 y = round(Z + entry.get("pos", 0) * 32)
@@ -389,14 +383,14 @@ def render_sidebar(dur=0):
 
                     sidebar.menu = cdict(
                         buttons=(
-                            ("Copy URL", copy_queue),
+                            ("Copy URL (CTRL+C)", copy_queue),
                             ("Copy name", copy_name),
-                            ("Paste", paste_queue),
+                            ("Paste (CTRL+V)", paste_queue),
                             ("Play now", play_now),
                             ("Play next", play_next),
                             ("Add to playlist", add_to_playlist),
-                            ("Save as", save_as),
-                            ("Delete", delete),
+                            ("Save as (CTRL+S)", save_as),
+                            ("Delete (DEL)", delete),
                         ),
                     )
                 if entry.get("selected"):
@@ -612,4 +606,4 @@ def render_sidebar(dur=0):
             (screensize[0] - sidebar_width + 4, 52 + 16),
         )
     if offs <= -4:
-        render_settings(dur, hovertext, crosshair)
+        render_settings(dur)

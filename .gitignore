@@ -6,5 +6,6 @@ assoc.bat
 Rockwell.ttf
 OpenSansEmoji.ttf
 sndlib
+*.mpp
 *.json
 *.tmp

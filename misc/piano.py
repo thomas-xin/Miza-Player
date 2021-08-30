@@ -92,50 +92,236 @@ def blinds_render(self):
     if not rendered:
         delete_particle(self)
 
-def render_bar(i):
-    pattern = project.patterns[editor.pattern]
 
-PLAYER_BROKEN = False
-BUFSIZ = round(48000 * 2 * 2 / 20)
-def editor_update(duration):
+def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
+    if amplitude == 0 or shrink == 1:
+        return np.zeros(4096)
+    if shape < 1:
+        x = np.linspace(0, tau, 4096, endpoint=False)
+        x = np.sin(x, out=x)
+        if shape != 0:
+            y = np.linspace(0.25, 1.25, 4096, endpoint=False)
+            y[y >= 0.5] -= 1
+            y = np.abs(y, out=y)
+            x *= pi / 4 * (1 - shape)
+            y *= 4 * shape
+            y -= shape
+            x += y
+        else:
+            x *= pi / 4
+    elif shape < 2:
+        x = np.linspace(0.25, 1.25, 4096, endpoint=False)
+        x[x >= 0.5] -= 1
+        x = np.abs(x, out=x)
+        x *= 4
+        x -= 1
+        if shape != 1:
+            shape -= 1
+            x *= 1 / (1 - shape)
+            m = 1 / (1 + shape)
+            np.clip(x, -m, m, out=x)
+    elif shape < 3:
+        x = np.linspace(0, tau, 4096, endpoint=False)
+        x = (np.sin(x, out=x) >= 0).astype(np.float64)
+        x -= 0.5
+        if shape != 2:
+            shape -= 2
+            y = np.linspace(0, 2, 4096, endpoint=False)
+            y %= 1
+            y[2048:] -= 1
+            x *= (1 - shape)
+            y *= shape
+            x += y
+    else:
+        x = np.linspace(0, 2, 4096, endpoint=False)
+        x %= 1
+        x[2048:] -= 1
+    if amplitude != 1:
+        x *= amplitude
+        if amplitude > 1:
+            np.clip(x, -1, 1, out=x)
+    if phase != 0 and phase != 1:
+        x = np.roll(x, round(phase * 4096))
+    if pulse != 0.5:
+        r = round(4096 * pulse)
+        left = np.linspace(0, 2048, r, endpoint=False)
+        right = np.linspace(2048, 4096, 4096 - r, endpoint=False)
+        indices = np.concatenate((left, right))
+        x = np.interp(indices, range(4096), x)
+    if shrink != 0:
+        r = round(4096 * (1 - shrink))
+        y = np.zeros(4096, dtype=np.float64)
+        indices = np.linspace(0, 4096, r, endpoint=False)
+        x = np.interp(indices, range(4096), x)
+        y[2048 - r // 2:2048 + (r + 1) // 2] = x
+        x = y
+    if exponent != 1:
+        msk = x < 0
+        np.abs(x, out=x)
+        x **= exponent
+        x[msk] *= -1
+    return np.asanyarray(x, dtype=np.float32)
+
+pattern_end = lambda pattern: max(k + v / pattern.timesig[0] for k, v in pattern.ends.items()) if pattern.measures else 0
+
+def render_project(fn):
     pattern = project.patterns[editor.pattern]
+    timesig = pattern.timesig
     edi = dict(
-        timesig=pattern.timesig,
+        timesig=timesig,
         tempo=pattern.tempo,
-        note_length=note_length,
     )
-    mixer.stdin.write(b"~editor ")
-    mixer.submit(json.dumps(edi))
+    mixer.clear()
+    mixer.submit("~editor " + json.dumps(edi, separators=(',', ':')))
+    proc = psutil.Popen((
+        ffmpeg,
+        "-y",
+        "-nostdin",
+        "-hide_banner",
+        "-v",
+        "error",
+        "-f",
+        "s16le",
+        "-ar",
+        "48k",
+        "-ac",
+        "2",
+        "-i",
+        "-",
+        "-b:a",
+        "192k",
+        fn,
+    ), stdin=subprocess.PIPE)
+    if editor.pattern in FRESH_PATTERNS:
+        for i in measure_range(pattern, 0, pattern_end(pattern)):
+            fn = f"cache/&p{editor.pattern}b{i}.pcm"
+            if not os.path.exists(fn) or os.path.getsize(fn) < 4:
+                FRESH_PATTERNS.discard(editor.pattern)
+                break
+    if editor.pattern not in FRESH_PATTERNS:
+        FRESH_PATTERNS.add(editor.pattern)
+        fns = f"&p{editor.pattern}b"
+        futs = deque()
+        for fn in os.listdir("cache"):
+            if fn.startswith(fns):
+                futs.append(submit(os.remove, "cache/" + fn))
+        for fut in futs:
+            fut.result()
+        render = True
+    else:
+        render = False
+    futs = deque()
+    for i in measure_range(pattern, 0, pattern_end(pattern)):
+        fn = f"cache/&p{editor.pattern}b{i}.pcm"
+        if render:
+            render_bar(i)
+        while not os.path.exists(fn) or os.path.getsize(fn) < 4:
+            time.sleep(0.016)
+        with open(fn, "rb") as f:
+            while True:
+                b = f.read(1048576)
+                if not b:
+                    break
+                futs.append(submit(proc.stdin.write, b))
+    for fut in futs:
+        fut.result()
+    proc.stdin.close()
+    proc.wait()
+    return fn
+
+def render_bar(i):
+    print("Rendering", i)
+    pattern = project.patterns[editor.pattern]
+    notes = pattern.measures.get(i, [])
+    s = f"~render {pattern.id} {i} "
+    s += json.dumps(notes, separators=(',', ':'))
+    s += "\n"
+    mixer.submit(s)
+
+FRESH_PATTERNS = set()
+player.broken = False
+BUFSIZ = round(48000 * 2 * 2 / 30)
+reset_buff = b"\x00" * (BUFSIZ >> 4)
+def editor_update():
+    mixer.clear()
+    player.broken = False
+    if editor.pattern not in FRESH_PATTERNS:
+        FRESH_PATTERNS.add(editor.pattern)
+        fns = f"&p{editor.pattern}b"
+        futs = deque()
+        for fn in os.listdir("cache"):
+            if fn.startswith(fns):
+                futs.append(submit(os.remove, "cache/" + fn))
+        for fut in futs:
+            fut.result()
+    pattern = project.patterns[editor.pattern]
+    timesig = pattern.timesig
+    edi = dict(
+        timesig=timesig,
+        tempo=pattern.tempo,
+    )
+    mixer.submit("~editor " + json.dumps(edi, separators=(',', ':')))
     channel = get_audio_channel()
+    last = -1
     editor.scroll_x = editor.targ_x
-    editor.targ_x = int(editor.scroll_x) + 0.001 / timesig[1]
-    while not player.paused and not PLAYER_BROKEN:
+    editor.targ_x = int(editor.scroll_x)
+    bar_sample = timesig[0] / pattern.tempo * 60 * 48000 * 2 * 2
+    end = pattern_end(pattern)
+    if editor.targ_x > 16:
+        resetting = True
+    else:
+        resetting = False
+    while not player.broken and not player.paused:
         try:
             player.pos = editor.scroll_x
-            player.end = max(pattern.ends.values()) if pattern.ends else player.pos
-            if editor.targ_x != int(editor.scroll_x):
-                editor.targ_x = int(editor.scroll_x)
-                for i in measure_range(pattern, editor.targ_x, editor.targ_x + 1):
-                    fn = f"cache/p{editor.patten}b{i}"
+            player.end = (max(k + v / timesig[0] for k, v in pattern.ends.items()) if pattern.ends else player.pos) or 0.001
+            if last != editor.targ_x:
+                if last == -1 and not resetting:
+                    start = 0
+                else:
+                    start = editor.targ_x
+                last = editor.targ_x
+                for i in measure_range(pattern, start, editor.targ_x + 2):
+                    fn = f"cache/&p{editor.pattern}b{i}.pcm"
                     if not os.path.exists(fn):
                         submit(render_bar, i)
-            fn = f"cache/p{editor.patten}b{editor.targ_x}"
-            while not os.path.exists(fn):
-                time.sleep(0.016)
-            offs = round_random(editor.scroll_x * timesig[0] / pattern.tempo * 60 * 48000 * 2 * 2)
-            with open(fn, "rb") as f:
-                f.seek(offs)
-                b = f.read(BUFSIZ)
+            print(editor.scroll_x)
+            first = True
+            b = io.BytesIO()
+            while not player.broken and not player.paused:
+                opos = (editor.scroll_x * bar_sample) % bar_sample
+                offs = round_random(opos)
+                fn = f"cache/&p{editor.pattern}b{editor.targ_x}.pcm"
+                while (not os.path.exists(fn) or os.path.getsize(fn) < 4) and not player.broken and not player.paused:
+                    time.sleep(0.016)
+                if player.broken or player.paused:
+                    break
+                p = b.tell()
+                with open(fn, "rb") as f:
+                    f.seek(offs if first else 0)
+                    b.write(f.read(BUFSIZ - p))
+                editor.scroll_x = round(editor.targ_x + (opos + BUFSIZ) / bar_sample, 4)
+                editor.targ_x = int(editor.scroll_x)
+                if editor.targ_x >= end:
+                    editor.targ_x = editor.scroll_x = 0
+                if b.tell() >= BUFSIZ:
+                    break
+                first = False
+            if player.broken or player.paused:
+                break
+            b.seek(0)
             try:
-                channel.write(b)
+                channel.write(b.read())
             except:
                 print_exc()
                 break
-            editor.scroll_x = fractions.Fraction((offs + BUFSIZ) * pattern.tempo) / (timesig[0] * 60 * 48000 * 2 * 2)
         except:
             print_exc()
-    editor.scroll_x = editor.targ_x = float(editor.scroll_x)
-    globals()["PLAYER_BROKEN"] = False
+    if resetting:
+        FRESH_PATTERNS.discard(editor.pattern)
+    submit(channel.write, reset_buff)
+    editor.targ_x = editor.scroll_x
+    player.broken = False
 
 def update_piano():
     globals()["editor"] = player.editor
@@ -148,8 +334,6 @@ def update_piano():
     r = 1 + 1 / (duration * 12)
     if not project.patterns:
         create_pattern()
-    if not project.instruments:
-        add_instrument()
     if kspam[K_LEFT]:
         if kheld[K_LEFT] == 1:
             editor.targ_x -= 0.25
@@ -184,7 +368,7 @@ def update_piano():
                 editor.scroll_y -= 256 * duration
     if editor.targ_x < 0:
         editor.targ_x = 0
-    if player.paused:
+    if player.paused and not player.broken:
         editor.scroll_x = (editor.scroll_x * (r - 1) + editor.targ_x) / r
     editor.scroll_y = (editor.scroll_y * (r - 1) + editor.targ_y) / r
     if abs(editor.scroll_x - editor.targ_x) < 0.001:
@@ -230,9 +414,11 @@ def editor_toolbar():
         selset = (
             ("freeform", "Freeform select", "Draw a freeform selection shape."),
             ("bounded", "Bounded select", "Select only objects within selection boundaries."),
+            ("instrument", "Instrument specific", "Select only notes matching the currently selected instrument."),
+            ("duration", "Duration specific", "Select only notes matching the currently selected duration."),
             ("autoswap", "Auto swap", "Switch back to editing after making a selection."),
         )
-        mrect = (toolbar.pause.radius << 2, screensize[1] - toolbar_height + 12, 192, min(toolbar.pause.radius * 2, 64))
+        mrect = (toolbar.pause.radius << 2, screensize[1] - toolbar_height + 12, 192, min(toolbar_height, 160))
         surf = pygame.Surface(mrect[2:], SRCALPHA)
         for i, t in enumerate(selset):
             s, name, description = t
@@ -370,6 +556,19 @@ def editor_toolbar():
             )
         else:
             editor.note.pop("resizing", None)
+
+    if CTRL[kheld] and kclick[K_s]:
+        if not project_name or SHIFT[kheld]:
+            fn = easygui.filesavebox(
+                "Save As",
+                "Miza Player",
+                project_name + ".mpp",
+                filetypes=(".mpp",),
+            )
+        else:
+            fn = project_name + ".mpp"
+        if fn:
+            save_project(fn)
     
     r = (c[0], c[1] - w, w, w)
     ct = (255, 127, 191) if options.editor.mode == "P" else (127, 96, 112)
@@ -380,9 +579,8 @@ def editor_toolbar():
         bevel_rectangle(DISP, (255,) * 3, r, bevel=3, filled=False)
     message_display("P", w, (c[0] + w // 2 - 1, c[1] - w // 2 - 1), font="Rockwell", colour=(64, 0, 32), surface=DISP)
     if options.editor.mode == "P":
-        if editor.pattern_view:
-            for p in editor.pattern.values():
-                pass
+        for p in patterns[editor.pattern].values():
+            pass
 
 n_measure = lambda n: n[0]
 n_pos = lambda n: n[1]
@@ -416,6 +614,7 @@ def note_from_id(i):
     return n
 
 def create_note(n, particles=True):
+    FRESH_PATTERNS.discard(editor.pattern)
     pattern = project.patterns[editor.pattern]
     m = n_measure(n)
     try:
@@ -439,10 +638,17 @@ def create_note(n, particles=True):
     return n
 
 def delete_note(n, particles=True):
+    FRESH_PATTERNS.discard(editor.pattern)
     pattern = project.patterns[editor.pattern]
     m = n_measure(n)
     editor.selection.notes.discard(id(n))
-    pattern.measures[m].remove(n)
+    try:
+        pattern.measures[m].remove(n)
+    except (KeyError, ValueError):
+        for m in measure_range(pattern, 0, pattern_end(pattern)):
+            if n in pattern.measures[m]:
+                pattern.measures[m].remove(n)
+                break
     if not pattern.measures[m]:
         pattern.measures.pop(m)
         pattern.ends.pop(m, None)
@@ -461,9 +667,17 @@ def measure_ends(pattern, low, high):
         low2 = min(i for i in range(int(low), -1, -1) if i + pattern.ends.get(i, 0) / timesig[0] >= low)
     except ValueError:
         low2 = floor(low)
-    high2 = max(ceil(high), low2 + 1)
+    high2 = ceil(max(min(high, pattern_end(pattern)), low2 + 1))
     return low2, high2
 measure_range = lambda pattern, low, high: range(*measure_ends(pattern, low, high))
+
+def hold_note(n, clear=False):
+    select_instrument(n_instrument(n))
+    if clear:
+        editor.held_notes.clear()
+    editor.held_notes.add(n_pitch(n) - 36)
+    if not editor.held_update or editor.held_update < 0.5:
+        editor.held_update = 1
 
 def render_piano():
     pattern = project.patterns[editor.pattern]
@@ -538,7 +752,7 @@ def render_piano():
                 col = n_colour(n)
                 r = list(n_rect(n))
                 r[0] -= (editor.targ_x - editor.scroll_x) * timesig[0] * note_width - soffs + PW
-                r[1] += (editor.targ_y - editor.scroll_y) * note_spacing + soffs
+                r[1] += ceil((editor.targ_y - editor.scroll_y) * note_spacing + soffs - 1)
                 rounded_bev_rect(surf, col + (191,), r, bevel=ceil(note_height / 5))
 
     x = (editor.scroll_x - editor.targ_x) * timesig[0] * note_width + soffs
@@ -643,7 +857,7 @@ def render_piano():
     else:
         measurepos = npos = None
     measures = pattern.measures
-    if (all(xy) or mheld[1] and not isnan(_mlast[0])) or editor.selection.point:
+    if (all(xy) or mheld[1] or kheld[K_DELETE] and not isnan(_mlast[0])) or editor.selection.point:
         if selecting:
             if kheld[K_a] and not editor.selection.get("all"):
                 for measure in measures.values():
@@ -670,6 +884,10 @@ def render_piano():
                             except KeyError:
                                 continue
                             for n in notes:
+                                if options.editor.instrument and n_instrument(n) != editor.note.instrument:
+                                    continue
+                                if options.editor.duration and n_length(n) != editor.note.length:
+                                    continue
                                 if r:
                                     if not options.editor.bounded:
                                         check = int_rect(n_rect(n), r)
@@ -680,6 +898,7 @@ def render_piano():
                                 if check:
                                     if id(n) not in editor.selection.notes:
                                         editor.selection.notes.add(id(n))
+                                        hold_note(n)
                         if options.editor.autoswap and editor.selection.notes:
                             editor.change_mode("I")
                     elif r:
@@ -713,14 +932,18 @@ def render_piano():
                         for p in points:
                             if not p[0] >= low:
                                 low = p[0]
-                            if not p[1] <= high:
-                                high = p[1]
+                            if not p[0] <= high:
+                                high = p[0]
                         for i in measure_range(pattern, r_pos(low), r_pos(high)):
                             try:
                                 notes = pattern.measures[i]
                             except KeyError:
                                 continue
                             for n in notes:
+                                if options.editor.instrument and n_instrument(n) != editor.note.instrument:
+                                    continue
+                                if options.editor.duration and n_length(n) != editor.note.length:
+                                    continue
                                 if len(points) >= 3:
                                     if not options.editor.bounded:
                                         check = any(in_polygon(p, points) for p in rect_points(n_rect(n))) or int_polygon(rect_points(n_rect(n)), points)
@@ -731,6 +954,7 @@ def render_piano():
                                 if check:
                                     if id(n) not in editor.selection.notes:
                                         editor.selection.notes.add(id(n))
+                                        hold_note(n)
                         points.clear()
                         if options.editor.autoswap and editor.selection.notes:
                             editor.change_mode("I")
@@ -749,13 +973,15 @@ def render_piano():
                 pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
                 pygame.draw.circle(DISP, (255, 0, 0), mpos2, 9, width=2)
 
-        elif options.editor.mode == "I" and (all(xy) or mheld[1] and not isnan(_mlast[0])) and not keyed:
+        elif options.editor.mode == "I" and (all(xy) or mheld[1] or kheld[K_DELETE] and not isnan(_mlast[0])) and not keyed:
             if mheld[1]:
                 editor.selection.cancel()
+            if mheld[1] or kheld[K_DELETE]:
                 pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 8, mpos2[1] + 6), (mpos2[0] + 6, mpos2[1] - 8), width=2)
                 pygame.draw.circle(DISP, (255, 0, 0), mpos2, 12, width=2)
             hnote = False
             try:
+                deleted = deque()
                 efpos = (mpos2[0] - PW) / timesig[0] / note_width + editor.scroll_x
                 for i in measure_range(pattern, efpos, efpos):
                     try:
@@ -763,14 +989,16 @@ def render_piano():
                     except KeyError:
                         pass
                     else:
-                        for n in notes[-1024:]:
+                        for n in reversed(notes[-1024:]):
                             r = n_rect(n)
                             if in_rect(mpos2, r):
                                 if not hnote:
                                     hnote = n
-                                if mheld[1]:
-                                    delete_note(n)
+                                if mheld[1] or kheld[K_DELETE]:
+                                    deleted.append(n)
                                     continue
+                                if mheld[0] and editor.held_notes:
+                                    hold_note(note_from_id(next(iter(editor.selection.notes))))
                                 if mc4[0]:
                                     if not CTRL[kheld] and not SHIFT[kheld]:
                                         if id(n) not in editor.selection.notes:
@@ -785,21 +1013,27 @@ def render_piano():
                                         pan=n_pan(n),
                                         effects=n_effects(n),
                                     )
+                                    select_instrument(n_instrument(n))
+                                    hold_note(n, True)
                                     raise StopIteration
-                            elif mheld[1] and mpos != _mlast and not isnan(_mlast[0]):
+                            elif (mheld[1] or kheld[K_DELETE]) and mpos != _mlast and not isnan(_mlast[0]):
                                 l1 = (_mlast, mpos2)
                                 l2 = (r[:2], (r[0] + r[2], r[1]))
                                 if intervals_intersect(l1, l2):
-                                    delete_note(n)
+                                    deleted.append(n)
                                     continue
                                 l2 = (r[:2], (r[0], r[1] + r[3]))
                                 if intervals_intersect(l1, l2):
-                                    delete_note(n)
+                                    deleted.append(n)
                                     continue
                                 l2 = ((r[0] + r[2], r[1]), (r[0] + r[2], r[1] + r[3]))
                                 if intervals_intersect(l1, l2):
-                                    delete_note(n)
+                                    deleted.append(n)
                                     continue
+                if deleted:
+                    for n in deleted:
+                        delete_note(n)
+                    editor.undo.append(["undo_delete_note", deleted])
             except StopIteration:
                 pass
             if editor.note.instrument is not None:
@@ -818,16 +1052,19 @@ def render_piano():
                                 if editor.note.effects:
                                     N.append(list(editor.note.effects))
                         create_note(N)
+                        hold_note(N, True)
                         print(N)
-                    elif not any(mheld):
+                        editor.undo.append(["delete_note", N])
+                    elif not any(mheld) and not kheld[K_DELETE]:
                         r = tuple(xy) + (editor.note.length * note_width + 1, note_height + 1)
                         c = project.instruments[editor.note.instrument].colour + (96 + 192 * abs(pc() % 1 - 0.5),)
                         rounded_bev_rect(DISP, c, r, bevel=ceil(note_height / 5))
 
     ntuple = (measurepos, npos, pitch)
+    undone = False
     if CTRL[kheld] or SHIFT[kheld]:
         move = None
-        if kheld[K_c] and not editor.selection.get("cpy") and editor.selection.notes:
+        if (kheld[K_c] or kheld[K_x]) and not editor.selection.get("cpy") and editor.selection.notes:
             editor.selection.cpy = 1
             copied = sorted(list(note_from_id(i)) for i in editor.selection.notes)
             offs = copied[0][0] * timesig[0] + copied[0][1]
@@ -840,30 +1077,57 @@ def render_piano():
                     s += "\n" + line
                 else:
                     s += line
+            if kheld[K_x]:
+                [delete_note(note_from_id(i)) for i in editor.selection.notes]
+                editor.selection.cancel()
             pyperclip.copy(s)
         if kheld[K_v] and not editor.selection.get("cpy"):
             p = pyperclip.paste()
             if p and "," in p:
                 pos = None
                 if measurepos:
-                    if npos:
+                    if npos is not None:
                         pos = measurepos * timesig[0] + npos
                 if not pos:
-                    pos = editor.targ_x
+                    pos = editor.targ_x * timesig[0]
                     for n in map(note_from_id, editor.selection.notes):
                         x = n_measure(n) * timesig[0] + n_pos(n) + n_length(n)
                         if pos < x:
                             pos = x
+                old_sel = copy.deepcopy(editor.selection)
                 editor.selection.cancel()
                 editor.selection.cpy = 1
+                created = deque()
+                i_id = None
                 for line in p.split("\n"):
                     N = json.loads("[" + line + "]")
                     x = pos + N[0]
                     N[0] = x % timesig[0]
                     N.insert(0, int(x // timesig[0]))
-                    create_note(N, True)
-                    editor.selection.notes.add(id(N))
+                    created.append(N)
+                    if i_id is None:
+                        i_id = n_instrument(N)
+                    elif i_id != n_instrument(N):
+                        i_id = -1
+                for n in created:
+                    if i_id is not None and i_id != -1:
+                        n[2] = editor.note.instrument
+                    create_note(n, True)
+                    editor.selection.notes.add(id(n))
+
+                editor.undo.append(["undo_paste", created, selection])
                 print(list(map(note_from_id, editor.selection.notes)))
+        if kheld[K_z]:
+            undone = True
+            if not player.undone and editor.undo:
+                action = editor.undo.pop(-1)
+                func = globals().get(action.pop(0))
+                if func:
+                    func(*action)
+                    FRESH_PATTERNS.clear()
+                    player.editor_surf = None
+                else:
+                    print("Invalid undo action:", func, action)
     elif mheld[0] and all(xy) and None not in editor.selection.orig and editor.selection.orig != ntuple:
         move = [x - y for x, y in zip(ntuple, editor.selection.orig)]
         m = move.pop(0)
@@ -872,18 +1136,24 @@ def render_piano():
             move = None
     else:
         move = None
+    player.undone = undone
+    if len(editor.undo) > 256:
+        editor.undo = astype(editor.undo, list)[256:]
     if move:
         for n in map(note_from_id, editor.selection.notes):
             if n:
                 x = n_measure(n) * timesig[0] + n_pos(n) + move[0]
                 if x < 0:
                     move[0] -= x
+        created = deque()
+    deleted = deque()
     for i in deque(editor.selection.notes):
         n = note_from_id(i)
         if not n:
             editor.selection.notes.discard(i)
             continue
         if kheld[K_DELETE]:
+            deleted.append(n)
             delete_note(n)
             continue
         if move:
@@ -891,10 +1161,12 @@ def render_piano():
             x += n_measure(n) * timesig[0] + n_pos(n)
             a, b = divmod(x, timesig[0])
             if a != n_measure(n):
+                deleted.append(list(n))
                 delete_note(n, False)
                 n[0] = a
                 n[1] = b
                 n[3] += y
+                created.append(n)
                 create_note(n, False)
                 editor.selection.notes.add(id(n))
             else:
@@ -937,6 +1209,9 @@ def render_piano():
             editor.selection.orig = (None, None)
         else:
             editor.selection.orig = ntuple
+        editor.undo.append(["undo_move", deleted, created])
+    elif deleted:
+        editor.undo.append(["undo_delete_note", deleted])
 
     r = player.rect[:2] + (16, player.rect[3] - 16)
     hovered = in_rect(mpos, r)
@@ -955,7 +1230,7 @@ def render_piano():
     c = (223,) * 3 + A
     bevel_rectangle(DISP, c, r, bevel=4)
 
-    measurecount = max(pattern.measures or (4,)) + 8
+    measurecount = max(pattern_end(pattern), 4) + 8
     r = (PW, player.rect[3] - 16, player.rect[2] - PW, 16)
     hovered = in_rect(mpos, r)
     A = (191 if editor.get("x-scrolling") else 127 if hovered else 16,)
@@ -966,10 +1241,14 @@ def render_piano():
         editor["x-scrolling"] = True
         x = mpos2[0]
         targ_x = ((x - PW - round(ratio / 2)) / (player.rect[2] - PW)) * measurecount
-        if player.paused:
+        if player.paused and not player.broken:
+            temp = editor.targ_x
             editor.targ_x = targ_x
         else:
+            temp = editor.scroll_x
             editor.scroll_x = targ_x
+        if temp != targ_x:
+            player.editor_surf = None
     if not any(mheld):
         editor.pop("x-scrolling", None)
     x = editor.scroll_x / measurecount * (player.rect[2] - PW) + PW
@@ -983,3 +1262,15 @@ def render_piano():
     globals()["_mlast"] = mpos
     globals()["_targ_x"] = editor.targ_x
     globals()["_targ_y"] = editor.targ_y
+
+
+def undo_delete_note(deleted):
+    [create_note(n) for n in deleted]
+
+def undo_move(deleted, created):
+    [delete_note(n) for n in deleted]
+    [create_note(n) for n in created]
+
+def undo_paste(created, selection):
+    [delete_note(n) for n in created]
+    editor.selection.update(selection)

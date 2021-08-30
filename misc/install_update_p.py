@@ -16,7 +16,7 @@ if "\\AppData\\" in sys.executable:
         if p not in PATH:
             print(f"Adding {p} to PATH...")
             PATH.add(p)
-            s = os.pathsep.join(sorted(PATH)) + os.pathsep
+            s = os.pathsep.join(PATH) + os.pathsep
             subprocess.run(["setx", "path", s])
             os.environ["PATH"] = s
 
@@ -25,6 +25,7 @@ bs4>=0.0.1
 easygui>=0.98.2
 easygui_qt>=0.9.3
 numpy>=1.21.2
+pillow>=8.3.1
 psutil>=5.8.0
 pygame>=2.0.1
 pyperclip>=1.8.2
@@ -34,8 +35,12 @@ requests>=2.26.0
 samplerate>=0.1.0
 scipy>=1.7.1
 youtube-dl>=2021.6.6
-pyFluidSynth>=1.3.0
 """.split("\n")
+
+if os.name == "nt":
+    modlist.append("pipwin>=0.5.1")
+else:
+    modlist.append("pyaudio>=0.2.11")
 
 try:
     import pkg_resources, struct
@@ -44,8 +49,6 @@ except ModuleNotFoundError:
     import pkg_resources, struct
 
 x = sys.version_info[1]
-if x >= 9:
-    modlist[0] = "pillow>=8.3.1"
 psize = None
 
 installing = []
@@ -78,38 +81,8 @@ if installing:
     subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "pip"])
     for i in installing:
         i.wait()
-key = None
-if x < 9:
-    try:
-        pkg_resources.get_distribution("pillow")
-    except pkg_resources.DistributionNotFound:
-        pass
-    else:
-        subprocess.run([sys.executable, "-m", "pip", "uninstall", "pillow", "-y"])
-    try:
-        pkg_resources.get_distribution("pillow-simd")
-    except pkg_resources.DistributionNotFound:
-        if not key:
-            import requests
-            key = requests.get("https://pastebin.com/raw/3EC6QqDF").text
-        psize = struct.calcsize("P")
-        if psize == 8:
-            win = "win_amd64"
-        else:
-            win = "win32"
-        subprocess.run([sys.executable, "-m", "pip", "install", f"https://download.lfd.uci.edu/pythonlibs/{key}/Pillow_SIMD-7.0.0.post3+avx2-cp3{x}-cp3{x}-{win}.whl", "--user"])
 try:
     if str(pkg_resources.get_distribution("pyaudio")) < "PyAudio 0.2.11":
         raise ValueError
 except (pkg_resources.DistributionNotFound, ValueError):
-    if not psize:
-        psize = struct.calcsize("P")
-        if psize == 8:
-            win = "win_amd64"
-        else:
-            win = "win32"
-    if not key:
-        import requests
-        key = requests.get("https://pastebin.com/raw/3EC6QqDF").text
-    subprocess.run([sys.executable, "-m", "pip", "install", f"https://download.lfd.uci.edu/pythonlibs/{key}/PyAudio-0.2.11-cp3{x}-cp3{x}-{win}.whl", "--user"])
-print("Installer terminated.")
+    subprocess.run([sys.executable, "-m", "pipwin", "install", "pyaudio"])

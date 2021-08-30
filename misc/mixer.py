@@ -4,7 +4,8 @@ import sys
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, pyaudio, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, concurrent.futures, scipy.special
+import os, sys, pyaudio, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools
+import concurrent.futures, scipy.special
 from math import *
 np = numpy
 deque = collections.deque
@@ -124,11 +125,20 @@ class cdict(dict):
         data.update(self)
         return data
 
+    def union(self, other=None, **kwargs):
+        temp = self.copy()
+        if other:
+            temp.update(other)
+        if kwargs:
+            temp.update(kwargs)
+        return temp
+
     @property
     def __dict__(self):
         return self
 
     ___repr__ = lambda self: super().__repr__()
+    copy = __copy__ = lambda self: self.__class__(self)
     to_dict = lambda self: dict(**self)
     to_list = lambda self: list(super().values())
 
@@ -154,7 +164,7 @@ def aff():
     try:
         pya = pyaudio.PyAudio()
         globals()["OUTPUT_DEVICE"] = pya.get_default_output_device_info()["name"]
-        print(OUTPUT_DEVICE)
+        point(f"~o {OUTPUT_DEVICE}")
         globals()["aout"] = submit(pya_init)
         return pya
     except:
@@ -162,7 +172,7 @@ def aff():
 
 afut = submit(aff)
 aout = concurrent.futures.Future()
-aout.set_result(cdict(get_write_available=lambda: None, close=lambda: None))
+aout.set_result(None)
 
 OUTPUT_FILE = None
 
@@ -527,7 +537,6 @@ def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
 def construct_options(full=True):
     stats = cdict(settings)
     pitchscale = 2 ** ((stats.pitch + stats.nightcore) / 12)
-    chorus = min(16, abs(stats.chorus))
     reverb = stats.reverb
     volume = 1
     if reverb:
@@ -559,9 +568,11 @@ def construct_options(full=True):
         if full:
             options.append("aresample=48k")
         options.append("asetrate=" + str(48000 * pitchscale))
-    if chorus:
+    if stats.chorus:
+        chorus = abs(stats.chorus)
+        ch = min(16, chorus)
         A = B = C = D = ""
-        for i in range(ceil(chorus)):
+        for i in range(ceil(ch)):
             neg = ((i & 1) << 1) - 1
             i = 1 + i >> 1
             i *= stats.chorus / ceil(chorus)
@@ -570,15 +581,15 @@ def construct_options(full=True):
                 B += "|"
                 C += "|"
                 D += "|"
-            delay = (25 + i * tau * neg) % 39 + 18
+            delay = (8 + 5 * i * tau * neg) % 39 + 19
             A += str(round(delay, 3))
-            decay = (0.125 + i * 0.03 * neg) % 0.25 + 0.25
+            decay = (0.36 + i * 0.47 * neg) % 0.65 + 1.7
             B += str(round(decay, 3))
-            speed = (2 + i * 0.61 * neg) % 4.5 + 0.5
+            speed = (0.27 + i * 0.573 * neg) % 0.3 + 0.02
             C += str(round(speed, 3))
-            depth = (i * 0.43 * neg) % max(4, stats.chorus) + 0.5
+            depth = (0.55 + i * 0.25 * neg) % max(1, stats.chorus) + 0.15
             D += str(round(depth, 3))
-        b = 0.5 / sqrt(ceil(chorus + 1))
+        b = 0.5 / sqrt(ceil(ch + 1))
         options.append(
             "chorus=0.5:" + str(round(b, 3)) + ":"
             + A + ":"
@@ -586,7 +597,6 @@ def construct_options(full=True):
             + C + ":"
             + D
         )
-        volume *= 2
     if stats.compressor:
         comp = min(8000, abs(stats.compressor * 10 + (1 if stats.compressor >= 0 else -1)))
         while abs(comp) > 1:
@@ -626,15 +636,20 @@ def construct_options(full=True):
         if wet != 1:
             options.append("asplit[2]")
         volume *= 1.2
+        if reverb < 0:
+            volume = -volume
         options.append("afir=dry=10:wet=10")
         if wet != 1:
             dry = 1 - wet
-            options.append("[2]amix=weights=" + str(round(dry, 6)) + " " + str(round(wet, 6)))
-        if coeff > 1:
-            decay = round(1 - 4 / (3 + coeff), 4)
-            options.append(f"aecho=1:1:400|600:{decay}|{decay / 2}")
-            if decay >= 0.25:
-                options.append(f"aecho=1:1:800|1100:{decay / 4}|{decay / 8}")
+            options.append("[2]amix=weights=" + str(round(dry, 6)) + " " + str(round(-wet, 6)))
+        d = [round(1 - i ** 1.6 / (i ** 1.6 + coeff), 4) for i in range(2, 18, 2)]
+        options.append(f"aecho=1:1:400|630:{d[0]}|{d[1]}")
+        if d[2] >= 0.05:
+            options.append(f"aecho=1:1:920|1450:{d[2]}|{d[3]}")
+            if d[4] >= 0.06:
+                options.append(f"aecho=1:1:1760|2190:{d[4]}|{d[5]}")
+                if d[6] >= 0.07:
+                    options.append(f"aecho=1:1:2520|3000:{d[6]}|{d[7]}")
     if stats.pan != 1:
         pan = min(10000, max(-10000, stats.pan))
         while abs(abs(pan) - 1) > 0.001:
@@ -836,9 +851,16 @@ def render():
     global lastpacket, osci_fut, spec_fut, spec2_fut, packet_advanced, sbuffer
     try:
         while True:
+            t = pc()
+            sleep = 0.005
             if lastpacket != packet and sbuffer is not None:
                 lastpacket = packet
-                buffer = sbuffer
+                if len(sbuffer) > 3200:
+                    buffer = sbuffer[:3200]
+                    sbuffer = sbuffer[3200:]
+                    sleep = 1 / 30
+                else:
+                    buffer = sbuffer
 
                 amp = sum(np.abs(buffer)) / len(buffer)
                 # ampm1 = buffer > 0
@@ -884,7 +906,9 @@ def render():
                     if is_strict_minimised():
                         spec2_fut = submit(spectrogram_update)
             packet_advanced = False
-            time.sleep(0.005)
+            dur = sleep + t - pc()
+            if dur > 0:
+                time.sleep(dur)
     except:
         print_exc()
 
@@ -893,7 +917,7 @@ emptymem = memoryview(emptybuff)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
-    global file, fn, proc, drop, quiet, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, packet_advanced, packet_advanced2, packet_advanced3
+    global file, fn, proc, drop, quiet, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, packet_advanced, packet_advanced2, packet_advanced3, sfut
     skipzeros = False
     try:
         frame = pos * 30
@@ -902,7 +926,6 @@ def play(pos):
                 paused.result()
             if stopped:
                 break
-            synther = submit(synthesize)
             p = proc
             if fn:
                 if not file:
@@ -972,7 +995,12 @@ def play(pos):
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
                 smp = np.frombuffer(b, dtype=np.int16)
-                wave = synther.result()
+                if sfut:
+                    s = sfut.result()
+                else:
+                    s = synthesize()
+                sfut = submit(synthesize)
+                wave = s
                 if settings.volume != 1 or wave is not None:
                     if settings.volume != 1:
                         s = smp.astype(np.float32)
@@ -1052,17 +1080,20 @@ def play(pos):
         print_exc()
 
 
-def supersample(a, size):
+def supersample(a, size, hq=False):
     n = len(a)
     if n == size:
         return a
     if n < size:
+        if hq:
+            a = samplerate.resample(a, size / len(a), "sinc_fastest")
+            return supersample(a, size)
         interp = np.linspace(0, n - 1, size)
         return np.interp(interp, range(n), a)
     x = ceil(n / size)
     interp = np.linspace(0, n - 1, x * size)
     a = np.interp(interp, range(n), a)
-    return numpy.mean(a.reshape(-1, x), 1)
+    return np.mean(a.reshape(-1, x), 1)
 
 
 SR = 48000
@@ -1080,100 +1111,46 @@ da = 0
 db = 0
 dc = 8
 
-def synth_gen(shape, amplitude, phase, pulse, shrink, exponent):
-    try:
-        if amplitude == 0 or shrink == 1:
-            x = np.zeros(4096)
-        else:
-            if shape < 1:
-                x = np.linspace(0, tau, 4096, endpoint=False)
-                x = np.sin(x, out=x)
-                if shape != 0:
-                    y = np.linspace(0.25, 1.25, 4096, endpoint=False)
-                    y[y >= 0.5] -= 1
-                    y = np.abs(y, out=y)
-                    x *= pi / 4 * (1 - shape)
-                    y *= 4 * shape
-                    y -= shape
-                    x += y
-                else:
-                    x *= pi / 4
-            elif shape < 2:
-                x = np.linspace(0.25, 1.25, 4096, endpoint=False)
-                x[x >= 0.5] -= 1
-                x = np.abs(x, out=x)
-                x *= 4
-                x -= 1
-                if shape != 1:
-                    shape -= 1
-                    x *= 1 / (1 - shape)
-                    m = 1 / (1 + shape)
-                    np.clip(x, -m, m, out=x)
-            elif shape < 3:
-                x = np.linspace(0, tau, 4096, endpoint=False)
-                x = (np.sin(x, out=x) >= 0).astype(np.float64)
-                x -= 0.5
-                if shape != 2:
-                    shape -= 2
-                    y = np.linspace(0, 2, 4096, endpoint=False)
-                    y %= 1
-                    y[2048:] -= 1
-                    x *= (1 - shape)
-                    y *= shape
-                    x += y
-            else:
-                x = np.linspace(0, 2, 4096, endpoint=False)
-                x %= 1
-                x[2048:] -= 1
-            if amplitude != 1:
-                x *= amplitude
-                if amplitude > 1:
-                    np.clip(x, -1, 1, out=x)
-            if phase != 0 and phase != 1:
-                x = np.roll(x, round(phase * 4096))
-            if pulse != 0.5:
-                r = round(4096 * pulse)
-                left = np.linspace(0, 2048, r, endpoint=False)
-                right = np.linspace(2048, 4096, 4096 - r, endpoint=False)
-                indices = np.concatenate((left, right))
-                x = np.interp(indices, range(4096), x)
-            if shrink != 0:
-                r = round(4096 * (1 - shrink))
-                y = np.zeros(4096, dtype=np.float64)
-                indices = np.linspace(0, 4096, r, endpoint=False)
-                x = np.interp(indices, range(4096), x)
-                y[2048 - r // 2:2048 + (r + 1) // 2] = x
-                x = y
-            if exponent != 1:
-                msk = x < 0
-                np.abs(x, out=x)
-                x **= exponent
-                x[msk] *= -1
-        globals()["wsmp"] = x
-        # print("\n".join(map(str, x)))
-        globals()["wavecache"].clear()
-    except:
-        print_exc()
-
 wavecache = {}
+sel_instrument = 0
 
-def waveget(period, offs=0):
-    period = round(period / 8) << 3
-    if period not in wavecache:
-        temp = wsmp
-        rat = len(temp) / period
-        while len(temp) and rat > 8:
-            temp = samplerate.resample(temp, 0.125, "sinc_fastest")
-            rat = len(temp) / period
-        if rat != 1:
-            temp = samplerate.resample(temp, 1 / rat, "sinc_fastest")
-        wavecache[period] = temp
-        print(period)
-        print(len(wavecache))
-    return wavecache[period]
+class Sample(collections.abc.Hashable):
+
+    def __init__(self, data, opt):
+        self.data = np.frombuffer(base64.b64decode(data), dtype=np.float32)
+        self.cache = {}
+        self.opt = opt
+
+    def __hash__(self):
+        data = self.data
+        x = ceil(log2(len(data)))
+        y = [round(i) for i in np.linspace(0, len(data) - 1, num=x)]
+        return hash(np.sum(data[y]))
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return False
+        return np.all(self.data == other.data)
+
+    __len__ = lambda self: len(self.data)
+
+    def get(self, period=None):
+        if period is None:
+            return self.data
+        period = round(period / 8) << 3
+        if period not in self.cache:
+            self.cache[period] = supersample(self.data, period)
+            print(period)
+            print(len(self.cache))
+        return self.cache[period]
+
+
+sfut = None
 
 def synthesize():
-    global prevkeys, den, da, db, dc
+    global prevkeys, den, da, db, dc, synth_buff
+    if not wavecache:
+        return
     totalkeys = alphakeys.union(prevkeys) if alphakeys or prevkeys else ()
     dt = max(1, len(totalkeys)) + 1
     if db != dt:
@@ -1181,36 +1158,35 @@ def synthesize():
             dc = 0
         da = den
         db = dt
-    su = settings.get("unison", 1)
+    instrument = wavecache[sel_instrument]
+    u = instrument.opt
     s = None
     for i in totalkeys:
-        if su == 1:
-            partials = [i]
-        else:
-            partials = np.linspace(i - sqrt(su / 8) / 3, i + sqrt(su / 8) / 3, round(su))
-        for j in partials:
-            freq = 110 * 2 ** ((j + 3 + settings.get("pitch", 0) + settings.get("nightcore", 0)) / 12)
+        partials = [(x / (u[0] - 1) * u[1] * 2) - u[1] for x in range(u[0])] if u[0] > 1 and u[1] else [0] * u[0]
+        for p in partials:
+            freq = 110 * 2 ** ((i + p + 3 + settings.get("pitch", 0) + settings.get("nightcore", 0)) / 12)
             period = SR / freq
             synth_period = period * ceil(4096 / period)
             offs = buffoffs % synth_period
-            wave = waveget(synth_period)
+            wave = instrument.get(synth_period)
+            if len(partials) > 1:
+                wave = wave * (1 / len(partials))
             c = SR // 48
             if i in alphakeys:
                 xa = np.linspace(0, period, len(wave), endpoint=False)
                 wave = np.interp(np.linspace(offs, FR + offs, FR, endpoint=False) % period, xa, wave)
-                # print(buffoffs + FR, offs, len(wave), period)
                 if i not in prevkeys:
                     x = min(int((period - offs) % period), FR - c)
                     wave[:x] = 0
                     wave[x:x + c] *= cm
-                    # print(wave[x:x + 3])
                 if s is not None:
-                    wave += s
-                s = wave
+                    s += wave
+                else:
+                    s = wave
             elif i in prevkeys:
                 x = min(int((period - offs - c) % period), FR - c)
                 if s is None:
-                    s = np.zeros(FR, dtype=np.float64)
+                    s = np.zeros(FR, dtype=np.float32)
                 xa = np.linspace(0, period, len(wave), endpoint=False)
                 wave = np.interp(np.linspace(offs, x + c + offs, x + c, endpoint=False) % period, xa, wave)
                 samplespace = np.linspace(-2, 2, x + c)
@@ -1219,10 +1195,10 @@ def synthesize():
                 wave *= samplespace
                 wave *= -0.5
                 s[:x + c] += wave
-                # print(wave[x + c - 3:x + c])
+    time.sleep(0.005)
     if s is not None:
         globals()["buffoffs"] += FR
-        m = 32767 / su
+        m = 32767
         if dc < 5:
             lin = basewave + dc
             lin -= 2
@@ -1240,7 +1216,6 @@ def synthesize():
         m *= settings.get("volume", 1)
         s *= m
         s = np.round(s, out=s)
-        # print(s)
         s = np.repeat(s, 2)
     else:
         globals()["buffoffs"] = 0
@@ -1252,14 +1227,16 @@ def synthesize():
 
 
 def piano_player():
-    global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3
+    global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3, sfut
     try:
         while True:
             if channel2 and channel2.get_write_available() or not channel2 and not pygame.mixer.Channel(0).get_queue():
-                s = synthesize()
-                # if s is None:
-                #     s = np.zeros(3200, dtype=np.int16)
-                if s is not None:
+                if sfut:
+                    s = sfut.result()
+                else:
+                    s = synthesize()
+                sfut = submit(synthesize)
+                if s is not None and len(s):
                     s = np.clip(s, -32767, 32767)
                     sample = s.astype(np.int16)
                     b = sample.tobytes()
@@ -1331,35 +1308,79 @@ n_volume = lambda n: n[5] if len(n) > 5 else 0.25
 n_pan = lambda n: n[6] if len(n) > 6 else 0
 n_effects = lambda n: n[7] if len(n) > 7 else ()
 
-lingering_notes = []
-def render_notes(samples, notes):
+
+synth_samples = np.zeros(0, dtype=np.float32)
+def render_notes(i, notes):
+    global synth_samples
     timesig = editor.timesig
     note_length = editor.note_length
+    samplecount = round_random(timesig[0] * note_length)
+    if len(synth_samples) < samplecount << 1:
+        if not i:
+            synth_samples = np.zeros(samplecount << 1, dtype=np.float32)
+        else:
+            synth_samples = np.append(synth_samples, np.zeros(samplecount * 2 - len(synth_samples), dtype=np.float32))
+    left, right = synth_samples[::2], synth_samples[1::2]
     bufofs = bar * editor.timesig[0] * note_length
-    ling = []
-    for n in itertools.chain(notes, lingering_notes):
-        wave = editor.waves[n_instrument(n)]
+    for n in notes:
+        v = n_volume(n)
+        if v <= 0:
+            continue
+        v *= 32768
+        instrument = wavecache[n_instrument(n)]
+        u = instrument.opt
+        wave = instrument.data
         offs = n_pos(n) * note_length
         length = n_length(n) * note_length
-        freq = 440 * 2 ** ((n_pitch(n) - 57) / 12)
-        slength = 48000 / freq
-        pos = round_random(offs - (bufofs + offs) % slength)
-        if n_measure(n) < bar:
-            pos -= slength
-        if length > 2 * slength:
-            over = length % slength
-            if over:
-                length += slength - over
-        positions = np.linspace(0, length / slength * len(wave), round_random(length), endpoint=False)
-        positions %= len(wave)
-        sample = np.interp(positions, np.arange(len(wave)), wave)
-        if pos < 0:
-            sample = sample[-pos:]
-            pos = 0
-        samples[pos:len(sample)] += sample
-        if n_end(n) > timesig[0]:
-            ling.append(n)
-    globals()["lingering_notes"] = ling
+        pitch = n_pitch(n)
+        partials = [(x / (u[0] - 1) * u[1] * 2) - u[1] for x in range(u[0])] if u[0] > 1 and u[1] else [0] * u[0]
+        if len(partials) > 1:
+            v /= len(partials)
+        for p in partials:
+            freq = 440 * 2 ** ((p + pitch - 57) / 12)
+            slength = 48000 / freq
+            pos = round_random(ceil(offs / slength) * slength + (bufofs + offs) % slength)
+            if n_measure(n) < bar:
+                pos -= slength
+            if length > 2 * slength:
+                over = length % slength
+                if over:
+                    length += slength - over
+            if v != 1:
+                wave = wave * v
+            pos = round_random(pos)
+            length = round_random(length)
+            if pos + length > len(left):
+                synth_samples = np.append(synth_samples, np.zeros(pos + length - len(left) << 1, dtype=np.float32))
+                left, right = synth_samples[::2], synth_samples[1::2]
+                # length = len(right) - pos
+                # length -= length % slength
+            if length <= 0:
+                continue
+            positions = np.linspace(0, length / slength * len(wave), length, endpoint=False)
+            positions %= len(wave)
+            sample = np.interp(positions, np.arange(len(wave)), wave)
+            if pos < 0:
+                sample = sample[-pos:]
+                pos = 0
+            sl = slice(pos, pos + len(sample))
+            pan = n_pan(n)
+            if pan <= -1:
+                left[sl] += sample
+            elif pan >= 1:
+                right[sl] += sample
+            elif pan == 0:
+                left[sl] += sample
+                right[sl] += sample
+            else:
+                p = 0.5 + (pan / 2)
+                lsamp = sample * (1 - p)
+                sample *= p
+                rsamp = sample
+                left[sl] += lsamp
+                right[sl] += rsamp
+    samples, synth_samples = synth_samples[:samplecount << 1], synth_samples[samplecount << 1:]
+    np.clip(samples, -32768, 32767, out=samples)
     return samples
 
 
@@ -1408,36 +1429,42 @@ while not sys.stdin.closed and failed < 8:
             command = command.rstrip().rstrip("\x00")
             failed = 0
             pos = frame / 30
-            if command.startswith("~editor"):
-                s = command[8:]
-                editor = cdict(json.loads(s))
-                note_length = 60 / editor.tempo * 48000
-                continue
             if command.startswith("~render"):
                 s = command[8:]
                 p, b, s = s.split(" ", 2)
                 bar = int(b)
                 notes = json.loads(s)
-                samplecount = round_random(editor.timesig[0] * note_length)
-                samples = np.zeros(samplecount, dtype=np.int16)
-                render_notes(samples, notes)
-                out = samples.tobytes()
-                with open(f"cache/&p{p}b{b}", "wb") as f:
+                samples = render_notes(b, notes)
+                out = samples.astype(np.int16).tobytes()
+                with open(f"cache/&p{p}b{b}.pcm", "wb") as f:
                     f.write(out)
                 continue
-            if command.startswith("~synth"):
-                it = map(float, command[7:].split())
-                if sf and not sf.done():
-                    sf.result()
-                sf = submit(synth_gen, *it)
-                if "wsmp" not in globals():
-                    sf.result()
+            if command.startswith("~wave"):
+                b = command[6:]
+                if b == "clear":
+                    wavecache.clear()
+                    continue
+                sid, opt, data = b.split(None, 2)
+                sid = int(sid)
+                s = Sample(data.encode("ascii"), json.loads(opt))
+                wavecache[sid] = s
+                sel_instrument = sid
+                continue
+            if command.startswith("~select"):
+                s = int(command[8:])
+                assert wavecache[s]
+                sel_instrument = s
                 continue
             if command.startswith("~keys"):
                 s = command[6:]
                 alphakeys = set(map(int, s.split(","))) if s else set()
                 if aout.done() and alphakeys or prevkeys:
                     channel2 = aout.result()
+                continue
+            if command.startswith("~editor"):
+                s = command[8:]
+                editor = cdict(json.loads(s))
+                editor.note_length = 60 / editor.tempo * 48000
                 continue
             if command == "~clear":
                 if proc:
@@ -1451,6 +1478,7 @@ while not sys.stdin.closed and failed < 8:
                     temp.close()
                     submit(remove, file)
                 fn = file = proc = None
+                synth_samples = np.zeros(0, dtype=np.float32)
                 continue
             if command.startswith("~state"):
                 i = int(command[6:])
@@ -1492,7 +1520,8 @@ while not sys.stdin.closed and failed < 8:
             if command.startswith("~output"):
                 OUTPUT_DEVICE = command[8:]
                 waiting = concurrent.futures.Future()
-                aout.result().close()
+                if aout.result():
+                    aout.result().close()
                 afut.result().terminate()
                 afut = submit(pyaudio.PyAudio)
                 aout = submit(pya_init)
@@ -1525,7 +1554,8 @@ while not sys.stdin.closed and failed < 8:
                 pos = (frame + drop) / 30
                 drop = 0
             elif command != "~replay":
-                pos, duration, cdc, sh = sys.stdin.readline().rstrip().split(" ", 3)
+                s = sys.stdin.readline().rstrip().split(" ", 3)
+                pos, duration, cdc, sh = s
                 pos, duration = map(float, (pos, duration))
                 stream = command
             shuffling = False
@@ -1543,9 +1573,9 @@ while not sys.stdin.closed and failed < 8:
                     temp.close()
                     remove(file)
             if fut:
+                stopped = True
                 if paused:
                     paused.set_result(None)
-                stopped = True
                 try:
                     fut.result(timeout=5)
                 except:

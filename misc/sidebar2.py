@@ -118,15 +118,6 @@ def render_sidebar_2(dur=0):
             sidebar.rect2,
             4,
         )
-    if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_s]:
-        fn = easygui.filesavebox(
-            "Save As",
-            "Miza Player",
-            project_name + ".mpp",
-            filetypes=(".mpp",),
-        )
-        if fn:
-            save_project(fn)
     if offs > 4 - sidebar_width:
         queue = sidebar.instruments
         Z = -sidebar.scroll.pos
@@ -247,8 +238,7 @@ def render_sidebar_2(dur=0):
                                 sidebar.last_selected = entry
                                 lq2 = i
                                 sidebar.selection_offset = np.array(mpos2) - rect[:2]
-                                synth = instrument.synth
-                                mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}", force=True)
+                                select_instrument(instrument)
                 if entry.get("selected"):
                     flash = entry.get("flash", 16)
                     if flash >= 0:
@@ -456,7 +446,7 @@ def render_sidebar_2(dur=0):
             (screensize[0] - sidebar_width + 4, 52 + 16),
         )
     if offs <= -4 and sidebar.abspos == 1:
-        render_settings(dur, hovertext, crosshair, ignore=True)
+        render_settings(dur, ignore=True)
     if offs <= -4 and sidebar.abspos == 2:
         instrument = project.instruments[project.instrument_layout[sidebar.editing]]
         DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
@@ -464,7 +454,7 @@ def render_sidebar_2(dur=0):
         DISP2.set_colorkey(sc)
         in_sidebar = in_rect(mpos, sidebar.rect)
         offs2 = offs + sidebar_width
-        for i, opt in enumerate(ssettings):
+        for i, opt in enumerate(sysettings):
             message_display(
                 opt.capitalize(),
                 11,
@@ -485,7 +475,7 @@ def render_sidebar_2(dur=0):
                 cache=True,
                 font="Comic Sans MS",
             )
-            srange = ssettings[opt]
+            srange = sysettings[opt]
             w = (sidebar_width - 16)
             x = (instrument.synth.get(opt, 0) - srange[0]) / (srange[1] - srange[0])
             if opt in ("speed", "pitch", "nightcore"):
@@ -495,7 +485,7 @@ def render_sidebar_2(dur=0):
             x = round(x * w)
             brect = (screensize[0] + offs + 6, 91 + i * 32, sidebar_width - 12, 13)
             brect2 = (offs2 + 6, 41 + i * 32, sidebar_width - 12, 13)
-            hovered = in_sidebar and in_rect(mpos, brect) or sediting[opt]
+            hovered = in_sidebar and in_rect(mpos, brect) or syediting[opt]
             crosshair |= bool(hovered) << 1
             v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
             if len(srange) > 2:
@@ -510,11 +500,11 @@ def render_sidebar_2(dur=0):
                     size=10,
                     colour=(255, 255, 127),
                 )
-                if sediting[opt]:
+                if syediting[opt]:
                     if not mheld[0]:
-                        sediting[opt] = False
+                        syediting[opt] = False
                 elif mclick[0]:
-                    sediting[opt] = True
+                    syediting[opt] = True
                 elif mclick[1]:
                     enter = easygui.get_string(
                         opt.capitalize(),
@@ -523,15 +513,12 @@ def render_sidebar_2(dur=0):
                     )
                     if enter:
                         v = round_min(float(safe_eval(enter)) / 100)
-                        sediting[opt] = True
-                if sediting[opt]:
+                        syediting[opt] = True
+                if syediting[opt]:
                     orig, instrument.synth[opt] = instrument.synth[opt], v
-                    synth = instrument.synth
                     if orig != v:
-                        if opt == "unison":
-                            mixer.submit(f"~setting unison {synth.setdefault('unison', 1)}")
-                        else:
-                            mixer.submit(f"~synth {synth.shape} {synth.amplitude} {synth.phase} {synth.pulse} {synth.shrink} {synth.exponent}")
+                        instrument.wave = synth_gen(**instrument.synth)
+                        transfer_instrument(instrument)
             z = max(0, x - 4)
             rect = (offs2 + 8 + z, 41 + i * 32, sidebar_width - 16 - z, 9)
             col = (48 if hovered else 32,) * 3

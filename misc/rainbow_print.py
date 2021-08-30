@@ -35,11 +35,20 @@ class cdict(dict):
         data.update(self)
         return data
 
+    def union(self, other=None, **kwargs):
+        temp = self.copy()
+        if other:
+            temp.update(other)
+        if kwargs:
+            temp.update(kwargs)
+        return temp
+
     @property
     def __dict__(self):
         return self
 
     ___repr__ = lambda self: super().__repr__()
+    copy = __copy__ = lambda self: self.__class__(self)
     to_dict = lambda self: dict(**self)
     to_list = lambda self: list(super().values())
 

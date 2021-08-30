@@ -58,7 +58,6 @@ lyrics_scraper = concurrent.futures.Future()
 def import_audio_downloader():
     try:
         audio_downloader = __import__("audio_downloader")
-        # globals().update(audio_downloader.__dict__)
         globals()["ytdl"] = ytdl = audio_downloader.AudioDownloader()
         downloader.set_result(ytdl)
         lyrics_scraper.set_result(audio_downloader.get_lyrics)
@@ -71,10 +70,31 @@ def import_audio_downloader():
 from rainbow_print import *
 
 
+def astype(obj, t):
+    try:
+        if not isinstance(obj, t):
+            if callable(t):
+                return t(obj)
+            return t
+    except TypeError:
+        if callable(t):
+            return t(obj)
+        return t
+    return obj
+
 def as_str(s):
     if type(s) in (bytes, bytearray, memoryview):
         return bytes(s).decode("utf-8", "replace")
     return str(s)
+
+def json_default(obj):
+    if isinstance(obj, (deque, alist, np.ndarray)):
+        return list(obj)
+    if isinstance(obj, (bytes, bytearray)):
+        return as_str(obj)
+    if callable(obj):
+        return
+    raise TypeError(obj)
 
 
 ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
@@ -87,6 +107,12 @@ try:
     update_collections = utc() - os.path.getmtime(collections2f) > 3600
 except FileNotFoundError:
     update_collections = True
+
+hasmisc = os.path.exists("misc")
+argp = [sys.executable]
+pyv = sys.version_info[1]
+if hasmisc and update_collections:
+    from install_update_p import *
 
 if update_collections:
 
@@ -153,6 +179,38 @@ https://drive.google.com/u/0/uc?id=1stdrdMrImHVT4IaLsdcGaRceAdn4VL58&export=down
         print(f"{len(futs)}/{len(futs)}")
         print("FFmpeg extraction complete.")
         add_to_path()
+#     print("Verifying FluidSynth installation...")
+#     try:
+#         subprocess.run("fluidsynth", stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+#     except FileNotFoundError:
+#         urls = """
+# https://github.com/FluidSynth/fluidsynth/releases/download/v2.2.2/fluidsynth-2.2.2-win10-x64.zip
+# """.strip().splitlines()
+#         import zipfile, io
+#         if not os.path.exists("sndlib"):
+#             os.mkdir("sndlib")
+#         print(f"Downloading FluidSynth...")
+#         futs = []
+#         for url in urls:
+#             futs.append(submit(requests.get, url))
+#         for i, fut in enumerate(futs):
+#             print(f"{i}/{len(futs)}", end="\r")
+#             with fut.result() as resp:
+#                 f = io.BytesIO(resp.content)
+#                 if zipfile.is_zipfile(f):
+#                     with zipfile.ZipFile(f) as z:
+#                         for fn in z.namelist():
+#                             if "bin/" in fn and not fn.endswith("/"):
+#                                 with open("sndlib/" + fn.split("bin/", 1)[-1], "wb") as g:
+#                                     b = z.read(fn)
+#                                     g.write(b)
+#                 else:
+#                     f.seek(0)
+#                     with open("sndlib/" + resp.url.rsplit("/", 1)[-1].lower(), "wb") as g:
+#                         g.write(f.read())
+#         print(f"{len(futs)}/{len(futs)}")
+#         print("FluidSynth extraction complete.")
+#         add_to_path()
     print("Verifying SoX installation...")
     try:
         subprocess.run(sox, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -212,13 +270,6 @@ https://github.com/Clownacy/org2xm/raw/master/ORG210EN.DAT
         add_to_path()
 
 
-hasmisc = os.path.exists("misc")
-argp = [sys.executable]
-pyv = sys.version_info[1]
-if hasmisc:
-    if update_collections:
-        from install_update_p import *
-
 def state(i):
     mixer.stdin.write(f"~state {int(i)}\n".encode("utf-8"))
     mixer.stdin.flush()
@@ -231,8 +282,13 @@ def drop(i):
     mixer.stdin.write(f"~drop {i}\n".encode("utf-8"))
     mixer.stdin.flush()
 
+mixer_lock = None
 laststart = set()
 def mixer_submit(s, force, debug):
+    global mixer_lock
+    if force < 2:
+        while mixer_lock:
+            mixer_lock.result()
     if not force:
         ts = pc()
         if laststart:
@@ -245,15 +301,27 @@ def mixer_submit(s, force, debug):
                     return
             laststart.clear()
         laststart.add(ts)
-    s = as_str(s)
-    if not s.endswith("\n") and len(s) < 2048:
-        s += "\n"
-    if debug:
-        sys.stdout.write(s)
-    mixer.stdin.write(s.encode("utf-8"))
-    if not s.endswith("\n"):
-        mixer.stdin.write(b"\n")
-    mixer.stdin.flush()
+    mixer_lock = concurrent.futures.Future()
+    try:
+        if type(s) is bytes:
+            mixer.stdin.write(s)
+            mixer.stdin.write(b"\n")
+        else:
+            s = as_str(s)
+            if not s.endswith("\n") and len(s) < 2048:
+                s += "\n"
+            if debug:
+                sys.stdout.write(s)
+            mixer.stdin.write(s.encode("utf-8"))
+            if not s.endswith("\n"):
+                mixer.stdin.write(b"\n")
+        mixer.stdin.flush()
+    except:
+        temp, mixer_lock = mixer_lock, None
+        temp.set_result(None)
+        raise
+    temp, mixer_lock = mixer_lock, None
+    temp.set_result(None)
 
 asettings = cdict(
     volume=(0, 5),
@@ -266,7 +334,7 @@ asettings = cdict(
     chorus=(0, 5),
     nightcore=(-6, 18, 0.5),
 )
-audio_default = dict(
+audio_default = cdict(
     volume=1,
     speed=1,
     pitch=0,
@@ -291,28 +359,44 @@ editor_default = cdict(
     mode="I",
     freeform=False,
     bounded=False,
+    instrument=False,
+    duration=False,
     autoswap=False,
 )
-ssettings = cdict(
+default_instrument_opt = [
+    1,  # unison-count
+    0.5,# unison depth
+    0,  # unison phase
+    0,  # delay
+    0,  # reverb
+]
+sysettings = cdict(
     shape=(0, 3),
     amplitude=(-1, 8),
     phase=(0, 1),
     pulse=(0, 1),
     shrink=(0, 1),
     exponent=(0, 3),
-    unison=(1, 8, 1),
+)
+sasettings = cdict(
+    shape=(0, 3),
+    amplitude=(-1, 8),
+    phase=(0, 1),
+    pulse=(0, 1),
+    shrink=(0, 1),
+    exponent=(0, 3),
 )
 synth_default = cdict(
+    type="synth",
     shape=0,
     amplitude=1,
     phase=0,
     pulse=0.5,
     shrink=0,
     exponent=1,
-    unison=1,
 )
 aediting = dict.fromkeys(asettings)
-sediting = dict.fromkeys(ssettings)
+syediting = dict.fromkeys(sysettings)
 config = "config.json"
 options = None
 if os.path.exists(config):
@@ -342,23 +426,10 @@ if options.sidebar_width < 144:
     options.sidebar_width = 144
 if options.toolbar_height < 64:
     options.toolbar_height = 64
-_audio = options.get("audio")
-oaudio = cdict(audio_default)
-if _audio:
-    oaudio.update(_audio)
-options.audio = oaudio
 
-_control = options.get("control")
-control = cdict(control_default)
-if _control:
-    control.update(_control)
-options.control = control
-
-_editor = options.get("editor")
-editor = cdict(editor_default)
-if _editor:
-    editor.update(_editor)
-options.editor = editor
+options.audio = audio_default.union(options.get("audio") or ())
+options.control = control_default.union(options.get("control") or ())
+options.editor = editor_default.union(options.get("editor") or ())
 
 orig_options = copy.deepcopy(options)
 
@@ -403,7 +474,6 @@ def start_mixer():
             s.write(f"~setting #silenceremove {options.control.setdefault('silenceremove', 0)}\n")
             s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
             s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
-            s.write(f"~synth 1.5 1 0 0.75 0 1\n")
             if OUTPUT_DEVICE:
                 s.write(f"~output {OUTPUT_DEVICE}\n")
             s.seek(0)
@@ -712,7 +782,7 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import PIL, easygui, easygui_qt, numpy, math, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, zipfile, pickle, hashlib, base64, urllib, requests, datetime
+import PIL, easygui, easygui_qt, numpy, math, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, zipfile, pickle, hashlib, base64, urllib, requests, datetime
 import PyQt5
 from PyQt5 import QtCore, QtWidgets
 if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
@@ -811,7 +881,11 @@ def update_collections2():
         b = resp.content
     with open(collections2f, "wb") as f:
         f.write(b)
+    if "alist" in globals():
+        return
+    cd = cdict
     exec(compile(b, "collections2.tmp", "exec"), globals())
+    globals()["cdict"] = cd
     print("collections2.tmp updated.")
 
 repo_fut = None
@@ -825,7 +899,7 @@ if utc() - os.path.getmtime(collections2f) > 3600:
     submit(update_collections2)
 repo_fut = submit(update_repo)
 
-options.history = alist(options.get("history", ()))
+options.history = astype(options.get("history", ()), alist)
 globals().update(options)
 
 shash = lambda s: as_str(base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
@@ -1019,7 +1093,7 @@ def adj_colour(colour, brightness=0, intensity=1, hue=0):
         h = colorsys.rgb_to_hsv(i / 255 for i in colour)
         c = adj_colour(colorsys.hsv_to_rgb((h[0] + hue) % 1, h[1], h[2]), intensity=255)
     else:
-        c = list(colour)
+        c = astype(colour, list)
     for i in range(len(c)):
         c[i] = round(c[i] * intensity + brightness)
     return verify_colour(c)
@@ -1169,7 +1243,7 @@ def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
         if angle != 0:
             bevel_rectangle(dest, colour, rect, 0, alpha, angle)
         else:
-            rect = list(rect)
+            rect = astype(rect, list)
             if rect[0] < 0:
                 rect[2] += rect[0]
                 rect[0] = 0
@@ -1525,7 +1599,7 @@ def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, rat
     orig = frame
     f = orig - reduction
     while frame > 1:
-        c = list(colour)
+        c = astype(colour, list)
         for i in range(count):
             pos = perimeter * ((i / count - increment / perimeter + ratio * speed) % 1)
             side = 0
@@ -1690,7 +1764,7 @@ def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, 
         if align == 1:
             TextRect.center = pos
         elif align == 0:
-            TextRect = list(pos) + TextRect[2:]
+            TextRect = astype(pos, list) + TextRect[2:]
         elif align == 2:
             TextRect = [y - x for x, y in zip(TextRect[2:], pos)] + TextRect[2:]
         blit_complex(surface, TextSurf, TextRect, alpha, copy=False)
@@ -1800,7 +1874,7 @@ def get_duration_2(filename):
                 data = next(it)
             ident = str(magic.from_buffer(data))
             try:
-                bitrate = regexp("[0-9]+\\s.bps").findall(ident)[0].casefold()
+                bitrate = re.findall("[0-9]+\\s.bps", ident)[0].casefold()
             except IndexError:
                 dur, bps, cdc = _get_duration_2(filename, 16)
                 return dur, cdc
@@ -1942,6 +2016,22 @@ def select_and_convert(stream):
             b += file.read()
     print(convert, stream)
     return convert(b)
+
+
+def supersample(a, size, hq=False):
+    n = len(a)
+    if n == size:
+        return a
+    if n < size:
+        if hq:
+            a = samplerate.resample(a, size / len(a), "sinc_fastest")
+            return supersample(a, size)
+        interp = np.linspace(0, n - 1, size)
+        return np.interp(interp, range(n), a)
+    x = ceil(n / size)
+    interp = np.linspace(0, n - 1, x * size)
+    a = np.interp(interp, range(n), a)
+    return np.mean(a.reshape(-1, x), 1)
 
 
 eval_const = {

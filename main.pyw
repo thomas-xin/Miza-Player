@@ -21,15 +21,16 @@ if not os.path.exists("playlists"):
 
 
 def create_pattern():
-    pattern = cdict(project.settings)
     x = 0
     while x in project.patterns:
         x += 1
-    pattern.measures = {}
-    pattern.ends = {}
-    pattern.name = f"Pattern {x}"
-    pattern.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1))
-    pattern.id = x
+    pattern = project.settings.union(
+        measures={},
+        ends={},
+        name=f"Pattern {x}",
+        colour=tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1)),
+        id=x,
+    )
     project.patterns[x] = pattern
     return pattern
 project = cdict(
@@ -83,6 +84,9 @@ player = cdict(
         zoom_x=1,
         zoom_y=1,
         played=set(),
+        undo=[],
+        held_notes=set(),
+        held_update=None,
     ),
 )
 def change_mode(mode):
@@ -119,6 +123,7 @@ toolbar = cdict(
         alpha=0,
         num=0,
         particles=alist(),
+        seeking=False,
     ),
     downloading=cdict(
         target=0,
@@ -159,7 +164,7 @@ def load_pencil():
     globals()["pencilw"] = load_surface("misc/pencil.png")
     globals()["pencilb"] = pencilw.convert_alpha()
     pencilb.fill((0, 0, 0), special_flags=BLEND_RGB_MULT)
-submit(load_pencil)
+addp = submit(load_pencil)
 
 lyrics_entry = None
 
@@ -170,22 +175,56 @@ def settings_reset():
         s.write(f"~setting #{k} {v}\n")
     s.write(f"~replay\n")
     s.seek(0)
-    mixer.stdin.write(s.read().encode("utf-8"))
-    mixer.stdin.flush()
+    mixer.submit(s.read())
 
-def add_instrument():
+def transfer_instrument(*instruments):
+    try:
+        ts = pc()
+        if laststart:
+            diff = ts - min(laststart)
+            if diff < 0.5:
+                delay = 0.5 - diff
+                laststart.add(ts)
+                time.sleep(delay)
+                if ts < max(laststart):
+                    return
+            laststart.clear()
+        laststart.add(ts)
+        for instrument in instruments:
+            b = base64.b64encode(instrument.wave.tobytes())
+            opt = json.dumps(instrument.get("opt", default_instrument_opt), separators=(',', ':'))
+            a = f"~wave {instrument.id} {opt} ".encode("ascii")
+            mixer.submit(a + b)
+        if instruments:
+            return instrument
+    except:
+        print_exc()
+
+def select_instrument(i):
+    if type(i) is not int:
+        i = i.id
+    mixer.submit(f"~select {i}")
+    return project.instruments[i]
+
+def add_instrument(first=False):
     x = 0
     while x in project.instruments:
         x += 1
-    project.instruments[x] = cdict(
+    project.instruments[x] = instrument = cdict(
+        id=x,
         name=f"Instrument {x}",
         colour=tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / 12 % 1, 1, 1)),
         synth=cdict(synth_default),
     )
+    synth = instrument.synth
+    if first:
+        synth.shape = 1.5
+    if synth.type == "synth":
+        instrument.wave = synth_gen(**synth)
+    submit(transfer_instrument, instrument)
+    player.editor.note.instrument = x
     project.instrument_layout.append(x)
     sidebar.instruments.append(cdict())
-    if player.editor.note.instrument is None:
-        player.editor.note.instrument = x
 
 def setup_buttons():
     try:
@@ -358,7 +397,7 @@ def setup_buttons():
                         ) or "").strip()
                         if text:
                             with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
-                                json.dump(dict(queue=entries, stats={}), f)
+                                json.dump(dict(queue=entries, stats={}), f, separators=(',', ':'))
                             easygui.show_message(
                                 f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
                                 "Success!",
@@ -399,7 +438,7 @@ def setup_buttons():
                             if entries:
                                 entries = list(entries)
                                 with open(fn, "w", encoding="utf-8") as f:
-                                    json.dump(dict(queue=entries, stats={}), f)
+                                    json.dump(dict(queue=entries, stats={}), f, separators=(',', ':'))
                                 easygui.show_message(
                                     f"Playlist {repr(choice)} has been updated!",
                                     "Success!",
@@ -487,6 +526,8 @@ def setup_buttons():
             sidebar.scrolling = False
             sidebar.scroll.pos = 0
             sidebar.scroll.target = 0
+            player.editor.held_notes.clear()
+            player.editor.held_update = 0
             if toolbar.editor:
                 mixer.submit(f"~setting spectrogram -1")
                 pygame.display.set_caption(f"Miza Player ~ {project_name}")
@@ -565,7 +606,6 @@ def setup_buttons():
         def scramble_1():
             mixer.clear()
             random.shuffle(queue.view)
-            ensure_next()
             start()
         toolbar.buttons.append(cdict(
             name="Scramble",
@@ -836,42 +876,57 @@ def load_project(fn):
         toolbar.editor = 1
         mixer.submit(f"~setting spectrogram -1")
     player.editor_surf = None
-    player.editor.targ_x = 0
     globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
     try:
-        with open(fn, "rb") as f:
+        f = open(fn, "rb") if type(fn) is str else fn
+        with f:
             b = f.read(7)
             if b != b">~MPP~>":
                 raise TypeError("Invalid project file header.")
             b2 = f.read()
         with zipfile.ZipFile(io.BytesIO(b2), allowZip64=True, strict_timestamps=False) as z:
             with z.open("<~MPP~<", force_zip64=True) as f:
-                b3 = f.read()
-        pdata = pickle.loads(b3)
+                pdata = pickle.load(f)
         project.update(pdata)
+        if not project.instruments:
+            add_instrument(True)
+        submit(transfer_instrument, *project.instruments.values())
         sidebar.instruments.__init__(cdict() for _ in range(len(project.instrument_layout)))
+        if not player.paused:
+            player.broken = True
+        player.editor_surf = None
+        FRESH_PATTERNS.clear()
         globals()["instruments"] = project.instruments
         globals()["patterns"] = project.patterns
-        globals()["project_name"] = fn.rsplit(".", 1)[0]
+        if type(fn) is str:
+            globals()["project_name"] = fn.rsplit(".", 1)[0]
+        return project
     except:
         print_exc()
 
-def save_project(fn):
+def save_project(fn=None):
     if not toolbar.editor:
         toolbar.editor = 1
         mixer.submit(f"~setting spectrogram -1")
     player.editor_surf = None
     globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
+    if type(fn) is str and not fn.endswith(".mpp"):
+        return render_project(fn)
     try:
-        b = pickle.dumps(project)
         pdata = io.BytesIO()
         with zipfile.ZipFile(pdata, mode="w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
-            z.writestr("<~MPP~<", b)
+            with z.open("<~MPP~<", "w", force_zip64=True) as f:
+                pickle.dump(project, f)
         pdata.seek(0)
-        with open(fn, "wb") as f:
-            f.write(b">~MPP~>")
-            f.write(pdata.read())
-        globals()["project_name"] = fn.rsplit(".", 1)[0]
+        f = open(fn, "wb") if type(fn) is str else fn or io.BytesIO()
+        f.write(b">~MPP~>")
+        f.write(pdata.read())
+        if type(fn) is str:
+            f.close()
+            globals()["project_name"] = fn.rsplit(".", 1)[0]
+        else:
+            f.seek(0)
+        return f
     except:
         print_exc()
 
@@ -1136,6 +1191,12 @@ def prepare(entry, force=False, download=False):
         except requests.ConnectionError:
             return time.sleep(2)
         except:
+            fn = "cache/~" + shash(entry.url) + ".pcm"
+            if os.path.exists(fn):
+                duration = get_duration_2(fn)[0]
+                stream = entry.stream = fn
+                entry.duration = duration or entry.duration
+                return stream
             entry.url = ""
             print_exc()
             return
@@ -1230,12 +1291,12 @@ def start_player(pos=None, force=False):
         player.needs_shuffle = False
     else:
         player.needs_shuffle = not is_url(stream)
+    ensure_next(int(len(queue) > 1 and control.loop < 2))
     h = shash(entry.url)
     mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")) + " " + h, force=False)
     player.pos = pos
     player.index = player.pos * 30
     player.end = duration or inf
-    globals()["tick"] = -1200
     return stream, duration
 
 def start():
@@ -1422,6 +1483,9 @@ def pos():
                 submit(skip)
                 player.last = 0
                 continue
+            if s[0] == "o":
+                globals()["OUTPUT_DEVICE"] = s[2:]
+                continue
             if s[0] == "w":
                 globals()["OUTPUT_DEVICE"] = s[2:]
                 if not device_waiting:
@@ -1467,7 +1531,7 @@ def ensure_next(i=1):
             e = queue[i]
             e.duration = e.get("duration") or False
             e.pop("research", None)
-            enext.add(submit(prepare, e, force=i == 1, download=i == 1))
+            enext.add(submit(prepare, e, force=i <= 1, download=i <= 1))
             if i <= 1 and not e.get("lyrics_loading") and not e.get("lyrics"):
                 e.lyrics_loading = True
                 enext.add(submit(render_lyrics, e))
@@ -1480,8 +1544,6 @@ def enqueue(entry, start=True):
             time.sleep(0.5)
         queue[0].lyrics_loading = True
         submit(render_lyrics, queue[0])
-        if len(queue) > 1:
-            ensure_next()
         flash_window()
         stream, duration = start_player()
         progress.num = 0
@@ -1561,13 +1623,15 @@ def download(entries, fn):
 
 
 def pause_toggle(state=None):
+    globals()["tick"] = -2
     if state is None:
         player.paused ^= True
     else:
         player.paused = state
+    if toolbar.editor:
+        player.broken = player.paused
     mixer.state(player.paused or toolbar.editor)
     toolbar.pause.speed = toolbar.pause.maxspeed
-    globals()["tick"] = -2
     sidebar.menu = 0
     player.editor.played.clear()
 
@@ -1853,7 +1917,19 @@ no_lyrics_fut = submit(load_surface, no_lyrics_path)
 
 def load_bubble(bubble_path):
     try:
-        globals()["h-img"] = Image.open(bubble_path)
+        with Image.open(bubble_path) as im:
+            if "RGB" not in im.mode:
+                im = im.convert("RGBA")
+            if im.mode == "RGBA":
+                A = im.getchannel("A")
+            im2 = ImageOps.grayscale(im)
+            if im2.mode == "L":
+                im2 = im2.point(lambda x: (x / 255) ** 0.8 * 255)
+            if "RGB" not in im2.mode:
+                im2 = im2.convert("RGB")
+            if im.mode == "RGBA":
+                im2.putalpha(A)
+            globals()["h-img"] = im2
         globals()["h-cache"] = {}
 
         def bubble_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
@@ -1864,8 +1940,6 @@ def load_bubble(bubble_path):
                 surf = globals()["h-cache"][diameter]
             except KeyError:
                 im = globals()["h-img"].resize((diameter,) * 2, resample=Image.NEAREST)
-                if "RGB" not in im.mode:
-                    im = im.convert("RGBA")
                 surf = pil2pyg(im)
                 im.close()
                 globals()["h-cache"][diameter] = surf
@@ -1929,7 +2003,7 @@ def spinnies():
         try:
             progress.angle = -t * pi
             pops = set()
-            for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
+            for i, p in sorted(enumerate(i for i in progress.particles if i), key=lambda t: t[1].life):
                 p.life -= dur * 2.5
                 if p.life <= 6:
                     p.angle += dur
@@ -1980,7 +2054,8 @@ def change_bubble():
         submit(load_bubble, bubble_path)
 
 
-def render_settings(dur, hovertext, crosshair, ignore=False):
+def render_settings(dur, ignore=False):
+    global crosshair, hovertext
     offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
     sc = sidebar.colour or (64, 0, 96)
     DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
@@ -3014,11 +3089,12 @@ def draw_menu():
 def save_settings():
     temp = options.screensize
     options.screensize = screensize2
-    options.history = list(options.history)
     if options != orig_options:
         with open(config, "w", encoding="utf-8") as f:
-            json.dump(dict(options), f, indent=4)
+            json.dump(dict(options), f, indent="\t", default=json_default)
     if options.control.preserve:
+        b = io.BytesIO()
+        fut = submit(save_project, b)
         entries = []
         for entry in queue:
             url = entry.url
@@ -3029,10 +3105,11 @@ def save_settings():
             entries.append(e)
         edi = player.editor.copy()
         for k in (
-            "change_mode",
             "selection",
             "scrolling",
             "played",
+            "held_notes",
+            "held_update",
             "fade",
             "piano_surf",
         ):
@@ -3042,13 +3119,16 @@ def save_settings():
             pos=player.pos,
             editor=edi,
         )
+        if toolbar.editor:
+            data["toolbar-editor"] = True
         if player.paused:
             data["paused"] = True
         if is_minimised():
             data["minimised"] = True
+        fut.result()
+        data["project"] = base64.b64encode(b.read()).decode("ascii")
         with open("dump.json", "w", encoding="utf-8") as f:
-            json.dump(data, f)
-    options.history = alist(options.history)
+            json.dump(data, f, separators=(',', ':'), default=json_default)
     options.screensize = temp
 
 
@@ -3077,6 +3157,7 @@ mpos = mpos2 = (-inf,) * 2
 mheld = mclick = mc2 = mc3 = mc4 = mrelease = mprev = (None,) * 5
 kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
+delay = 0
 last_tick = 0
 status_freq = 6000
 alphakeys = [0] * 34
@@ -3097,6 +3178,18 @@ try:
             pause_toggle(True)
         if data.get("minimised"):
             pygame.display.iconify()
+        if data.get("project"):
+            b = base64.b64decode(data["project"].encode("ascii"))
+            submit(load_project, io.BytesIO(b))
+        if data.get("toolbar-editor"):
+            if not player.paused:
+                pause_toggle(True)
+            addi = cdict(result=lambda: None)
+            if not project.instruments:
+                add_instrument(True)
+            toolbar.editor = True
+            mixer.submit(f"~setting spectrogram -1")
+            pygame.display.set_caption(f"Miza Player ~ {project_name}")
     tick = 0
     while True:
         if not tick + 1 & 8191:
@@ -3157,23 +3250,34 @@ try:
             if minimised:
                 toolbar.ripples.clear()
                 sidebar.ripples.clear()
+        if not project.instruments:
+            addi = submit(add_instrument, True)
         if not player.get("fut") and not player.paused:
             if not toolbar.editor:
                 if queue:
                     player.fut = submit(start)
             elif toolbar.editor:
                 player.fut = submit(editor_update)
-        elif not queue:
+        if not queue and not toolbar.editor or player.paused and toolbar.editor:
             fut = player.pop("fut", None)
-            if fut:
+            if fut and not queue:
                 fut.result()
-        if not minimised and (not unfocused or not tick % 14) and ((not isnan(mpos[0]) or is_active()) or unfocused or not player.paused and queue or not tick % 6 or toolbar.ripples or sidebar.ripples):
+        condition = not minimised
+        if unfocused:
+            condition &= not tick % 14
+        if not (not isnan(mpos[0]) or is_active() or unfocused or not player.paused and not queue):
+            condition &= not tick % 6
+        if toolbar.ripples or sidebar.ripples:
+            condition = True
+        if condition:
+            addi.result()
+            addp.result()
             lpos = mpos
             mprev = mheld
             mheld = get_pressed()
-            mc4 = list(mc3) if type(mc3) is tuple else mc3
-            mc3 = list(mc2) if type(mc2) is tuple else mc2
-            mc2 = list(mclick) if type(mclick) is tuple else mclick
+            mc4 = astype(mc3, list)
+            mc3 = astype(mc2, list)
+            mc2 = astype(mclick, list)
             mclick = [x and not y for x, y in zip(mheld, mprev)]
             for i in range(len(mclick)):
                 mc2[i] = mc2[i] or mclick[i]
@@ -3219,7 +3323,7 @@ try:
                         "Miza Player",
                         code or "",
                     )
-            if any(kclick) or any(krelease):
+            if any(kclick) or any(krelease) or player.editor.held_notes:
                 alphakeys[:] = [False] * len(alphakeys)
                 if not CTRL[kheld] and not SHIFT[kheld] and not ALT[kheld]:
                     notekeys = "zsxdcvgbhnjmq2w3er5t6y7ui9o0p"
@@ -3234,7 +3338,18 @@ try:
                     alphakeys[14] |= kheld[K_PERIOD]
                     alphakeys[15] |= kheld[K_SEMICOLON]
                     alphakeys[16] |= kheld[K_SLASH]
-                    mixer.submit("~keys " + ",".join(str(i) for i, v in enumerate(alphakeys) if v))
+                    notekeys = set(i for i, v in enumerate(alphakeys) if v)
+                    if not player.editor.held_update:
+                        player.editor.held_notes.clear()
+                    else:
+                        if toolbar.editor:
+                            notekeys.update(player.editor.held_notes)
+                        if not any(mheld):
+                            editor.held_update -= delay
+                            print(delay)
+                            if editor.held_update <= 0:
+                                editor.held_update = None
+                    mixer.submit("~keys " + ",".join(map(str, notekeys)))
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
                 try:
                     update_menu()
@@ -3448,9 +3563,10 @@ try:
         #         ICON_DISP = ""
         #         pygame.display.set_icon(ICON)
         d = 1 / 240
-        delay = max(sys.float_info.min, last_tick - pc() + d)
+        delay = pc() - last_tick
+        d2 = max(sys.float_info.min, d - delay)
         last_tick = max(last_tick + d, pc() - 0.25)
-        time.sleep(delay)
+        time.sleep(d2)
         for event in pygame.event.get():
             if event.type == QUIT:
                 raise StopIteration

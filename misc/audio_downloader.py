@@ -98,11 +98,20 @@ class cdict(dict):
         data.update(self)
         return data
 
+    def union(self, other=None, **kwargs):
+        temp = self.copy()
+        if other:
+            temp.update(other)
+        if kwargs:
+            temp.update(kwargs)
+        return temp
+
     @property
     def __dict__(self):
         return self
 
     ___repr__ = lambda self: super().__repr__()
+    copy = __copy__ = lambda self: self.__class__(self)
     to_dict = lambda self: dict(**self)
     to_list = lambda self: list(super().values())
 
@@ -999,8 +1008,12 @@ class AudioDownloader:
                     dur = time_parse(video["lengthText"]["simpleText"])
                 except KeyError:
                     dur = None
+            try:
+                name = video["title"]["runs"][0]["text"]
+            except LookupError:
+                name = v_id
             temp = cdict(
-                name=video["title"]["runs"][0]["text"],
+                name=name,
                 url=f"https://www.youtube.com/watch?v={v_id}",
                 duration=dur,
                 thumbnail=f"https://i.ytimg.com/vi/{v_id}/maxresdefault.jpg",
@@ -1205,11 +1218,10 @@ class AudioDownloader:
                         return output
                     except:
                         print_exc()
-                else:
-                    try:
-                        return list(map(cdict, requests.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
-                    except:
-                        pass
+                try:
+                    return list(map(cdict, requests.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
+                except:
+                    print_exc()
         elif regexp("(play|open|api)\\.spotify\\.com").search(item):
             # Spotify playlist searches contain up to 100 items each
             if "playlist" in item:
@@ -1231,6 +1243,13 @@ class AudioDownloader:
                 url = url[url.index("/") + 1:]
                 key = url.split("/", 1)[0]
                 url = f"https://api.spotify.com/v1/tracks/{key}"
+                page = 1
+            # Single episode links also supported
+            elif "episode" in item:
+                url = item[item.index("episode"):]
+                url = url[url.index("/") + 1:]
+                key = url.split("/", 1)[0]
+                url = f"https://api.spotify.com/v1/episodes/{key}"
                 page = 1
             else:
                 raise TypeError("Unsupported Spotify URL.")

@@ -3,4 +3,6 @@ A GUI-based audio player with support for a large variety of formats, able to pl
 
 Based on the audio features of the discord bot https://github.com/thomas-xin/Miza, with audio visualisers based on https://github.com/thomas-xin/SpectralPulse
 
+See https://mizabot.xyz/mpinsights for live insights charts on the current usage of the program!
+
 ![Collage](https://repository-images.githubusercontent.com/311979675/324f2a80-b739-11eb-9103-31a8555e6296)

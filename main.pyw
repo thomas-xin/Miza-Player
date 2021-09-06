@@ -85,6 +85,7 @@ player = cdict(
         zoom_y=1,
         played=set(),
         undo=[],
+        playing_notes=set(),
         held_notes=set(),
         held_update=None,
     ),
@@ -191,8 +192,10 @@ def transfer_instrument(*instruments):
             laststart.clear()
         laststart.add(ts)
         for instrument in instruments:
+            if instrument.get("wave") is None:
+                instrument.wave = synth_gen(**instrument.synth)
             b = base64.b64encode(instrument.wave.tobytes())
-            opt = json.dumps(instrument.get("opt", default_instrument_opt), separators=(',', ':'))
+            opt = json.dumps(instrument.get("opt", default_instrument_opt), separators=(",", ":"))
             a = f"~wave {instrument.id} {opt} ".encode("ascii")
             mixer.submit(a + b)
         if instruments:
@@ -219,8 +222,6 @@ def add_instrument(first=False):
     synth = instrument.synth
     if first:
         synth.shape = 1.5
-    if synth.type == "synth":
-        instrument.wave = synth_gen(**synth)
     submit(transfer_instrument, instrument)
     player.editor.note.instrument = x
     project.instrument_layout.append(x)
@@ -397,7 +398,7 @@ def setup_buttons():
                         ) or "").strip()
                         if text:
                             with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
-                                json.dump(dict(queue=entries, stats={}), f, separators=(',', ':'))
+                                json.dump(dict(queue=entries, stats={}), f, separators=(",", ":"))
                             easygui.show_message(
                                 f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
                                 "Success!",
@@ -438,7 +439,7 @@ def setup_buttons():
                             if entries:
                                 entries = list(entries)
                                 with open(fn, "w", encoding="utf-8") as f:
-                                    json.dump(dict(queue=entries, stats={}), f, separators=(',', ':'))
+                                    json.dump(dict(queue=entries, stats={}), f, separators=(",", ":"))
                                 easygui.show_message(
                                     f"Playlist {repr(choice)} has been updated!",
                                     "Success!",
@@ -913,6 +914,9 @@ def save_project(fn=None):
     if type(fn) is str and not fn.endswith(".mpp"):
         return render_project(fn)
     try:
+        for instrument in project.instruments.values():
+            if "synth" in instrument:
+                instrument.pop("wave", None)
         pdata = io.BytesIO()
         with zipfile.ZipFile(pdata, mode="w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
             with z.open("<~MPP~<", "w", force_zip64=True) as f:
@@ -1719,7 +1723,7 @@ def update_menu():
         reset_menu()
         sidebar.resizing = True
         modified.add(sidebar.rect)
-    if queue and isfinite(e_dur(queue[0].duration)):
+    if queue and not toolbar.editor and isfinite(e_dur(queue[0].duration)):
         if kspam[K_PAGEUP]:
             submit(seek_rel, 300)
         elif kspam[K_PAGEDOWN]:
@@ -3108,6 +3112,7 @@ def save_settings():
             "selection",
             "scrolling",
             "played",
+            "playing_notes",
             "held_notes",
             "held_update",
             "fade",
@@ -3128,7 +3133,7 @@ def save_settings():
         fut.result()
         data["project"] = base64.b64encode(b.read()).decode("ascii")
         with open("dump.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, separators=(',', ':'), default=json_default)
+            json.dump(data, f, separators=(",", ":"), default=json_default)
     options.screensize = temp
 
 
@@ -3169,8 +3174,6 @@ try:
         if queue:
             data.pop("pos", None)
         queue.extend(cdict(e, duration=e.get("duration")) for e in data.get("queue", ()))
-        if data.get("pos"):
-            player.fut = submit(start_player, data["pos"], force=True)
         if data.get("editor"):
             player.editor.update(data["editor"])
             player.editor.note = cdict(player.editor.note)
@@ -3190,6 +3193,10 @@ try:
             toolbar.editor = True
             mixer.submit(f"~setting spectrogram -1")
             pygame.display.set_caption(f"Miza Player ~ {project_name}")
+            player.editor.change_mode = change_mode
+            player.editor.selection.cancel = cancel_selection
+        if data.get("pos") and not toolbar.editor:
+            player.fut = submit(start_player, data["pos"], force=True)
     tick = 0
     while True:
         if not tick + 1 & 8191:

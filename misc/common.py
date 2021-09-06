@@ -363,6 +363,13 @@ editor_default = cdict(
     duration=False,
     autoswap=False,
 )
+insettings = cdict(
+    unison_count=(1, 8, 1),
+    unison_depth=(0, 2),
+    unison_phase=(0, 1),
+    comb_delay=(0, 2),
+    comb_amplitude=(0, 1),
+)
 default_instrument_opt = [
     1,  # unison-count
     0.5,# unison depth
@@ -1599,7 +1606,7 @@ def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, rat
     orig = frame
     f = orig - reduction
     while frame > 1:
-        c = astype(colour, list)
+        c = list(colour)
         for i in range(count):
             pos = perimeter * ((i / count - increment / perimeter + ratio * speed) % 1)
             side = 0

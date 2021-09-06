@@ -37,11 +37,13 @@ def spawn_particle(p=None, **kwargs):
             piano_particles[i] = p
     p.id = i
     p.frame = 0
+    return p
 
 def delete_particle(p):
     piano_particles[p.id] = None
     while piano_particles and piano_particles[-1] is None:
         piano_particles.pop(-1)
+    return p
 
 def sparkles_animate(self, duration):
     if self.frame > 0.5 and (random.random() > 0.1 ** duration or self.frame > 4):
@@ -64,6 +66,34 @@ def sparkles_render(self):
         repetition=max(1, size - 2),
         soft=True,
     )
+
+def helix_animate(self, duration):
+    if self.frame > 0.5 and (random.random() > 0.1 ** duration or self.frame > 4):
+        return delete_particle(self)
+    self.vel = np.asanyarray(self.vel, dtype=np.float32)
+    self.pos += self.vel * duration
+    self.vel *= 0.7 ** duration
+def helix_render(self):
+    fade = (self.frame + 1) ** 0.8
+    alpha = 255 / fade ** 2
+    c = astype(colorsys.rgb_to_hls(*(i / 255 for i in self.col)), list)
+    c[1] += 0.6 / fade - 0.2
+    col = [round_random(i * 255) for i in colorsys.hls_to_rgb(*c)]
+    for i in range(3):
+        size = round_random(max(1, 4 / fade) + random.random() * 2)
+        y = self.pos[1] + (self.width + fade ** 0.7 * 48 - 46) * sin(self.ang - self.frame ** 0.3 * 8 + (i + 0.25) * tau / 3)
+        reg_polygon_complex(
+            DISP,
+            (self.pos[0], y),
+            col,
+            0,
+            size,
+            size,
+            alpha=alpha,
+            thickness=min(size, 2),
+            repetition=max(1, size - 2),
+            soft=True,
+        )
 
 def blinds_render(self):
     h = 2
@@ -95,12 +125,13 @@ def blinds_render(self):
 
 def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
     if amplitude == 0 or shrink == 1:
-        return np.zeros(4096)
+        return np.zeros(4096, dtype=np.float32)
+    linspout = lambda *args: np.linspace(*args, endpoint=False, dtype=np.float32)
     if shape < 1:
-        x = np.linspace(0, tau, 4096, endpoint=False)
+        x = linspout(0, tau, 4096)
         x = np.sin(x, out=x)
         if shape != 0:
-            y = np.linspace(0.25, 1.25, 4096, endpoint=False)
+            y = linspout(0.25, 1.25, 4096)
             y[y >= 0.5] -= 1
             y = np.abs(y, out=y)
             x *= pi / 4 * (1 - shape)
@@ -110,7 +141,7 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
         else:
             x *= pi / 4
     elif shape < 2:
-        x = np.linspace(0.25, 1.25, 4096, endpoint=False)
+        x = linspout(0.25, 1.25, 4096)
         x[x >= 0.5] -= 1
         x = np.abs(x, out=x)
         x *= 4
@@ -121,19 +152,19 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
             m = 1 / (1 + shape)
             np.clip(x, -m, m, out=x)
     elif shape < 3:
-        x = np.linspace(0, tau, 4096, endpoint=False)
+        x = linspout(0, tau, 4096)
         x = (np.sin(x, out=x) >= 0).astype(np.float64)
         x -= 0.5
         if shape != 2:
             shape -= 2
-            y = np.linspace(0, 2, 4096, endpoint=False)
+            y = linspout(0, 2, 4096)
             y %= 1
             y[2048:] -= 1
             x *= (1 - shape)
             y *= shape
             x += y
     else:
-        x = np.linspace(0, 2, 4096, endpoint=False)
+        x = linspout(0, 2, 4096)
         x %= 1
         x[2048:] -= 1
     if amplitude != 1:
@@ -144,14 +175,14 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
         x = np.roll(x, round(phase * 4096))
     if pulse != 0.5:
         r = round(4096 * pulse)
-        left = np.linspace(0, 2048, r, endpoint=False)
-        right = np.linspace(2048, 4096, 4096 - r, endpoint=False)
-        indices = np.concatenate((left, right))
+        left = linspout(0, 2048, r)
+        right = linspout(2048, 4096, 4096 - r)
+        indices = np.append(left, right)
         x = np.interp(indices, range(4096), x)
     if shrink != 0:
         r = round(4096 * (1 - shrink))
-        y = np.zeros(4096, dtype=np.float64)
-        indices = np.linspace(0, 4096, r, endpoint=False)
+        y = np.zeros(4096, dtype=np.float32)
+        indices = linspout(0, 4096, r)
         x = np.interp(indices, range(4096), x)
         y[2048 - r // 2:2048 + (r + 1) // 2] = x
         x = y
@@ -172,7 +203,7 @@ def render_project(fn):
         tempo=pattern.tempo,
     )
     mixer.clear()
-    mixer.submit("~editor " + json.dumps(edi, separators=(',', ':')))
+    mixer.submit("~editor " + json.dumps(edi, separators=(",", ":")))
     proc = psutil.Popen((
         ffmpeg,
         "-y",
@@ -234,7 +265,7 @@ def render_bar(i):
     pattern = project.patterns[editor.pattern]
     notes = pattern.measures.get(i, [])
     s = f"~render {pattern.id} {i} "
-    s += json.dumps(notes, separators=(',', ':'))
+    s += json.dumps(notes, separators=(",", ":"))
     s += "\n"
     mixer.submit(s)
 
@@ -245,6 +276,7 @@ reset_buff = b"\x00" * (BUFSIZ >> 4)
 def editor_update():
     mixer.clear()
     player.broken = False
+    editor.playing_notes.clear()
     if editor.pattern not in FRESH_PATTERNS:
         FRESH_PATTERNS.add(editor.pattern)
         fns = f"&p{editor.pattern}b"
@@ -260,7 +292,7 @@ def editor_update():
         timesig=timesig,
         tempo=pattern.tempo,
     )
-    mixer.submit("~editor " + json.dumps(edi, separators=(',', ':')))
+    mixer.submit("~editor " + json.dumps(edi, separators=(",", ":")))
     channel = get_audio_channel()
     last = -1
     editor.scroll_x = editor.targ_x
@@ -285,7 +317,6 @@ def editor_update():
                     fn = f"cache/&p{editor.pattern}b{i}.pcm"
                     if not os.path.exists(fn):
                         submit(render_bar, i)
-            print(editor.scroll_x)
             first = True
             b = io.BytesIO()
             while not player.broken and not player.paused:
@@ -322,6 +353,7 @@ def editor_update():
     submit(channel.write, reset_buff)
     editor.targ_x = editor.scroll_x
     player.broken = False
+    player.editor_surf = None
 
 def update_piano():
     globals()["editor"] = player.editor
@@ -334,9 +366,13 @@ def update_piano():
     r = 1 + 1 / (duration * 12)
     if not project.patterns:
         create_pattern()
+    pattern = project.patterns[editor.pattern]
     if kspam[K_LEFT]:
         if kheld[K_LEFT] == 1:
-            editor.targ_x -= 0.25
+            if CTRL(kheld):
+                editor.targ_x = 0
+            else:
+                editor.targ_x -= 0.25
         elif (kheld[K_LEFT] - 1) % 3:
             editor.targ_x -= 32 * duration
     if kspam[K_UP]:
@@ -352,7 +388,10 @@ def update_piano():
                 editor.scroll_y += 256 * duration
     if kspam[K_RIGHT]:
         if kheld[K_RIGHT] == 1:
-            editor.targ_x += 0.25
+            if CTRL(kheld):
+                editor.targ_x = pattern_end(pattern)
+            else:
+                editor.targ_x += 0.25
         elif (kheld[K_RIGHT] - 1) % 3:
             editor.targ_x += 32 * duration
     if kspam[K_DOWN]:
@@ -630,11 +669,11 @@ def create_note(n, particles=True):
         col = n_colour(n)
         r = n_rect(n)
         for i in range(round_random(24 * n_length(n))):
-            p = np.array(r[:2]) + [random.random() * note_width * n_length(n), random.random() * note_height]
+            pos = np.array(r[:2]) + [random.random() * note_width * n_length(n), random.random() * note_height]
             z = random.random() * tau
             v = random.random() * 72 + 30
             vel = [v * cos(z), v * sin(z)]
-            spawn_particle(pos=p, vel=vel, col=col, animate=sparkles_animate, render=sparkles_render)
+            spawn_particle(pos=pos, vel=vel, col=col, animate=sparkles_animate, render=sparkles_render)
     return n
 
 def delete_note(n, particles=True):
@@ -698,9 +737,10 @@ def render_piano():
             for p in editor.selection.points:
                 p[0] -= vx
                 p[1] -= vy
-            for p in piano_particles:
-                if p:
-                    p.pos = [p.pos[0] - vx, p.pos[1] - vy]
+            if player.paused and not player.broken:
+                for p in piano_particles:
+                    if p:
+                        p.pos = [p.pos[0] - vx, p.pos[1] - vy]
 
     offs_x = editor.targ_x % 1 * timesig[0] * note_width
     offs_y = editor.targ_y % 1 * note_spacing
@@ -715,6 +755,7 @@ def render_piano():
     keys = ceil((ssize[1] - 16) / note_spacing + 1)
     centre = 48 + (keys + 1 >> 1) + floor(editor.targ_y)
     offs_y = round((offs_y + soffs) % note_spacing - 1.5 * note_spacing)
+    bv = ceil(note_height / 5)
     if not surf or surf.get_size() != ssize:
         surf = player["editor_surf"] = pygame.Surface(ssize, SRCALPHA)
         print(surf)
@@ -753,7 +794,7 @@ def render_piano():
                 r = list(n_rect(n))
                 r[0] -= (editor.targ_x - editor.scroll_x) * timesig[0] * note_width - soffs + PW
                 r[1] += ceil((editor.targ_y - editor.scroll_y) * note_spacing + soffs - 1)
-                rounded_bev_rect(surf, col + (191,), r, bevel=ceil(note_height / 5))
+                rounded_bev_rect(surf, col + (191,), r, bevel=bv)
 
     x = (editor.scroll_x - editor.targ_x) * timesig[0] * note_width + soffs
     y = (editor.scroll_y - editor.targ_y) * note_spacing - soffs
@@ -790,15 +831,15 @@ def render_piano():
             name = note_names[note % 12]
             c = note_colour(note % 12, 0.375, 0.875)
             r = (0, offs_y - note_spacing, PW, note_height)
-            bevel_rectangle(surf, c, r, bevel=ceil(note_height / 5))
+            bevel_rectangle(surf, c, r, bevel=bv)
+            if name.endswith("#"):
+                c = note_colour(note % 12, 0.375, 1 / 3)
+                r = (0, offs_y - note_spacing + ceil(note_height / 10), PW * 5 / 8, note_height - ceil(note_height / 10) * 2)
+                bevel_rectangle(surf, c, r, bevel=bv)
             octave = note // 12
             if not note % 12 and note_height > 6:
                 s = ceil(note_height * 0.75)
                 message_display(f"C{octave}", s, (PW - 2, offs_y - note_spacing + note_height), colour=(0,) * 3, surface=surf, align=2)
-            if name.endswith("#"):
-                c = note_colour(note % 12, 0.375, 1 / 3)
-                r = (0, offs_y - note_spacing + ceil(note_height / 10), PW * 5 / 8, note_height - ceil(note_height / 10) * 2)
-                bevel_rectangle(surf, c, r, bevel=ceil(note_height / 5))
             offs_y += note_spacing
     DISP.blit(editor.piano_surf, (0, 0))
 
@@ -818,15 +859,15 @@ def render_piano():
             if selected or playing:
                 c = note_colour(note % 12, 0.75, 1)
                 r = (0, offs_y - note_spacing, PW, note_height)
-                bevel_rectangle(DISP, c, r, bevel=ceil(note_height / 5))
+                bevel_rectangle(DISP, c, r, bevel=bv)
+                if name.endswith("#"):
+                    c = note_colour(note % 12, 0.75, 0.6)
+                    r = (0, offs_y - note_spacing + ceil(note_height / 10), PW * 5 / 8, note_height - ceil(note_height / 10) * 2)
+                    bevel_rectangle(DISP, c, r, bevel=bv)
                 octave = note // 12
                 if not note % 12 and note_height > 6:
                     s = ceil(note_height * 0.75)
                     message_display(f"C{octave}", s, (46, offs_y - note_spacing + note_height), colour=(0,) * 3, surface=DISP, align=2)
-                if name.endswith("#"):
-                    c = note_colour(note % 12, 0.75, 0.6)
-                    r = (0, offs_y - note_spacing + ceil(note_height / 10), PW * 5 / 8, note_height - ceil(note_height / 10) * 2)
-                    bevel_rectangle(DISP, c, r, bevel=ceil(note_height / 5))
             if highlighted:
                 c = (255, 255, 255, 48)
                 r = (PW, offs_y - note_spacing, player.rect[2] - PW, note_height)
@@ -1058,7 +1099,7 @@ def render_piano():
                     elif not any(mheld) and not kheld[K_DELETE]:
                         r = tuple(xy) + (editor.note.length * note_width + 1, note_height + 1)
                         c = project.instruments[editor.note.instrument].colour + (96 + 192 * abs(pc() % 1 - 0.5),)
-                        rounded_bev_rect(DISP, c, r, bevel=ceil(note_height / 5))
+                        rounded_bev_rect(DISP, c, r, bevel=bv)
 
     ntuple = (measurepos, npos, pitch)
     undone = False
@@ -1259,6 +1300,64 @@ def render_piano():
     for p in piano_particles:
         if p and p.get("render"):
             p.render(p)
+
+    if not player.paused:
+        plast = globals().setdefault("_plast", pc())
+        dur = pc() - plast
+        its = 0.2 / max(0.01, dur)
+        offi = (editor.scroll_x - editor.targ_x) * timesig[0]
+        for n in pattern.measures.get(editor.targ_x, ()):
+            if n_pos(n) <= offi and n_pos(n) + n_length(n) > offi:
+                r = astype(n_rect(n), list)
+                amount = round_random(its)
+                y = r[1] + r[3] / 2
+                if amount:
+                    vel = [(random.random() + 2) * pattern.tempo / timesig[0], 0]
+                    col = n_colour(n)
+                    pos = [PW, y]
+                    ang = editor.scroll_x % 1 * tau
+                    for i in range(amount):
+                        duration = i * dur / amount
+                        p = spawn_particle(pos=pos, vel=vel, ang=ang, width=note_height / 2, col=col, animate=helix_animate, render=helix_render)
+                        if i:
+                            p.frame += duration
+                            p.animate(p, duration)
+                draw_rect(DISP, (0,) * 3, (r[0] + bv, r[1] + bv, r[2] - bv * 2, r[3] - bv * 2))
+                rounded_bev_rect(DISP, (239,) * 3, r, bevel=bv, filled=False)
+                pos = [PW, y]
+                size = note_height * 1.5
+                reg_polygon_complex(
+                    DISP,
+                    pos,
+                    (255,) * 3,
+                    0,
+                    size,
+                    size,
+                    alpha=159,
+                    thickness=min(size, 2),
+                    repetition=max(1, size - 2),
+                    soft=True,
+                )
+                r[0] = 0
+                r[2] = PW
+                note = n_pitch(n)
+                c = note_colour(note % 12, 0.5, 1)
+                if not note % 1:
+                    name = note_names[note % 12]
+                else:
+                    name = ""
+                    c = note_colour(note % 12, 0.75, 0.8)
+                bevel_rectangle(DISP, c, r, bevel=bv)
+                if name.endswith("#"):
+                    c = note_colour(note % 12, 0.75, 0.6)
+                    r = (0, r[1] + ceil(note_height / 10), PW * 5 / 8, r[3] - ceil(note_height / 10) * 2)
+                    bevel_rectangle(DISP, c, r, bevel=bv)
+                octave = note // 12
+                if not note % 12 and note_height > 6:
+                    s = ceil(note_height * 0.75)
+                    message_display(f"C{octave}", s, (46, r[1] + r[3]), colour=(0,) * 3, surface=DISP, align=2)
+
+    globals()["_plast"] = pc()
     globals()["_mlast"] = mpos
     globals()["_targ_x"] = editor.targ_x
     globals()["_targ_y"] = editor.targ_y

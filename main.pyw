@@ -907,9 +907,6 @@ def load_project(fn, switch=True):
         print_exc()
 
 def save_project(fn=None):
-    if not toolbar.editor:
-        toolbar.editor = 1
-        mixer.submit(f"~setting spectrogram -1")
     player.editor_surf = None
     globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
     if type(fn) is str and not fn.endswith(".mpp"):

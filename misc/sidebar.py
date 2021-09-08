@@ -159,7 +159,7 @@ def render_sidebar(dur=0):
             submit(enqueue_auto, *pyperclip.paste().splitlines())
         if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
             sidebar.pop("dragging", None)
-        if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue):
+        if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue if entry):
             sidebar.pop("last_selected")
         copies = deque()
         pops = set()

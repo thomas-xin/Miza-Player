@@ -274,6 +274,7 @@ player.broken = False
 BUFSIZ = round(48000 * 2 * 2 / 30)
 reset_buff = b"\x00" * (BUFSIZ >> 4)
 def editor_update():
+    globals()["editor"] = player.editor
     mixer.clear()
     player.broken = False
     editor.playing_notes.clear()

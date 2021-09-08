@@ -122,7 +122,7 @@ if update_collections:
         if p not in PATH:
             print(f"Adding {p} to PATH...")
             PATH.add(p)
-            s = os.pathsep.join(sorted(PATH)) + os.pathsep
+            s = os.pathsep.join(PATH) + os.pathsep
             subprocess.run(["setx", "path", s])
             os.environ["PATH"] = s
 
@@ -150,7 +150,6 @@ if update_collections:
         if s < v:
             print(f"FFmpeg version outdated ({v} > {s})")
             raise FileNotFoundError
-        # print(f"FFmpeg version {s} found; skipping installation...")
     except FileNotFoundError:
         urls = """
 https://cdn.discordapp.com/attachments/699815878010732574/875783935244771358/z1.zip
@@ -179,38 +178,6 @@ https://drive.google.com/u/0/uc?id=1stdrdMrImHVT4IaLsdcGaRceAdn4VL58&export=down
         print(f"{len(futs)}/{len(futs)}")
         print("FFmpeg extraction complete.")
         add_to_path()
-#     print("Verifying FluidSynth installation...")
-#     try:
-#         subprocess.run("fluidsynth", stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#     except FileNotFoundError:
-#         urls = """
-# https://github.com/FluidSynth/fluidsynth/releases/download/v2.2.2/fluidsynth-2.2.2-win10-x64.zip
-# """.strip().splitlines()
-#         import zipfile, io
-#         if not os.path.exists("sndlib"):
-#             os.mkdir("sndlib")
-#         print(f"Downloading FluidSynth...")
-#         futs = []
-#         for url in urls:
-#             futs.append(submit(requests.get, url))
-#         for i, fut in enumerate(futs):
-#             print(f"{i}/{len(futs)}", end="\r")
-#             with fut.result() as resp:
-#                 f = io.BytesIO(resp.content)
-#                 if zipfile.is_zipfile(f):
-#                     with zipfile.ZipFile(f) as z:
-#                         for fn in z.namelist():
-#                             if "bin/" in fn and not fn.endswith("/"):
-#                                 with open("sndlib/" + fn.split("bin/", 1)[-1], "wb") as g:
-#                                     b = z.read(fn)
-#                                     g.write(b)
-#                 else:
-#                     f.seek(0)
-#                     with open("sndlib/" + resp.url.rsplit("/", 1)[-1].lower(), "wb") as g:
-#                         g.write(f.read())
-#         print(f"{len(futs)}/{len(futs)}")
-#         print("FluidSynth extraction complete.")
-#         add_to_path()
     print("Verifying SoX installation...")
     try:
         subprocess.run(sox, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

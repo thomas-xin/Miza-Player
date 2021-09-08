@@ -176,7 +176,7 @@ def render_sidebar(dur=0):
         otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
         etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
         target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
-        if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
+        if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
             if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                 for entry in queue:
                     entry.pop("selected", None)
@@ -209,26 +209,30 @@ def render_sidebar(dur=0):
                     alpha=round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
                     filled=False,
                 )
-                if not swap and not mclick[0] and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL] and sidebar.get("last_selected") is entry:
+                if not swap and not mclick[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
                     if target != i:
                         swap = target - i
+        if (SHIFT(kheld) or CTRL(kheld)) and mclick[0]:
+            breaking = lambda i: False
+        else:
+            breaking = lambda i: i < base or i >= base + maxitems
         for i, entry in enumerate(queue):
             if not entry.url:
                 pops.add(i)
                 continue
             if entry.get("selected"):
-                if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
+                if kclick[K_DELETE] or kclick[K_BACKSPACE] or CTRL(kheld) and kclick[K_x]:
                     pops.add(i)
                     if sidebar.get("last_selected") == entry:
                         sidebar.pop("last_selected", None)
-                if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
+                if CTRL(kheld) and (kclick[K_c] or kclick[K_x]):
                     entry.flash = 16
                     copies.append(entry.url)
-            elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a]:
+            elif CTRL(kheld) and kclick[K_a]:
                 entry.selected = True
                 sidebar.last_selected = entry
                 lq = i
-            if i < base or i >= base + maxitems:
+            if breaking(i):
                 entry.flash = 8
                 entry.pos = i
                 continue
@@ -238,7 +242,7 @@ def render_sidebar(dur=0):
             y = round(Z + entry.get("pos", 0) * 32)
             rect = (x, y, sidebar_width - 32, 32)
             selectable = i == etarget
-            if not selectable and sidebar.get("last_selected") and (kheld[K_LSHIFT] or kheld[K_RSHIFT]):
+            if not selectable and sidebar.get("last_selected") and SHIFT(kheld):
                 b = lq
                 if b >= 0:
                     a = target
@@ -248,7 +252,7 @@ def render_sidebar(dur=0):
             if selectable or entry.get("selected"):
                 if mclick[0] and selectable:
                     if not sidebar.abspos:
-                        if entry.get("selected") and (kheld[K_LCTRL] or kheld[K_RCTRL]):
+                        if entry.get("selected") and CTRL(kheld):
                             entry.selected = False
                             sidebar.dragging = False
                             sidebar.pop("last_selected", None)
@@ -405,6 +409,10 @@ def render_sidebar(dur=0):
                 sat = 1
                 val = 0.75
                 secondary = False
+            if i < base or i >= base + maxitems:
+                entry.flash = 8
+                entry.pos = i
+                continue
             flash = entry.get("flash", 16)
             if flash:
                 if flash < 0:

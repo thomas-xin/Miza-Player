@@ -355,7 +355,8 @@ def setup_buttons():
                     q = data.get("queue", ())
                     options.history.appendleft((choice, tuple(e["url"] for e in q)))
                     options.history = options.history.uniq(sort=False)[:64]
-                    queue.extend(ensure_duration(cdict(**e, pos=start)) for e in q)
+                    entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
+                    queue.extend(entries)
                 if control.shuffle and len(queue) > 1:
                     random.shuffle(queue.view[1:])
                 sidebar.loading = False
@@ -872,8 +873,8 @@ def enqueue_auto(*queries):
             else:
                 futs.append(submit(_enqueue_local, q, probe=i < 1))
 
-def load_project(fn):
-    if not toolbar.editor:
+def load_project(fn, switch=True):
+    if switch and not toolbar.editor:
         toolbar.editor = 1
         mixer.submit(f"~setting spectrogram -1")
     player.editor_surf = None
@@ -3173,7 +3174,8 @@ try:
             data = json.load(f)
         if queue:
             data.pop("pos", None)
-        queue.extend(cdict(e, duration=e.get("duration")) for e in data.get("queue", ()))
+        entries = [cdict(e, duration=e.get("duration")) for e in data.get("queue", ())]
+        queue.extend(entries)
         if data.get("editor"):
             player.editor.update(data["editor"])
             player.editor.note = cdict(player.editor.note)
@@ -3183,7 +3185,7 @@ try:
             pygame.display.iconify()
         if data.get("project"):
             b = base64.b64decode(data["project"].encode("ascii"))
-            submit(load_project, io.BytesIO(b))
+            submit(load_project, io.BytesIO(b), switch=False)
         if data.get("toolbar-editor"):
             if not player.paused:
                 pause_toggle(True)

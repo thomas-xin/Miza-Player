@@ -596,7 +596,9 @@ def setup_buttons():
         flip = button_images.flip.result()
         def flip_1():
             mixer.clear()
-            queue.__init__(queue.view[::-1], fromarray=True)
+            for i, entry in enumerate(queue):
+                entry.pos = i
+            queue.fill(queue.view[::-1])
             start()
         toolbar.buttons.append(cdict(
             name="Flip",
@@ -607,6 +609,8 @@ def setup_buttons():
         scramble = button_images.scramble.result()
         def scramble_1():
             mixer.clear()
+            for i, entry in enumerate(queue):
+                entry.pos = i
             random.shuffle(queue.view)
             start()
         toolbar.buttons.append(cdict(
@@ -619,6 +623,8 @@ def setup_buttons():
         def unique_1():
             pops = set()
             found = set()
+            for i, entry in enumerate(queue):
+                entry.pos = i
             for i, e in enumerate(queue):
                 if e.url in found:
                     pops.add(i)
@@ -1313,6 +1319,8 @@ def skip():
     if queue:
         e = queue.popleft()
         if control.shuffle:
+            for i, entry in enumerate(queue[1:], 1):
+                entry.pos = i
             random.shuffle(queue.view[1:])
         if control.loop == 2:
             queue.appendleft(e)

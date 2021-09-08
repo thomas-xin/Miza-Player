@@ -216,7 +216,12 @@ def render_sidebar(dur=0):
             breaking = lambda i: False
         else:
             breaking = lambda i: i < base or i >= base + maxitems
-        for i, entry in enumerate(queue):
+        if any(kclick) or any(mclick):
+            entries = enumerate(queue)
+        else:
+            entries = enumerate(queue[base:base + maxitems], base)
+            breaking = lambda i: False
+        for i, entry in entries:
             if not entry.url:
                 pops.add(i)
                 continue

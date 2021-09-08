@@ -1054,7 +1054,7 @@ def render_lyrics(entry):
                 return
         if options.spectrogram:
             return
-        rect = (player.rect[2] - 8, player.rect[3] - 64)
+        rect = (player.rect[2] - 8, player.rect[3] - 92)
         if entry.get("lyrics") and entry.lyrics[1].get_size() == rect:
             return entry.pop("lyrics_loading", None)
         try:
@@ -3453,13 +3453,13 @@ try:
                             font="Rockwell",
                         )
                     elif entry.lyrics:
-                        rect = (player.rect[2] - 8, player.rect[3] - 64)
+                        rect = (player.rect[2] - 8, player.rect[3] - 92)
                         if not entry.get("lyrics_loading") and rect != entry.lyrics[1].get_size():
                             entry.lyrics_loading = True
                             submit(render_lyrics, entry)
                         DISP.blit(
                             entry.lyrics[1],
-                            (8, 64),
+                            (8, 92),
                         )
                         message_display(
                             entry.lyrics[0],

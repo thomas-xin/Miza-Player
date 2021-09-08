@@ -835,10 +835,11 @@ def spectrogram_update():
         amp = np.abs(arr, dtype=np.float32)
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
-        amp = supersample(amp, barcount)
-        b = amp.tobytes()
-        rproc.stdin.write(b"~e" + b)
-        rproc.stdin.flush()
+        if settings.spectrogram > 0:
+            amp = supersample(amp, barcount)
+            b = amp.tobytes()
+            rproc.stdin.write(b"~e" + b)
+            rproc.stdin.flush()
         if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
             spec2_fut = submit(spectrogram_update)
             packet_advanced3 = False
@@ -917,11 +918,11 @@ def render():
                             if packet:
                                 point("~x " + " ".join(map(str, out)))
 
-                    if settings.spectrogram > 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
+                    if settings.spectrogram >= 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
                         if is_strict_minimised():
                             spec2_fut = submit(spectrogram_update)
             elif packet_advanced:
-                if settings.spectrogram > 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
+                if settings.spectrogram >= 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
                     if is_strict_minimised():
                         spec2_fut = submit(spectrogram_update)
             packet_advanced = False
@@ -1084,7 +1085,7 @@ def play(pos):
                     point_fut = submit(point, f"~{frame} {duration}")
                 if not channel2:
                     channel.queue(sound)
-                if settings.spectrogram > 0 and ssize[0] and ssize[1] and not is_minimised():
+                if settings.spectrogram >= 0 and ssize[0] and ssize[1] and not is_minimised():
                     if spec_fut:
                         spec_fut.result()
                     spec_fut = submit(spectrogram, sbuffer)

@@ -4,7 +4,7 @@ from traceback import print_exc
 np = numpy
 from PIL import Image, ImageDraw, ImageFont
 
-async_wait = lambda: time.sleep(sys.float_info.min)
+async_wait = lambda: time.sleep(0.001)
 
 
 from concurrent.futures import thread
@@ -53,7 +53,7 @@ while higher_bound[0] not in "0123456789-":
     higher_bound = higher_bound[1:]
     if not higher_bound:
         raise ValueError("Octave not found.")
-highest_note += int(higher_bound) * 12 + 1
+highest_note += int(higher_bound) * 12 - 11
 
 lower_bound = "C0"
 lowest_note = "C~D~EF~G~A~B".index(lower_bound[0].upper()) - 9 + ("#" in lower_bound)
@@ -61,27 +61,11 @@ while lower_bound[0] not in "0123456789-":
     lower_bound = lower_bound[1:]
     if not lower_bound:
         raise ValueError("Octave not found.")
-lowest_note += int(lower_bound) * 12 + 1
+lowest_note += int(lower_bound) * 12 - 11
 
-maxfreq = 27.5 * 2 ** ((highest_note + 0.5) / 12)
-minfreq = 27.5 * 2 ** ((lowest_note - 0.5) / 12)
 barcount = int(highest_note - lowest_note) + 1 + 2
-freqmul = 1 / (1 - log(minfreq, maxfreq))
 
 barheight = 720
-res_scale = 65536
-dfts = res_scale // 2 + 1
-fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
-fftrans = np.zeros(dfts, dtype=int)
-
-for i, x in enumerate(fff):
-    if x <= 0:
-        continue
-    else:
-        x = round((1 - log(x, maxfreq)) * freqmul * (barcount - 1))
-    if x > barcount - 1 or x < 0:
-        continue
-    fftrans[i] = x
 
 PARTICLES = set()
 P_ORDER = 0
@@ -117,7 +101,7 @@ class Bar(Particle):
             dark = True
         name = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")[note % 12]
         octave = note // 12
-        self.line = name + str(octave)
+        self.line = name + str(octave + 1)
         self.x = x
         if dark:
             self.colour = tuple(i + 1 >> 1 for i in self.colour)
@@ -236,7 +220,7 @@ class Bar(Particle):
             except (TypeError, AttributeError):
                 width = self.fsize / (sqrt(5) + 1) * len(self.line)
             x = sx + w / 2 - width / 2
-            pos = max(64, ssize2[1] - size - width * (sqrt(5) + 1))
+            pos = max(84, ssize2[1] - size - width * (sqrt(5) + 1))
             factor = round(255 * scale)
             col = sum(factor << (i << 3) for i in range(3))
             DRAW.text((x, pos), self.line, col, self.font)
@@ -348,7 +332,7 @@ while True:
         elif line == b"~e":
             amp = np.frombuffer(sys.stdin.buffer.read(4 * len(bars)), dtype=np.float32)
             for i, pwr in enumerate(amp):
-                bars[i].ensure(pwr / 8)
+                bars[i].ensure(pwr / 2)
         elif not line:
             break
     except:

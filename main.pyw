@@ -1219,7 +1219,7 @@ def prepare(entry, force=False, download=False):
                 q2 = alist(cdict(**e, pos=i) for e in resp)
                 if control.shuffle and len(q2) > 1:
                     random.shuffle(q2.view)
-                queue.__init__(np.concatenate((q1, q2, q3)), fromarray=True)
+                queue.__init__(np.append((q1, q2, q3)), fromarray=True)
                 submit(render_lyrics, queue[0])
     elif force and is_url(entry.get("url")):
         ytdl = downloader.result()
@@ -1495,6 +1495,9 @@ def pos():
                 continue
             if s == "W":
                 globals()["device_waiting"] = None
+                continue
+            if s[0] == "n":
+                player.note = float(s[2:])
                 continue
             if s == "r":
                 submit(start_player, 0, True)
@@ -2388,10 +2391,8 @@ def draw_menu():
     if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
         if toolbar.editor:
             render_sidebar_2(dur)
-            async_wait = lambda: time.sleep(sys.float_info.min)
         else:
             render_sidebar(dur)
-            async_wait = lambda: time.sleep(sys.float_info.min)
         offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
         Z = -sidebar.scroll.pos
         maxb = (sidebar_width - 12) // 44
@@ -2889,7 +2890,7 @@ def draw_menu():
                     font="Comic Sans MS",
                 )
     if not toolbar.editor and (mclick[0] or mclick[1]):
-        text_rect = (0, 0, 128, 64)
+        text_rect = (0, 0, 192, 92)
         if in_rect(mpos, text_rect):
             if mclick[1]:
                 pass
@@ -3162,9 +3163,12 @@ kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
 delay = 0
 last_tick = 0
+last_precise = 0
+last_ratio = 0
 status_freq = 6000
 alphakeys = [0] * 34
 restarting = False
+fps = 0
 try:
     if options.control.preserve and os.path.exists("dump.json"):
         with open("dump.json", "rb") as f:
@@ -3487,7 +3491,7 @@ try:
                             background=(0,) * 3,
                             font="Rockwell",
                         )
-                if player.flash_s > 0:
+                if player.get("flash_s", 0) > 0:
                     bevel_rectangle(
                         DISP,
                         (191,) * 3,
@@ -3495,8 +3499,8 @@ try:
                         4,
                         alpha=player.flash_s * 8 - 1,
                     )
-                text_rect = (0, 0, 128, 64)
-                if player.flash_i > 0:
+                text_rect = (0, 0, 192, 92)
+                if player.get("flash_i", 0) > 0:
                     bevel_rectangle(
                         DISP,
                         (191,) * 3,
@@ -3522,7 +3526,15 @@ try:
                     )
             if not toolbar.editor and (not tick + 6 & 7 or tuple(screensize) in modified):
                 if options.get("insights"):
-                    for i, k in enumerate(("peak", "amplitude", "velocity", "energy")):
+                    message_display(
+                        f"FPS: {round(fps, 2)}",
+                        13,
+                        (4, 0),
+                        align=0,
+                        surface=DISP,
+                        font="Comic Sans MS",
+                    )
+                    for i, k in enumerate(("peak", "amplitude", "velocity", "energy"), 1):
                         v = player.stats.get(k, 0) if is_active() else 0
                         message_display(
                             f"{k.capitalize()}: {v}%",
@@ -3532,6 +3544,24 @@ try:
                             surface=DISP,
                             font="Comic Sans MS",
                         )
+                    if is_active() and player.get("note"):
+                        note = round(32.70319566257483 * 2 ** (player.note / 12), 1)
+                        n = round(player.note)
+                        name = "C~D~EF~G~A~B"[n % 12]
+                        if name == "~":
+                            name = "C~D~EF~G~A~B"[n % 12 - 1] + "#"
+                        name += str(n // 12)
+                        note = f"{note} Hz ({name})"
+                    else:
+                        note = "N/A"
+                    message_display(
+                        f"Frequency: {note}",
+                        13,
+                        (4, 70),
+                        align=0,
+                        surface=DISP,
+                        font="Comic Sans MS",
+                    )
                 if modified:
                     modified.add(tuple(screensize))
                 else:
@@ -3569,9 +3599,14 @@ try:
         #         ICON_DISP = ""
         #         pygame.display.set_icon(ICON)
         d = 1 / 240
-        delay = pc() - last_tick
-        d2 = max(sys.float_info.min, d - delay)
-        last_tick = max(last_tick + d, pc() - 0.25)
+        t = pc()
+        delay = t - last_tick
+        fps = 0.25 / max(d / 4, last_ratio)
+        # print(fps)
+        d2 = max(0.001, d - delay)
+        last_ratio = (last_ratio * 7 + t - last_precise) / 8
+        last_precise = t
+        last_tick = max(last_tick + d, t - 0.25)
         time.sleep(d2)
         for event in pygame.event.get():
             if event.type == QUIT:
@@ -3608,7 +3643,7 @@ except Exception as ex:
     submit(requests.delete, mp)
     save_settings()
     if restarting:
-        os.system("start /MIN cmd /k " + sys.executable + " main.pyw")
+        os.system(f"start /MIN cmd /k {sys.executable} main.pyw")
     pygame.closed = True
     pygame.quit()
     if type(ex) is not StopIteration:

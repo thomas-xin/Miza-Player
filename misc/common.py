@@ -771,6 +771,7 @@ deque = collections.deque
 suppress = contextlib.suppress
 d2r = pi / 180
 ts_us = lambda: time.time_ns() // 1000
+async_wait = lambda: time.sleep(0.001)
 
 
 commitf = "misc/commit.tmp"
@@ -977,10 +978,11 @@ def round_random(x):
     y = int(x)
     if y == x:
         return y
-    x %= 1
+    x -= y
     if random.random() <= x:
         y += 1
     return y
+sleep = lambda secs: time.sleep(round_random(secs * 1000) / 1000)
 
 def bit_crush(dest, b=0, f=round):
     if type(b) == int:
@@ -2002,10 +2004,11 @@ def supersample(a, size, hq=False):
             return supersample(a, size)
         interp = np.linspace(0, n - 1, size)
         return np.interp(interp, range(n), a)
+    dtype = a.dtype
     x = ceil(n / size)
     interp = np.linspace(0, n - 1, x * size)
     a = np.interp(interp, range(n), a)
-    return np.mean(a.reshape(-1, x), 1)
+    return np.mean(a.reshape(-1, x), 1, dtype=dtype)
 
 
 eval_const = {

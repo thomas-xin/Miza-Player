@@ -12,7 +12,7 @@ deque = collections.deque
 suppress = contextlib.suppress
 hwnd = int(sys.stdin.readline()[1:])
 
-async_wait = lambda: time.sleep(sys.float_info.min)
+async_wait = lambda: time.sleep(0.001)
 
 is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 globals()["unfocus-time"] = 0
@@ -53,6 +53,23 @@ def as_str(s):
     return str(s)
 
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
+
+
+def supersample(a, size, hq=False):
+    n = len(a)
+    if n == size:
+        return a
+    if n < size:
+        if hq:
+            a = samplerate.resample(a, size / len(a), "sinc_fastest")
+            return supersample(a, size)
+        interp = np.linspace(0, n - 1, size)
+        return np.interp(interp, range(n), a)
+    dtype = a.dtype
+    x = ceil(n / size)
+    interp = np.linspace(0, n - 1, x * size)
+    a = np.interp(interp, range(n), a)
+    return np.mean(a.reshape(-1, x), 1, dtype=dtype)
 
 
 from concurrent.futures import thread
@@ -141,7 +158,6 @@ class cdict(dict):
     copy = __copy__ = lambda self: self.__class__(self)
     to_dict = lambda self: dict(**self)
     to_list = lambda self: list(super().values())
-
 
 def point(s):
     b = str(s).encode("utf-8") if type(s) is not bytes else s
@@ -725,7 +741,7 @@ while higher_bound[0] not in "0123456789-":
     higher_bound = higher_bound[1:]
     if not higher_bound:
         raise ValueError("Octave not found.")
-highest_note += int(higher_bound) * 12 + 1
+highest_note += int(higher_bound) * 12 - 11
 
 lower_bound = "C0"
 lowest_note = "C~D~EF~G~A~B".index(lower_bound[0].upper()) - 9 + ("#" in lower_bound)
@@ -733,25 +749,25 @@ while lower_bound[0] not in "0123456789-":
     lower_bound = lower_bound[1:]
     if not lower_bound:
         raise ValueError("Octave not found.")
-lowest_note += int(lower_bound) * 12 + 1
+lowest_note += int(lower_bound) * 12 - 11
 
-maxfreq = 27.5 * 2 ** ((highest_note + 0.5) / 12)
-minfreq = 27.5 * 2 ** ((lowest_note - 0.5) / 12)
+maxfreq = 27.5 * 2 ** ((highest_note + 1.5) / 12)
+minfreq = 27.5 * 2 ** ((lowest_note - 1.5) / 12)
 barcount = int(highest_note - lowest_note) + 1 + 2
 freqmul = 1 / (1 - log(minfreq, maxfreq))
 
-barheight = 720
-res_scale = 65536
+res_scale = 84000
 dfts = res_scale // 2 + 1
 fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
 fftrans = np.zeros(dfts, dtype=int)
+freqscale = 7
 
+bins = barcount * freqscale - 1
 for i, x in enumerate(fff):
     if x <= 0:
         continue
-    else:
-        x = round((1 - log(x, maxfreq)) * freqmul * (barcount - 1))
-    if x > barcount - 1 or x < 0:
+    x = round((1 - log(x, maxfreq)) * freqmul * bins)
+    if x > bins or x < 0:
         continue
     fftrans[i] = x
 
@@ -812,11 +828,14 @@ def spectrogram_update():
         dft = np.fft.rfft(spec_buffer)
         np.multiply(spec_buffer, (1 / 3) ** dur, out=spec_buffer)
         async_wait()
-        arr = np.zeros(barcount, dtype=np.complex64)
+        arr = np.zeros(barcount * freqscale, dtype=np.complex64)
         np.add.at(arr, fftrans, dft)
         arr[0] = 0
         async_wait()
         amp = np.abs(arr, dtype=np.float32)
+        x = barcount - np.argmax(amp) / freqscale - 0.5
+        point(f"~n {x}")
+        amp = supersample(amp, barcount)
         b = amp.tobytes()
         rproc.stdin.write(b"~e" + b)
         rproc.stdin.flush()
@@ -833,7 +852,7 @@ def spectrogram(buffer):
     try:
         if packet:
             buffer = np.clip(sample.astype(np.float32) / 32767, -1, None)
-            spec_buffer = np.concatenate((spec_buffer[-res_scale + len(buffer):], buffer))
+            spec_buffer = np.append(spec_buffer[-res_scale + len(buffer):], buffer)
             if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
                 spec2_fut = submit(spectrogram_update)
                 packet_advanced3 = None
@@ -1078,22 +1097,6 @@ def play(pos):
         except:
             pass
         print_exc()
-
-
-def supersample(a, size, hq=False):
-    n = len(a)
-    if n == size:
-        return a
-    if n < size:
-        if hq:
-            a = samplerate.resample(a, size / len(a), "sinc_fastest")
-            return supersample(a, size)
-        interp = np.linspace(0, n - 1, size)
-        return np.interp(interp, range(n), a)
-    x = ceil(n / size)
-    interp = np.linspace(0, n - 1, x * size)
-    a = np.interp(interp, range(n), a)
-    return np.mean(a.reshape(-1, x), 1)
 
 
 SR = 48000

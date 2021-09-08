@@ -481,6 +481,7 @@ def render_sidebar(dur=0):
             if skipping:
                 mixer.clear()
                 submit(start)
+        async_wait()
         if not sidebar.get("dragging"):
             for i, entry in enumerate(queue[base:base + maxitems], base):
                 if not entry.get("selected"):

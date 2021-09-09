@@ -3512,6 +3512,7 @@ try:
                             background=(0,) * 3,
                             font="Rockwell",
                         )
+            if not tick + 6 & 7 and not toolbar.editor:
                 if player.get("flash_s", 0) > 0:
                     bevel_rectangle(
                         DISP,
@@ -3520,6 +3521,7 @@ try:
                         4,
                         alpha=player.flash_s * 8 - 1,
                     )
+                    modified.add(player.rect)
                 text_rect = (0, 0, 192, 92)
                 if player.get("flash_i", 0) > 0:
                     bevel_rectangle(
@@ -3529,6 +3531,7 @@ try:
                         4,
                         alpha=player.flash_i * 8 - 1,
                     )
+                    modified.add(player.rect)
                 if in_rect(mpos, text_rect):
                     bevel_rectangle(
                         DISP,
@@ -3537,6 +3540,7 @@ try:
                         4,
                         filled=False,
                     )
+                    modified.add(player.rect)
                 elif in_rect(mpos, player.rect):
                     bevel_rectangle(
                         DISP,
@@ -3545,6 +3549,7 @@ try:
                         4,
                         filled=False,
                     )
+                    modified.add(player.rect)
             if not toolbar.editor and (not tick + 6 & 7 or tuple(screensize) in modified):
                 if options.get("insights"):
                     message_display(

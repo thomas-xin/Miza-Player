@@ -248,42 +248,43 @@ def spectrogram_render(bars):
             spec = CIRCLE_SPEC
             D = 5
             R = D / 2 / freqscale2
-            if not spec:
-                class Circle_Spec:
-                    angle = 0
-                    rotation = 0
-                globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
-                spec.image = Image.new("RGB", (barcount * D - D,) * 2)
-            else:
-                spec.angle += 1 / 360 * tau
-                spec.rotation += 0.5
-                r = 15 / 16
-                s = 1 / 48
-                colourmatrix = (
-                    r, s, 0, 0,
-                    0, r, s, 0,
-                    s, 0, r, 0,
-                )
-                spec.image = spec.image.convert("RGB", colourmatrix)
-                # spec.image = im
-            sfx = spec.image
-            globals()["DRAW"] = ImageDraw.Draw(sfx)
-            c = (sfx.width + 1 >> 1, sfx.height + 1 >> 1)
-            for bar in sorted(bars, key=lambda bar: bar.height):
-                size = min(2 * barheight, round(bar.height))
-                amp = size / barheight * 2
-                val = min(1, amp)
-                sat = 1 - min(1, max(0, amp - 1))
-                colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount / freqscale2) % 1, sat, val))
-                x = bar.x + 1
-                r1 = x * R - 1
-                r2 = x * R + 1
-                for i in range(vertices):
-                    z = spec.angle + i / vertices * tau
-                    p1 = (c[0] + cos(z) * r1, c[1] + sin(z) * r1)
-                    p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
-                    DRAW.line((p1, p2), colour, 5)
-            async_wait()
+            for i in range(2):
+                if not spec:
+                    class Circle_Spec:
+                        angle = 0
+                        rotation = 0
+                    globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
+                    spec.image = Image.new("RGB", (barcount * D - D,) * 2)
+                else:
+                    spec.angle += 1 / 720 * tau
+                    spec.rotation += 0.25
+                    r = 31 / 32
+                    s = 1 / 96
+                    colourmatrix = (
+                        r, s, 0, 0,
+                        0, r, s, 0,
+                        s, 0, r, 0,
+                    )
+                    spec.image = spec.image.convert("RGB", colourmatrix)
+                    # spec.image = im
+                sfx = spec.image
+                globals()["DRAW"] = ImageDraw.Draw(sfx)
+                c = (sfx.width + 1 >> 1, sfx.height + 1 >> 1)
+                for bar in sorted(bars, key=lambda bar: bar.height):
+                    size = min(2 * barheight, round(bar.height))
+                    amp = size / barheight * 2
+                    val = min(1, amp)
+                    sat = 1 - min(1, max(0, amp - 1))
+                    colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount / freqscale2) % 1, sat, val))
+                    x = bar.x + 1
+                    r1 = x * R - 1
+                    r2 = x * R + 1
+                    for i in range(vertices):
+                        z = spec.angle + i / vertices * tau
+                        p1 = (c[0] + cos(z) * r1, c[1] + sin(z) * r1)
+                        p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
+                        DRAW.line((p1, p2), colour, 3)
+                async_wait()
             sfx = sfx.rotate(spec.rotation, resample=Image.NEAREST)
 
         if specs == 1:

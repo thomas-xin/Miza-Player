@@ -836,9 +836,13 @@ def spectrogram_update():
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
         if settings.spectrogram > 0:
-            amp = supersample(amp, barcount)
+            if not settings.spectrogram > 1:
+                amp = supersample(amp, barcount)
+            else:
+                amp = supersample(amp, barcount * 2)
             b = amp.tobytes()
-            rproc.stdin.write(b"~e" + b)
+            a = f"~e{len(b)}\n".encode("utf-8")
+            rproc.stdin.write(a + b)
             rproc.stdin.flush()
         if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
             spec2_fut = submit(spectrogram_update)

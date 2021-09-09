@@ -64,7 +64,8 @@ while lower_bound[0] not in "0123456789-":
 lowest_note += int(lower_bound) * 12 - 11
 
 barcount = int(highest_note - lowest_note) + 1 + 2
-
+freqscale2 = 2
+barcount2 = barcount * freqscale2
 barheight = 720
 
 PARTICLES = set()
@@ -92,7 +93,7 @@ class Bar(Particle):
     fsize = 0
     # font = ImageFont.truetype("misc/Pacifico.ttf", fsize)
 
-    def __init__(self, x):
+    def __init__(self, x, barcount):
         super().__init__()
         dark = False
         self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / barcount, 1, 1))
@@ -157,35 +158,35 @@ class Bar(Particle):
             amp = size / barheight * 2
             val = min(1, amp)
             sat = 1 - min(1, max(0, amp - 1))
-            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount) % 1, sat, val))
-            x = barcount - self.x - 2
+            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount / freqscale2) % 1, sat, val))
+            x = barcount * freqscale2 - self.x - 2
             if vertices == 4:
                 DRAW.rectangle(
-                    (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),
+                    (x, x, barcount * 2 * freqscale2 - x - 3, barcount * 2 * freqscale2 - x - 3),
                     None,
                     self.colour,
                     width=1,
                 )
             elif vertices == 2:
                 DRAW.line(
-                    (0, x, barcount * 2 - 2, x),
+                    (0, x, barcount * 2 * freqscale2 - 2, x),
                     self.colour,
                     width=1,
                 )
                 DRAW.line(
-                    (0, barcount * 2 - x - 3, barcount * 2 - 2, barcount * 2 - x - 3),
+                    (0, barcount * 2 * freqscale2 - x - 3, barcount * 2 * freqscale2 - 2, barcount * 2 * freqscale2 - x - 3),
                     self.colour,
                     width=1,
                 )
             elif vertices <= 1:
                 DRAW.line(
-                    (0, barcount * 2 - x * 2 - 4, barcount * 2 - 2, barcount * 2 - x * 2 - 4),
+                    (0, barcount * 2 * freqscale2 - x * 2 - 4, barcount * 2 * freqscale2 - 2, barcount * 2 * freqscale2 - x * 2 - 4),
                     self.colour,
                     width=2,
                 )
             elif vertices >= 32 or self.x <= 7 and not vertices & 1:
                 DRAW.ellipse(
-                    (x, x, barcount * 2 - x - 3, barcount * 2 - x - 3),
+                    (x, x, barcount * 2 * freqscale2 - x - 3, barcount * 2 * freqscale2 - x - 3),
                     None,
                     self.colour,
                     width=2,
@@ -195,7 +196,7 @@ class Bar(Particle):
                 # if vertices & 1:
                 #     diag *= cos(pi / vertices)
                 radius = self.x * diag + 1
-                a = barcount - 2
+                a = barcount * freqscale2 - 2
                 b = a / diag + 1
                 points = []
                 for i in range(vertices + 1):
@@ -225,10 +226,11 @@ class Bar(Particle):
             col = sum(factor << (i << 3) for i in range(3))
             DRAW.text((x, pos), self.line, col, self.font)
 
-bars = [Bar(i - 1) for i in range(barcount)]
+bars = [Bar(i - 1, barcount) for i in range(barcount)]
+bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
 CIRCLE_SPEC = None
 
-def spectrogram_render():
+def spectrogram_render(bars):
     global ssize2, specs, dur
     try:
         if specs != 3:
@@ -238,14 +240,14 @@ def spectrogram_render():
             for bar in bars:
                 bar.render(sfx=sfx)
         elif specs == 2:
-            sfx = Image.new("RGB", (barcount * 2 - 2,) * 2, (0,) * 3)
+            sfx = Image.new("RGB", (barcount * freqscale2 * 2 - 2,) * 2, (0,) * 3)
             globals()["DRAW"] = ImageDraw.Draw(sfx)
             for bar in bars:
                 bar.render2(sfx=sfx)
         else:
             spec = CIRCLE_SPEC
             D = 5
-            R = D / 2
+            R = D / 2 / freqscale2
             if not spec:
                 class Circle_Spec:
                     angle = 0
@@ -272,15 +274,15 @@ def spectrogram_render():
                 amp = size / barheight * 2
                 val = min(1, amp)
                 sat = 1 - min(1, max(0, amp - 1))
-                colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount) % 1, sat, val))
+                colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount / freqscale2) % 1, sat, val))
                 x = bar.x + 1
                 r1 = x * R - 1
-                r2 = x * R + 4
+                r2 = x * R + 1
                 for i in range(vertices):
                     z = spec.angle + i / vertices * tau
                     p1 = (c[0] + cos(z) * r1, c[1] + sin(z) * r1)
                     p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
-                    DRAW.line((p1, p2), colour, 8)
+                    DRAW.line((p1, p2), colour, 5)
             async_wait()
             sfx = sfx.rotate(spec.rotation, resample=Image.NEAREST)
 
@@ -328,11 +330,16 @@ while True:
             ssize2, specs, vertices, dur, pc_ = map(json.loads, line.split(b"~"))
             if fut:
                 fut.result()
-            fut = submit(spectrogram_render)
+            bi = bars2 if specs > 1 else bars
+            fut = submit(spectrogram_render, bi)
         elif line == b"~e":
-            amp = np.frombuffer(sys.stdin.buffer.read(4 * len(bars)), dtype=np.float32)
+            b = sys.stdin.buffer.read(1)
+            while b[-1:] != b"\n":
+                b += sys.stdin.buffer.read(1)
+            amp = np.frombuffer(sys.stdin.buffer.read(int(b)), dtype=np.float32)
+            bi = bars2 if len(amp) > len(bars) else bars
             for i, pwr in enumerate(amp):
-                bars[i].ensure(pwr / 2)
+                bi[i].ensure(pwr / 2)
         elif not line:
             break
     except:

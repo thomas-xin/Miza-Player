@@ -1754,7 +1754,7 @@ def update_menu():
             else:
                 submit(seek_rel, -5)
     reset = False
-    if sidebar.menu and sidebar.menu.scale >= 1:
+    if sidebar.menu and sidebar.menu.get("scale", 0) >= 1:
         sidebar.menu.selected = -1
         if in_rect(mpos, sidebar.menu.rect):
             i = (mpos2[1] - sidebar.menu.rect[1]) // 20
@@ -1806,13 +1806,17 @@ def update_menu():
     toolbar.colour = c
     if any(mclick):
         for button in toolbar.buttons:
-            if in_rect(mpos, button.rect):
-                button.flash = 64
-                sidebar.menu = 0
-                if callable(button.click):
-                    button.click()
-                else:
-                    button.click[min(mclick.index(1), len(button.click) - 1)]()
+            try:
+                if in_rect(mpos, button.rect):
+                    button.flash = 64
+                    sidebar.menu = 0
+                    if callable(button.click):
+                        button.click()
+                    else:
+                        button.click[min(mclick.index(1), len(button.click) - 1)]()
+            except AttributeError:
+                while "rect" not in button:
+                    time.sleep(0.01)
             if toolbar.editor:
                 break
     else:
@@ -2990,72 +2994,6 @@ def draw_menu():
         player.flash_o = 32
         options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
         mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
-    if sidebar.menu:
-        if sidebar.menu.get("scale", 0) < 1:
-            sidebar.menu.scale = min(1, sidebar.menu.get("scale", 0) + dur * 3 / sqrt(len(sidebar.menu.buttons)))
-            if not sidebar.menu.get("size"):
-                sidebar.menu.lines = lines = alist()
-                sidebar.menu.glow = [0] * len(sidebar.menu.buttons)
-                size = [0, 20 * len(sidebar.menu.buttons)]
-                for t in sidebar.menu.buttons:
-                    name = t[0]
-                    func = t[1]
-                    surf = message_display(
-                        name,
-                        14,
-                        colour=(255,) * 3,
-                        cache=True,
-                    )
-                    w = surf.get_width() + 6
-                    if w > size[0]:
-                        size[0] = w
-                    lines.append(surf)
-                sidebar.menu.size = tuple(size)
-                sidebar.menu.selected = sidebar.menu.get("selected", -1)
-            sidebar.menu.rect = tuple(sidebar.menu.get("rect") or (mpos2[0] + 1, mpos2[1] + 1))[:2] + (sidebar.menu.size[0], round(sidebar.menu.size[1] * sidebar.menu.scale))
-        try:
-            c = DISP.get_at(sidebar.menu.rect[:2])
-        except IndexError:
-            c = (0,) * 3
-        c = colorsys.rgb_to_hsv(*(i / 255 for i in c[:3]))
-        sidebar.menu.colour = tuple(round(i * 255) for i in colorsys.hls_to_rgb(c[0], 0.875, 1))
-        rect = sidebar.menu.rect
-        if sidebar.menu.selected:
-            alpha = round(223 * sidebar.menu.scale)
-        else:
-            alpha = round(191 * sidebar.menu.scale)
-        c = sidebar.menu.colour + (alpha,)
-        # c = (239, 191, 255, alpha)
-        rounded_bev_rect(
-            DISP,
-            c,
-            rect,
-            4,
-        )
-        for i, surf in enumerate(sidebar.menu.lines):
-            text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
-            if sidebar.menu.scale >= 1 and i == sidebar.menu.selected:
-                sidebar.menu.glow[i] = min(1, sidebar.menu.glow[i] + dur * 5)
-            if sidebar.menu.glow[i]:
-                c = round(255 * sidebar.menu.glow[i])
-                rounded_bev_rect(
-                    DISP,
-                    tuple(max(0, i - 64 >> 1) for i in sidebar.menu.colour),
-                    text_rect,
-                    4,
-                    alpha=c,
-                )
-                col = (c,) * 3
-                sidebar.menu.glow[i] = max(0, sidebar.menu.glow[i] - dur * 2.5)
-            else:
-                col = (0,) * 3
-            blit_complex(
-                DISP,
-                surf,
-                (text_rect[0] + 3, text_rect[1]),
-                alpha,
-                colour=col,
-            )
     if toolbar.editor:
         editor_toolbar()
     if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
@@ -3593,6 +3531,73 @@ try:
                     modified.add(tuple(screensize))
                 else:
                     modified.add(player.rect)
+            if sidebar.menu and not tick & 3:
+                dur = last_ratio * 4
+                if sidebar.menu.get("scale", 0) < 1:
+                    sidebar.menu.scale = min(1, sidebar.menu.get("scale", 0) + dur * 3 / sqrt(len(sidebar.menu.buttons)))
+                    if not sidebar.menu.get("size"):
+                        sidebar.menu.lines = lines = alist()
+                        sidebar.menu.glow = [0] * len(sidebar.menu.buttons)
+                        size = [0, 20 * len(sidebar.menu.buttons)]
+                        for t in sidebar.menu.buttons:
+                            name = t[0]
+                            func = t[1]
+                            surf = message_display(
+                                name,
+                                14,
+                                colour=(255,) * 3,
+                                cache=True,
+                            )
+                            w = surf.get_width() + 6
+                            if w > size[0]:
+                                size[0] = w
+                            lines.append(surf)
+                        sidebar.menu.size = tuple(size)
+                        sidebar.menu.selected = sidebar.menu.get("selected", -1)
+                    sidebar.menu.rect = tuple(sidebar.menu.get("rect") or (mpos2[0] + 1, mpos2[1] + 1))[:2] + (sidebar.menu.size[0], round(sidebar.menu.size[1] * sidebar.menu.scale))
+                try:
+                    c = DISP.get_at(sidebar.menu.rect[:2])
+                except IndexError:
+                    c = (0,) * 3
+                c = colorsys.rgb_to_hsv(*(i / 255 for i in c[:3]))
+                sidebar.menu.colour = tuple(round(i * 255) for i in colorsys.hls_to_rgb(c[0], 0.875, 1))
+                rect = sidebar.menu.rect
+                if sidebar.menu.selected:
+                    alpha = round(223 * sidebar.menu.scale)
+                else:
+                    alpha = round(191 * sidebar.menu.scale)
+                c = sidebar.menu.colour + (alpha,)
+                rounded_bev_rect(
+                    DISP,
+                    c,
+                    rect,
+                    4,
+                )
+                for i, surf in enumerate(sidebar.menu.lines):
+                    text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
+                    if sidebar.menu.scale >= 1 and i == sidebar.menu.selected:
+                        sidebar.menu.glow[i] = min(1, sidebar.menu.glow[i] + dur * 5)
+                    if sidebar.menu.glow[i]:
+                        c = round(255 * sidebar.menu.glow[i])
+                        rounded_bev_rect(
+                            DISP,
+                            tuple(max(0, i - 64 >> 1) for i in sidebar.menu.colour),
+                            text_rect,
+                            4,
+                            alpha=c,
+                        )
+                        col = (c,) * 3
+                        sidebar.menu.glow[i] = max(0, sidebar.menu.glow[i] - dur * 2.5)
+                    else:
+                        col = (0,) * 3
+                    blit_complex(
+                        DISP,
+                        surf,
+                        (text_rect[0] + 3, text_rect[1]),
+                        alpha,
+                        colour=col,
+                    )
+                modified.add(rect)
             if modified:
                 if tuple(screensize) in modified:
                     pygame.display.flip()
@@ -3703,7 +3708,7 @@ except Exception as ex:
         futs.add(submit(os.remove, "misc/temp.tmp"))
     for fut in futs:
         try:
-            fut.result()
+            fut.result(timeout=1)
         except:
             pass
     if type(ex) is not StopIteration:

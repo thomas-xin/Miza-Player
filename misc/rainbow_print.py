@@ -60,13 +60,19 @@ def as_str(s):
 
 
 C = COLOURS = cdict(
+    red="\x1b[38;5;196m",
+    orange="\x1b[38;5;208m",
+    yellow="\x1b[38;5;226m",
+    chartreuse="\x1b[38;5;118m",
+    green="\x1b[38;5;46m",
+    spring_green="\x1b[38;5;48m",
+    cyan="\x1b[38;5;51m",
+    azure="\x1b[38;5;33m",
+    blue="\x1b[38;5;21m",
+    violet="\x1b[38;5;93m",
+    magenta="\x1b[38;5;201m",
+    rose="\x1b[38;5;198m",
     black="\u001b[30m",
-    red="\u001b[31m",
-    green="\u001b[32m",
-    yellow="\u001b[33m",
-    blue="\u001b[34m",
-    magenta="\u001b[35m",
-    cyan="\u001b[36m",
     white="\u001b[37m",
     reset="\u001b[0m",
 )
@@ -75,7 +81,10 @@ os.system("color")
 
 class RainbowPrint:
 
-    rainbow = (C.red, C.yellow, C.green, C.cyan, C.blue, C.magenta)
+    rainbow = (
+        C.red, C.orange, C.yellow, C.chartreuse, C.green, C.spring_green,
+        C.cyan, C.azure, C.blue, C.violet, C.magenta, C.rose,
+    )
     history = ""
     count = 0
     closed = True

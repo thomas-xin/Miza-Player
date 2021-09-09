@@ -93,6 +93,7 @@ def render_sidebar_2(dur=0):
                 surface=DISP2,
                 align=0,
                 font="Comic Sans MS",
+                cache=True,
             )
         if project.instruments and sidebar.scroll.get("colour"):
             rounded_bev_rect(

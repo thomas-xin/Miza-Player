@@ -1415,6 +1415,7 @@ def play():
                     b += mixer.stderr.read(req - len(b))
                 spec = pygame.image.frombuffer(b, ssize, "RGB")
                 player.spec = spec
+                player.pop("spec_used", None)
     except:
         if not mixer.is_running():
             print(mixer.stderr.read().decode("utf-8", "replace"))
@@ -2199,6 +2200,7 @@ def render_settings(dur, ignore=False):
         (255,) * 3,
         font="Comic Sans MS",
         surface=DISP2,
+        cache=True,
     )
     if "more" not in sidebar:
         sidebar.more = sidebar.more_angle = 0
@@ -2256,6 +2258,7 @@ def render_settings(dur, ignore=False):
                 align=0,
                 surface=surf,
                 font="Comic Sans MS",
+                cache=True,
             )
         if sidebar.more_angle < 63 / 64:
             im = pyg2pil(surf)
@@ -2291,6 +2294,7 @@ def render_settings(dur, ignore=False):
                     alpha=c[-1] + 32,
                     surface=DISP,
                     font="Comic Sans MS",
+                    cache=True,
                 )
         DISP2.blit(
             surf,
@@ -2340,6 +2344,7 @@ def render_settings(dur, ignore=False):
         (255,) * 3,
         font="Comic Sans MS",
         surface=DISP2,
+        cache=True,
     )
     DISP.blit(
         DISP2,
@@ -2643,8 +2648,8 @@ def draw_menu():
                         (button.rect[0] + button.rect[2] - 4, button.rect[1] + button.rect[3] - 8),
                         colour=(0,) * 3,
                         surface=DISP,
-                        cache=True,
                         font="Comic Sans MS",
+                        cache=True,
                     )
         downloading = globals().get("downloading")
         if common.__dict__.get("updating"):
@@ -2661,8 +2666,8 @@ def draw_menu():
                 (screensize[0] / 2, screensize[1] - 16),
                 colour=[round(i * 255) for i in colorsys.hsv_to_rgb(ratio / 3, 1, 1)],
                 surface=DISP,
-                cache=True,
                 font="Rockwell",
+                cache=True,
             )
         pos = toolbar.pause.pos
         radius = toolbar.pause.radius
@@ -2897,6 +2902,7 @@ def draw_menu():
                     surface=DISP,
                     alpha=a,
                     font="Comic Sans MS",
+                    cache=True,
                 )
     if not toolbar.editor and (mclick[0] or mclick[1]):
         text_rect = (0, 0, 192, 92)
@@ -2998,6 +3004,7 @@ def draw_menu():
                         name,
                         14,
                         colour=(255,) * 3,
+                        cache=True,
                     )
                     w = surf.get_width() + 6
                     if w > size[0]:
@@ -3096,6 +3103,7 @@ def draw_menu():
                 hovertext.colour,
                 surface=DISP,
                 font=hovertext.get("font", "Comic Sans MS"),
+                cache=True,
             )
 
 def save_settings():
@@ -3395,7 +3403,7 @@ try:
                     if options.get("spectrogram"):
                         rect = player.rect
                         surf = player.spec
-                        if not tick + 6 & 7:
+                        if not tick + 2 & 7:
                             specf = False
                             im = pyg2pil(surf)
                             if tuple(rect[2:]) != surf.get_size():
@@ -3410,6 +3418,7 @@ try:
                             if not specf:
                                 player.specr_fut = concurrent.futures.Future()
                                 player.specr_fut.set_result(im)
+                            player.spec_used = True
                         else:
                             if options.spectrogram == 3:
                                 srect = limit_size(*surf.get_size(), *rect[2:])
@@ -3429,11 +3438,14 @@ try:
                                         rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
                                     for rect in rects:
                                         DISP.fill(0, rect)
-                                surf = player.spec = pil2pyg(fut.result())
+                                surf = pil2pyg(fut.result())
+                                if player.get("spec_used", None):
+                                    player.spec = surf
                                 DISP.blit(
                                     surf,
                                     prect,
                                 )
+                            modified.add(player.rect)
             if not tick + 2 & 7 and not toolbar.editor:
                 if (queue or lyrics_entry) and not options.spectrogram:
                     size = max(16, min(32, (screensize[0] - sidebar_width) // 36))
@@ -3570,6 +3582,7 @@ try:
                         align=0,
                         surface=DISP,
                         font="Comic Sans MS",
+                        cache=True,
                     )
                 if modified:
                     modified.add(tuple(screensize))

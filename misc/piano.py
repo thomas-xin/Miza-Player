@@ -449,7 +449,7 @@ def editor_toolbar():
         if mclick[0]:
             editor.change_mode("S")
         bevel_rectangle(DISP, (255,) * 3, r, bevel=3, filled=False)
-    message_display("S", w, (c[0] - w // 2 - 1, c[1] - w // 2 - 1), font="Rockwell", colour=(0, 32, 64), surface=DISP)
+    message_display("S", w, (c[0] - w // 2 - 1, c[1] - w // 2 - 1), font="Rockwell", colour=(0, 32, 64), surface=DISP, cache=True)
     if options.editor.mode == "S":
         selset = (
             ("freeform", "Freeform select", "Draw a freeform selection shape."),
@@ -501,6 +501,7 @@ def editor_toolbar():
                 align=0,
                 surface=surf,
                 font="Comic Sans MS",
+                cache=True,
             )
         if editor.fade < 63 / 64:
             im = pyg2pil(surf)
@@ -524,7 +525,7 @@ def editor_toolbar():
         if mclick[0]:
             editor.change_mode("I")
         bevel_rectangle(DISP, (255,) * 3, r, bevel=3, filled=False)
-    message_display("I", w, (c[0] - w // 2 - 1, c[1] + w // 2 - 1), font="Rockwell", colour=(32, 64, 0), surface=DISP)
+    message_display("I", w, (c[0] - w // 2 - 1, c[1] + w // 2 - 1), font="Rockwell", colour=(32, 64, 0), surface=DISP, cache=True)
     if options.editor.mode == "I":
         note_width = 60 * editor.zoom_x
         note_height = 12 * editor.zoom_y
@@ -593,6 +594,7 @@ def editor_toolbar():
                 (255, 255, 127),
                 surface=DISP,
                 font="Comic Sans MS",
+                cache=True,
             )
         else:
             editor.note.pop("resizing", None)
@@ -617,7 +619,7 @@ def editor_toolbar():
         if mclick[0]:
             editor.change_mode("P")
         bevel_rectangle(DISP, (255,) * 3, r, bevel=3, filled=False)
-    message_display("P", w, (c[0] + w // 2 - 1, c[1] - w // 2 - 1), font="Rockwell", colour=(64, 0, 32), surface=DISP)
+    message_display("P", w, (c[0] + w // 2 - 1, c[1] - w // 2 - 1), font="Rockwell", colour=(64, 0, 32), surface=DISP, cache=True)
     if options.editor.mode == "P":
         for p in patterns[editor.pattern].values():
             pass
@@ -821,7 +823,7 @@ def render_piano():
         if x < PW - 6:
             continue
         if not (i + itx) % (barlength):
-            message_display((i + itx) // barlength, 12, (x + 3, 0), colour=(255, 255, 0), surface=DISP, align=0)
+            message_display((i + itx) // barlength, 12, (x + 3, 0), colour=(255, 255, 0), surface=DISP, align=0, cache=True)
     ssize = (PW, player.rect[3])
     if not editor.get("piano_surf") or editor.piano_surf.get_size() != ssize:
         editor.piano_surf = surf = pygame.Surface(ssize)
@@ -868,7 +870,7 @@ def render_piano():
                 octave = note // 12
                 if not note % 12 and note_height > 6:
                     s = ceil(note_height * 0.75)
-                    message_display(f"C{octave}", s, (46, offs_y - note_spacing + note_height), colour=(0,) * 3, surface=DISP, align=2)
+                    message_display(f"C{octave}", s, (46, offs_y - note_spacing + note_height), colour=(0,) * 3, surface=DISP, align=2, cache=True)
             if highlighted:
                 c = (255, 255, 255, 48)
                 r = (PW, offs_y - note_spacing, player.rect[2] - PW, note_height)
@@ -1356,7 +1358,7 @@ def render_piano():
                 octave = note // 12
                 if not note % 12 and note_height > 6:
                     s = ceil(note_height * 0.75)
-                    message_display(f"C{octave}", s, (46, r[1] + r[3]), colour=(0,) * 3, surface=DISP, align=2)
+                    message_display(f"C{octave}", s, (46, r[1] + r[3]), colour=(0,) * 3, surface=DISP, align=2, cache=True)
 
     globals()["_plast"] = pc()
     globals()["_mlast"] = mpos

@@ -1225,7 +1225,7 @@ def prepare(entry, force=False, download=False):
                 q2 = alist(cdict(**e, pos=i) for e in resp)
                 if control.shuffle and len(q2) > 1:
                     random.shuffle(q2.view)
-                queue.__init__(np.append((q1, q2, q3)), fromarray=True)
+                queue.fill(np.concatenate((q1, q2, q3)))
                 submit(render_lyrics, queue[0])
     elif force and is_url(entry.get("url")):
         ytdl = downloader.result()

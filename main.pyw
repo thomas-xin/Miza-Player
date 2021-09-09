@@ -899,7 +899,8 @@ def load_project(fn, switch=True):
         if not project.instruments:
             add_instrument(True)
         submit(transfer_instrument, *project.instruments.values())
-        sidebar.instruments.__init__(cdict() for _ in range(len(project.instrument_layout)))
+        instruments = [cdict() for _ in range(len(project.instrument_layout))]
+        sidebar.instruments.fill(instruments)
         if not player.paused:
             player.broken = True
         player.editor_surf = None
@@ -1421,7 +1422,7 @@ def play():
 
 def reevaluate():
     time.sleep(2)
-    while not player.pos:
+    while not player.pos and not pygame.closed:
         print("Re-evaluating file stream...")
         start_player(0, True)
         time.sleep(2)
@@ -3648,10 +3649,11 @@ try:
         pygame.event.clear()
         tick += 2
 except Exception as ex:
-    submit(requests.delete, mp)
+    futs = set()
+    futs.add(submit(requests.delete, mp))
     save_settings()
     if restarting:
-        os.system(f"start /MIN cmd /k {sys.executable} main.pyw")
+        futs.add(submit(os.system, f"start /MIN cmd /k {sys.executable} main.pyw"))
     pygame.closed = True
     pygame.quit()
     if type(ex) is not StopIteration:
@@ -3666,11 +3668,7 @@ except Exception as ex:
             pass
     PROC = psutil.Process()
     for c in PROC.children(recursive=True):
-        try:
-            c.kill()
-        except:
-            pass
-    futs = set()
+        futs.add(submit(c.kill))
     for e in os.scandir("cache"):
         fn = e.name
         if e.is_file(follow_symlinks=False):

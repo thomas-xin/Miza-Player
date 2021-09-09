@@ -2085,7 +2085,7 @@ def render_settings(dur, ignore=False):
     for i, opt in enumerate(asettings):
         message_display(
             opt.capitalize(),
-            11,
+            12,
             (offs2 + 8, i * 32),
             surface=DISP2,
             align=0,
@@ -2096,7 +2096,7 @@ def render_settings(dur, ignore=False):
         s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
         message_display(
             s,
-            11,
+            12,
             (offs2 + sidebar_width - 8, 16 + i * 32),
             surface=DISP2,
             align=2,
@@ -3492,7 +3492,7 @@ try:
                 if options.get("insights"):
                     message_display(
                         f"FPS: {round(fps, 2)}",
-                        13,
+                        14,
                         (4, 0),
                         align=0,
                         surface=DISP,
@@ -3502,7 +3502,7 @@ try:
                         v = player.stats.get(k, 0) if is_active() else 0
                         message_display(
                             f"{k.capitalize()}: {v}%",
-                            13,
+                            14,
                             (4, 14 * i),
                             align=0,
                             surface=DISP,
@@ -3520,7 +3520,7 @@ try:
                         note = "N/A"
                     message_display(
                         f"Frequency: {note}",
-                        13,
+                        14,
                         (4, 70),
                         align=0,
                         surface=DISP,

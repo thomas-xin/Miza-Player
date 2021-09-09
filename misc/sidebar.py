@@ -36,7 +36,7 @@ def render_dragging():
         if not entry.get("surf"):
             entry.surf = message_display(
                 entry.name[:128],
-                12,
+                13,
                 (0,) * 2,
                 align=0,
                 cache=True,
@@ -99,7 +99,7 @@ def render_sidebar(dur=0):
             t = sum(e.get("duration") or 300 for e in queue if e) - (player.pos or 0)
             message_display(
                 f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
-                12,
+                13,
                 (6 + offs, 48),
                 surface=DISP2,
                 align=0,
@@ -451,7 +451,7 @@ def render_sidebar(dur=0):
             if not entry.get("surf"):
                 entry.surf = message_display(
                     entry.name[:128],
-                    12,
+                    13,
                     (0,) * 2,
                     align=0,
                     cache=True,
@@ -516,7 +516,7 @@ def render_sidebar(dur=0):
                 if not entry.get("surf"):
                     entry.surf = message_display(
                         entry.name[:128],
-                        12,
+                        13,
                         (0,) * 2,
                         align=0,
                         cache=True,
@@ -571,7 +571,7 @@ def render_sidebar(dur=0):
             if not sidebar.get("loading_text"):
                 sidebar.loading_text = message_display(
                     "Loading...",
-                    12,
+                    13,
                     [0] * 2,
                     align=0,
                     cache=True,

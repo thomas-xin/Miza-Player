@@ -316,7 +316,6 @@ def spectrogram_render(bars):
                     for t in zip(x1, y1, x2, y2):
                         pygame.draw.line(sfx, colour, t[:2], t[2:], width=round_random(w))
                 spec.image = pyg2pil(sfx)
-                async_wait()
                 spec.angle += 1 / 720 * tau
                 spec.rotation += 0.25
             sfx = spec.image.rotate(spec.rotation, resample=Image.NEAREST)

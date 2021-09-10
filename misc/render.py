@@ -1,11 +1,26 @@
-import sys, time, numpy, math, random, json, collections, colorsys, traceback, concurrent.futures
+import sys
+write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
+import pygame
+sys.stdout.write = write
+
+import time, numpy, math, random, json, collections, colorsys, traceback, concurrent.futures
 from math import *
 from traceback import print_exc
 np = numpy
+deque = collections.deque
 from PIL import Image, ImageDraw, ImageFont
 
-async_wait = lambda: time.sleep(0.001)
+def pyg2pil(surf):
+    mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
+    b = pygame.image.tostring(surf, mode)
+    return Image.frombuffer(mode, surf.get_size(), b)
 
+def pil2pyg(im):
+    mode = im.mode
+    b = im.tobytes()
+    return pygame.image.frombuffer(b, im.size, mode)
+
+async_wait = lambda: time.sleep(0.001)
 
 from concurrent.futures import thread
 
@@ -42,9 +57,20 @@ def _adjust_thread_count(self):
 
 concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
 
-
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+import pygame.gfxdraw as gfxdraw
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=5)
 submit = exc.submit
+pygame.font.init()
+FONTS = {}
+
+def round_random(x):
+    y = int(x)
+    if y == x:
+        return y
+    x -= y
+    if random.random() <= x:
+        y += 1
+    return y
 
 
 higher_bound = "C10"
@@ -71,6 +97,7 @@ barheight = 720
 PARTICLES = set()
 P_ORDER = 0
 TICK = 0
+TEXTS = {}
 
 class Particle(collections.abc.Hashable):
 
@@ -91,7 +118,6 @@ class Bar(Particle):
     __slots__ = ("x", "colour", "height", "height2", "surf", "line")
 
     fsize = 0
-    # font = ImageFont.truetype("misc/Pacifico.ttf", fsize)
 
     def __init__(self, x, barcount):
         super().__init__()
@@ -134,10 +160,10 @@ class Bar(Particle):
             self.height2 = value
 
     def render(self, sfx, **void):
-        size = min(2 * barheight, round(self.height))
+        size = min(2 * barheight, round_random(self.height))
         if size:
             dark = False
-            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount) % 1, 1, 1))
+            self.colour = tuple(round_random(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount) % 1, 1, 1))
             note = highest_note - self.x + 9
             if note % 12 in (1, 3, 6, 8, 10):
                 dark = True
@@ -153,12 +179,12 @@ class Bar(Particle):
     def render2(self, sfx, **void):
         if not vertices > 0:
             return
-        size = min(2 * barheight, round(self.height))
+        size = min(2 * barheight, round_random(self.height))
         if size:
             amp = size / barheight * 2
             val = min(1, amp)
             sat = 1 - min(1, max(0, amp - 1))
-            self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount / freqscale2) % 1, sat, val))
+            self.colour = tuple(round_random(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount / freqscale2) % 1, sat, val))
             x = barcount * freqscale2 - self.x - 2
             if vertices == 4:
                 DRAW.rectangle(
@@ -211,20 +237,23 @@ class Bar(Particle):
                 )
 
     def post_render(self, sfx, scale, **void):
-        size = round(self.height2)
+        size = round_random(self.height2)
         if size > 8:
             ix = barcount - 1 - self.x - 1
-            sx = round(ix / barcount * ssize2[0])
-            w = round((ix + 1) / barcount * ssize2[0]) - sx
-            try:
-                width = DRAW.textlength(self.line, self.font)
-            except (TypeError, AttributeError):
-                width = self.fsize / (sqrt(5) + 1) * len(self.line)
-            x = sx + w / 2 - width / 2
-            pos = max(84, ssize2[1] - size - width * (sqrt(5) + 1))
-            factor = round(255 * scale)
-            col = sum(factor << (i << 3) for i in range(3))
-            DRAW.text((x, pos), self.line, col, self.font)
+            sx = ix / barcount * ssize2[0]
+            w = (ix + 1) / barcount * ssize2[0] - sx
+            alpha = round_random(255 * scale)
+            t = (self.line, self.fsize)
+            if t not in TEXTS:
+                TEXTS[t] = self.font.render(self.line, True, (255,) * 3)
+            surf = TEXTS[t]
+            if alpha < 255:
+                surf = surf.copy()
+                surf.fill((255,) * 3 + (alpha,), special_flags=pygame.BLEND_RGBA_MULT)
+            width, height = surf.get_size()
+            x = round(sx + w / 2 - width / 2)
+            y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
+            sfx.blit(surf, (x, y))
 
 bars = [Bar(i - 1, barcount) for i in range(barcount)]
 bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
@@ -248,44 +277,49 @@ def spectrogram_render(bars):
             spec = CIRCLE_SPEC
             D = 5
             R = D / 2 / freqscale2
+            if not spec:
+                class Circle_Spec:
+                    angle = 0
+                    rotation = 0
+                globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
+                spec.image = Image.new("RGB", (barcount * D - D,) * 2)
+            else:
+                r = 15 / 16
+                s = 1 / 48
+                colourmatrix = (
+                    r, s, 0, 0,
+                    0, r, s, 0,
+                    s, 0, r, 0,
+                )
+                spec.image = spec.image.convert("RGB", colourmatrix)
+                # spec.image = im
+            sfx = pil2pyg(spec.image)
             for i in range(2):
-                if not spec:
-                    class Circle_Spec:
-                        angle = 0
-                        rotation = 0
-                    globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
-                    spec.image = Image.new("RGB", (barcount * D - D,) * 2)
-                else:
-                    spec.angle += 1 / 720 * tau
-                    spec.rotation += 0.25
-                    r = 31 / 32
-                    s = 1 / 96
-                    colourmatrix = (
-                        r, s, 0, 0,
-                        0, r, s, 0,
-                        s, 0, r, 0,
-                    )
-                    spec.image = spec.image.convert("RGB", colourmatrix)
-                    # spec.image = im
-                sfx = spec.image
-                globals()["DRAW"] = ImageDraw.Draw(sfx)
-                c = (sfx.width + 1 >> 1, sfx.height + 1 >> 1)
+                c = [x + 1 >> 1 for x in sfx.get_size()]
+                zs = np.linspace(spec.angle, spec.angle + tau - tau / vertices if vertices else spec.angle, vertices)
+                xs = [cos(z) for z in zs]
+                ys = [sin(z) for z in zs]
                 for bar in sorted(bars, key=lambda bar: bar.height):
-                    size = min(2 * barheight, round(bar.height))
+                    size = min(2 * barheight, round_random(bar.height))
                     amp = size / barheight * 2
                     val = min(1, amp)
                     sat = 1 - min(1, max(0, amp - 1))
-                    colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount / freqscale2) % 1, sat, val))
+                    colour = tuple(round_random(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount / freqscale2) % 1, sat, val))
                     x = bar.x + 1
                     r1 = x * R - 1
-                    r2 = x * R + 1
-                    for i in range(vertices):
-                        z = spec.angle + i / vertices * tau
-                        p1 = (c[0] + cos(z) * r1, c[1] + sin(z) * r1)
-                        p2 = (c[0] + cos(z) * r2, c[1] + sin(z) * r2)
-                        DRAW.line((p1, p2), colour, 3)
+                    r2 = x * R
+                    x1 = (round_random(c[0] + x * r1) for x in xs)
+                    y1 = (round_random(c[1] + y * r1) for y in ys)
+                    x2 = (round_random(c[0] + x * r2) for x in xs)
+                    y2 = (round_random(c[1] + y * r2) for y in ys)
+                    w = bar.x / (len(bars) - 1) * 2 + 1
+                    for t in zip(x1, y1, x2, y2):
+                        pygame.draw.line(sfx, colour, t[:2], t[2:], width=round_random(w))
+                spec.image = pyg2pil(sfx)
                 async_wait()
-            sfx = sfx.rotate(spec.rotation, resample=Image.NEAREST)
+                spec.angle += 1 / 720 * tau
+                spec.rotation += 0.25
+            sfx = spec.image.rotate(spec.rotation, resample=Image.NEAREST)
 
         if specs == 1:
             if sfx.size != ssize2:
@@ -293,14 +327,17 @@ def spectrogram_render(bars):
             fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
             if Bar.fsize != fsize:
                 Bar.fsize = fsize
-                Bar.font = ImageFont.truetype("misc/Pacifico.ttf", Bar.fsize)
-            globals()["DRAW"] = ImageDraw.Draw(sfx)
-            highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:24]
+                Bar.font = pygame.font.Font("misc/Pacifico.ttf", bar.fsize)
+            highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:48]
             high = highbars[0]
+            sfx = pil2pyg(sfx)
             for bar in reversed(highbars):
                 bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
         async_wait()
-        spectrobytes = sfx.tobytes()
+        try:
+            spectrobytes = sfx.tobytes()
+        except AttributeError:
+            spectrobytes = pygame.image.tostring(sfx, "RGB")
 
         write = specs == 3
         for bar in bars:
@@ -309,7 +346,11 @@ def spectrogram_render(bars):
             bar.update(dur=dur)
 
         if write:
-            sys.stdout.buffer.write(b"~s" + "~".join(map(str, sfx.size)).encode("utf-8") + b"\n")
+            try:
+                size = sfx.size
+            except AttributeError:
+                size = sfx.get_size()
+            sys.stdout.buffer.write(b"~s" + "~".join(map(str, size)).encode("utf-8") + b"\n")
             sys.stdout.buffer.write(spectrobytes)
         else:
             sys.stdout.write("~s\n")

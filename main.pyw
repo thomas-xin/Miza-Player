@@ -3682,11 +3682,15 @@ except Exception as ex:
     if type(ex) is not StopIteration:
         print_exc()
     print("Exiting...")
+    try:
+        afut.result().terminate()
+    except:
+        pass
     if mixer.is_running():
         mixer.clear()
         time.sleep(0.1)
         try:
-            mixer.kill()
+            mixer.submit("~quit")
         except:
             pass
     PROC = psutil.Process()

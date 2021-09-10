@@ -1083,6 +1083,8 @@ def play(pos):
                     if channel.get_queue():
                         print("Pygame timed out.")
                         channel.stop()
+                        pygame.mixer.quit()
+                        pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
                         if aout.done():
                             globals()["channel2"] = aout.result()
                 if not point_fut or point_fut.done():
@@ -1281,6 +1283,8 @@ def piano_player():
                         if channel.get_queue():
                             print("Pygame timed out.")
                             channel.stop()
+                            pygame.mixer.quit()
+                            pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
                             if aout.done():
                                 globals()["channel2"] = aout.result()
                     if not point_fut or point_fut.done():
@@ -1561,6 +1565,8 @@ while not sys.stdin.closed and failed < 8:
                     continue
                 pos = (frame + drop) / 30
                 drop = 0
+            elif command == "~quit":
+                break
             elif command != "~replay":
                 s = sys.stdin.readline().rstrip().split(" ", 3)
                 pos, duration, cdc, sh = s
@@ -1736,3 +1742,4 @@ while not sys.stdin.closed and failed < 8:
     except:
         print_exc()
     time.sleep(0.005)
+afut.result().terminate()

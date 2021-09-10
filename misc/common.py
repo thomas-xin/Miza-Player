@@ -472,7 +472,7 @@ def start_display():
         ICON_DISP = ""
         pygame.display.set_icon(ICON)
     pygame.display.set_caption("Miza Player")
-    DISP = pygame.display.set_mode(options.screensize, pygame.RESIZABLE, vsync=True)
+    DISP = pygame.display.set_mode(options.screensize, pygame.RESIZABLE | pygame.HWSURFACE, vsync=True)
     screensize2 = list(options.screensize)
     # displaysize = [user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)]
     # print(displaysize)
@@ -1021,7 +1021,7 @@ b.result()
 globals()["fg"] = "xEC"
 
 def pyg2pil(surf):
-    mode = "RGBA" if surf.get_flags() & SRCALPHA else "RGB"
+    mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
     b = pygame.image.tostring(surf, mode)
     return Image.frombuffer(mode, surf.get_size(), b)
 
@@ -1099,9 +1099,9 @@ def quadratic_gradient(size=gsize, t=None, curve=None):
                 tx = t - curve * (i / (m - 1))
                 g = quadratic_gradient((size[0], 1), tx)
                 y = h // 2 - (not h & 1)
-                surf.blit(g, (0, y - i))
+                surf.blit(g, (0, y - i), special_flags=BLEND_ALPHA_SDL2)
                 y = h // 2
-                surf.blit(g, (0, y + i))
+                surf.blit(g, (0, y + i), special_flags=BLEND_ALPHA_SDL2)
     return surf
 
 rgw = 256
@@ -1284,7 +1284,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
             if data:
                 br_surf[data] = surf
         if dest:
-            dest.blit(surf, rect[:2])
+            dest.blit(surf, rect[:2], special_flags=BLEND_ALPHA_SDL2)
             return rect
         return surf.convert()
     ctr = max(colour)
@@ -1293,7 +1293,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
     s = br_surf.get(data)
     if s is None:
         colour2 = (contrast,) * 3
-        s = pygame.Surface(rect[2:], SRCALPHA)
+        s = pygame.Surface(rect[2:], SRCALPHA | HWSURFACE)
         s.fill((1, 2, 3))
         s.set_colorkey((1, 2, 3))
         for c in range(bevel):
@@ -1379,7 +1379,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
             if data:
                 rb_surf[data] = surf
         if dest:
-            dest.blit(surf, rect[:2])
+            dest.blit(surf, rect[:2], special_flags=BLEND_ALPHA_SDL2)
             return rect
         return surf.convert()
     ctr = max(colour)
@@ -1388,7 +1388,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
     s = rb_surf.get(data)
     if s is None:
         colour2 = (contrast,) * 3
-        s = pygame.Surface(rect[2:], SRCALPHA)
+        s = pygame.Surface(rect[2:], SRCALPHA | HWSURFACE)
         s.fill((1, 2, 3))
         s.set_colorkey((1, 2, 3))
         for c in range(bevel):
@@ -1447,7 +1447,7 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
             pos = [centre[0] - width, centre[1] - height]
             return blit_complex(dest, newS, pos, alpha, rotation, copy=True)
     try:
-        newS = pygame.Surface((width << 1, height << 1), SRCALPHA)
+        newS = pygame.Surface((width << 1, height << 1), SRCALPHA | HWSURFACE)
     except:
         print_exc()
         return
@@ -1533,7 +1533,7 @@ def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=25
                 width2 = round(width2)
                 size = [radius2 * 2] * 2
                 size2 = [round(radius2 * 4), round(radius2 * 4) + 1]
-                s2 = pygame.Surface(size2, SRCALPHA)
+                s2 = pygame.Surface(size2, SRCALPHA | HWSURFACE)
                 circles = round(radius2 * 2 * fill_ratio / width2)
                 col = colour2
                 r = radius2 * 2

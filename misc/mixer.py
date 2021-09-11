@@ -894,12 +894,7 @@ def render():
                     buffer = sbuffer
 
                 amp = sum(np.abs(buffer)) / len(buffer)
-                # ampm1 = buffer > 0
-                # ampm2 = buffer < 0
-                # amp1 = sum(buffer[ampm1])
-                # amp2 = -sum(buffer[ampm2])
-                # amp = (amp1 + amp2) / len(buffer)
-                p_amp = sqrt(amp / 32767)
+                p_amp = sqrt(amp)
 
                 if is_strict_minimised():
                     point(f"~y {p_amp}")
@@ -1230,7 +1225,6 @@ def piano_player():
             if s is not None and len(s):
                 s /= 32767
                 sample = np.clip(s, -1, 1, out=s)
-                sample = np.stack((sample[::2], sample[1::2]), axis=-1)
                 lastpacket = packet
                 packet = sample.tobytes()
                 packet_advanced = True
@@ -1238,27 +1232,29 @@ def piano_player():
                 packet_advanced3 = True
                 if OUTPUT_FILE:
                     submit(OUTPUT_FILE.write, packet)
+                if not point_fut or point_fut.done():
+                    point_fut = submit(point, f"~{frame} {duration}")
+                if settings.spectrogram >= 0 and ssize[0] and ssize[1] and not is_minimised():
+                    if spec_fut:
+                        spec_fut.result()
+                    spec_fut = submit(spectrogram)
                 while waiting:
                     waiting.result()
                 while True:
+                    channel.wait()
                     fut = submit(channel.write, sample)
                     try:
-                        fut.result(timeout=1)
+                        fut.result(timeout=1.2)
                     except:
                         print_exc()
                         print("SoundCard timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
-                        channel.close()
+                        submit(channel.close)
                         globals()["channel"] = get_channel()
+                        waiting.set_result(None)
+                        globals()["waiting"] = None
                     else:
                         break
-                sample = sample.ravel()
-                if not point_fut or point_fut.done():
-                    point_fut = submit(point, "~0 inf")
-                if settings.get("spectrogram") and ssize[0] and ssize[1] and not is_minimised():
-                    if spec_fut:
-                        spec_fut.result()
-                    spec_fut = submit(spectrogram)
             async_wait()
     except:
         print_exc()

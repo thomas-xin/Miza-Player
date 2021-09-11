@@ -193,17 +193,15 @@ def get_device(name):
     return sc.default_speaker()
 
 def sc_player(d):
-    player = d.player(48000, 2, 800)
+    player = d.player(48000, 2, 400)
+    player.playing = None
     player.fut = None
     player._data_ = ()
     player.__enter__()
     # a monkey-patched play function that has a better buffer
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
-        while not getattr(self, "closed", None):
-            if not len(self._data_):
-                async_wait()
-                continue
+        while len(self._data_):
             towrite = self._render_available_frames()
             if towrite <= 0:
                 async_wait()
@@ -217,15 +215,17 @@ def sc_player(d):
             self._render_release(towrite)
             self._data_ = self._data_[towrite << 1:]
             self.fut.set_result(None)
-    submit(play, player)
     def write(data):
         if not len(player._data_):
             player._data_ = data
+            player.playing = submit(play, player)
             return
         player.wait()
         player.fut = concurrent.futures.Future()
         player._data_ = np.concatenate((player._data_, data))
         player.fut.set_result(None)
+        if player.playing.done():
+            player.playing = submit(play, player)
     player.write = write        
     def close():
         player.closed = True
@@ -962,6 +962,7 @@ def play(pos):
                     except (OSError, FileNotFoundError, PermissionError):
                         if proc and not proc.is_running():
                             point("~r")
+                            proc = None
                             raise
                         time.sleep(0.005)
                         continue

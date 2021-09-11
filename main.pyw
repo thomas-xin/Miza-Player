@@ -3684,6 +3684,10 @@ except Exception as ex:
     futs.add(submit(requests.delete, mp))
     save_settings()
     if restarting:
+        try:
+            os.remove(collections2f)
+        except:
+            pass
         futs.add(submit(os.system, f"start /MIN cmd /k {sys.executable} main.pyw"))
     pygame.closed = True
     if type(ex) is not StopIteration:

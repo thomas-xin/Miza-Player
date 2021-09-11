@@ -71,13 +71,6 @@ pyv = sys.version_info[1]
 if hasmisc and update_collections:
     from install_update_p import *
 
-import soundcard as sc
-import gc
-for obj in gc.get_objects():
-    if isinstance(obj, sc.cffi.FFI):
-        CFFI = obj
-        break
-
 
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
 
@@ -416,7 +409,9 @@ options.editor = editor_default.union(options.get("editor") or ())
 orig_options = copy.deepcopy(options)
 
 
-import psutil
+import psutil, cffi
+import soundcard as sc
+CFFI = cffi.FFI()
 
 DEVICE = sc.default_speaker()
 OUTPUT_DEVICE = DEVICE.name

@@ -1073,8 +1073,8 @@ def play(pos):
                         globals()["waiting"] = concurrent.futures.Future()
                         submit(channel.close)
                         globals()["channel"] = get_channel()
-                        waiting.set_result(None)
-                        globals()["waiting"] = None
+                        globals()["waiting"], w = None, waiting
+                        w.set_result(None)
                     else:
                         break
             except StopIteration:
@@ -1256,8 +1256,8 @@ def piano_player():
                         globals()["waiting"] = concurrent.futures.Future()
                         submit(channel.close)
                         globals()["channel"] = get_channel()
-                        waiting.set_result(None)
-                        globals()["waiting"] = None
+                        globals()["waiting"], w = None, waiting
+                        w.set_result(None)
                     else:
                         break
             async_wait()
@@ -1493,12 +1493,12 @@ while not sys.stdin.closed and failed < 8:
                     subprocess.Popen(cmd)
                 continue
             if command.startswith("~output"):
-                OUTPUT_DEVICE = get_device(command[8:])
+                OUTPUT_DEVICE = command[8:]
                 waiting = concurrent.futures.Future()
-                channel.close()
-                channel = sc_player(OUTPUT_DEVICE)
-                waiting.set_result(None)
-                waiting = None
+                submit(channel.close)
+                channel = get_channel()
+                waiting, w = None, waiting
+                w.set_result(None)
                 continue
             if command.startswith("~record"):
                 s = command[8:]

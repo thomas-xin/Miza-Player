@@ -1745,7 +1745,7 @@ def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, 
             TextRect = astype(pos, list) + TextRect[2:]
         elif align == 2:
             TextRect = [y - x for x, y in zip(TextRect[2:], pos)] + TextRect[2:]
-        blit_complex(surface, TextSurf, TextRect, alpha, copy=False)
+        blit_complex(surface, TextSurf, TextRect, alpha, copy=alpha != 255 and cache)
         return TextRect
     else:
         return TextSurf

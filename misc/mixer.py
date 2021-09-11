@@ -1021,14 +1021,14 @@ def play(pos):
                     b += bytes(emptymem[:req - len(b)])
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
-                smp = np.frombuffer(b, dtype=np.int16)
+                sample = np.frombuffer(b, dtype=np.int16)
                 if sfut:
                     s = sfut.result()
                 else:
                     s = synthesize()
                 sfut = submit(synthesize)
-                sample = smp.astype(np.float32)
                 if settings.volume != 1 or s is not None:
+                    sample = sample.astype(np.float32)
                     if settings.volume != 1:
                         sample *= settings.volume
                     if s is not None:
@@ -1040,6 +1040,7 @@ def play(pos):
                         quiet += 1
                 else:
                     quiet = 0
+                sample = sample.astype(np.float32)
                 sample /= 32767
                 np.clip(sample, -1, 1, out=sample)
                 sbuffer = sample

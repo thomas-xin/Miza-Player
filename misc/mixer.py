@@ -194,6 +194,7 @@ def get_device(name):
 
 def sc_player(d):
     player = d.player(48000, 2, 400)
+    player.closed = False
     player.playing = None
     player.fut = None
     player._data_ = ()
@@ -216,6 +217,8 @@ def sc_player(d):
             self._data_ = self._data_[towrite << 1:]
             self.fut.set_result(None)
     def write(data):
+        if player.closed:
+            return
         if not len(player._data_):
             player._data_ = data
             player.playing = submit(play, player)
@@ -237,7 +240,7 @@ def sc_player(d):
     def wait():
         if not len(player._data_):
             return
-        while len(player._data_) > 6400:
+        while len(player._data_) > 4800:
             async_wait()
         while player.fut and not player.fut.done():
             player.fut.result()
@@ -1490,9 +1493,9 @@ while not sys.stdin.closed and failed < 8:
                     subprocess.Popen(cmd)
                 continue
             if command.startswith("~output"):
-                channel.close()
                 OUTPUT_DEVICE = get_device(command[8:])
                 waiting = concurrent.futures.Future()
+                channel.close()
                 channel = sc_player(OUTPUT_DEVICE)
                 waiting.set_result(None)
                 waiting = None

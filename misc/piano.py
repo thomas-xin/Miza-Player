@@ -271,7 +271,7 @@ def render_bar(i):
 
 FRESH_PATTERNS = set()
 player.broken = False
-BUFSIZ = round(48000 * 2 * 2 / 30)
+BUFSIZ = round(48000 * 2 * 4 / 30)
 reset_buff = b"\x00" * (BUFSIZ >> 4)
 def editor_update():
     globals()["editor"] = player.editor
@@ -294,11 +294,10 @@ def editor_update():
         tempo=pattern.tempo,
     )
     mixer.submit("~editor " + json.dumps(edi, separators=(",", ":")))
-    channel = get_audio_channel()
     last = -1
     editor.scroll_x = editor.targ_x
     editor.targ_x = int(editor.scroll_x)
-    bar_sample = timesig[0] / pattern.tempo * 60 * 48000 * 2 * 2
+    bar_sample = timesig[0] / pattern.tempo * 60 * 48000 * 2 * 4
     end = pattern_end(pattern)
     if editor.targ_x > 16:
         resetting = True

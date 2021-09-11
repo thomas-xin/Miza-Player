@@ -51,6 +51,34 @@ def _settimeout(*args, timeout=0, **kwargs):
 settimeout = lambda *args, **kwargs: submit(_settimeout, *args, **kwargs)
 print_exc = traceback.print_exc
 
+from rainbow_print import *
+
+
+ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
+ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
+sox = "sox.exe" if os.name == "nt" else "sox"
+org2xm = "org2xm.exe" if os.name == "nt" else "org2xm"
+
+collections2f = "misc/collections2.tmp"
+try:
+    update_collections = utc() - os.path.getmtime(collections2f) > 3600
+except FileNotFoundError:
+    update_collections = True
+
+hasmisc = os.path.exists("misc")
+argp = [sys.executable]
+pyv = sys.version_info[1]
+if hasmisc and update_collections:
+    from install_update_p import *
+
+import soundcard as sc
+import gc
+for obj in gc.get_objects():
+    if isinstance(obj, sc.cffi.FFI):
+        CFFI = obj
+        break
+
+
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
 
 downloader = concurrent.futures.Future()
@@ -65,9 +93,6 @@ def import_audio_downloader():
         print_exc()
         downloader.set_exception(ex)
         lyrics_scraper.set_exception(ex)
-
-
-from rainbow_print import *
 
 
 def astype(obj, t):
@@ -96,23 +121,6 @@ def json_default(obj):
         return
     raise TypeError(obj)
 
-
-ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
-sox = "sox.exe" if os.name == "nt" else "sox"
-org2xm = "org2xm.exe" if os.name == "nt" else "org2xm"
-
-collections2f = "misc/collections2.tmp"
-try:
-    update_collections = utc() - os.path.getmtime(collections2f) > 3600
-except FileNotFoundError:
-    update_collections = True
-
-hasmisc = os.path.exists("misc")
-argp = [sys.executable]
-pyv = sys.version_info[1]
-if hasmisc and update_collections:
-    from install_update_p import *
 
 if update_collections:
 
@@ -410,7 +418,8 @@ orig_options = copy.deepcopy(options)
 
 import psutil
 
-OUTPUT_DEVICE = None
+DEVICE = sc.default_speaker()
+OUTPUT_DEVICE = DEVICE.name
 reset_menu = lambda *args, **kwargs: None
 
 def start_mixer():
@@ -667,13 +676,16 @@ def get_window_flags():
     user32.GetWindowPlacement(hwnd, ctypes.byref(wp))
     return wp.showCmd
 
-is_minimised = lambda: user32.IsIconic(hwnd)
-globals()["unfocus-time"] = 0
-def is_unfocused():
-    if hwnd == user32.GetForegroundWindow(hwnd):
-        globals()["unfocus-time"] = utc()
-        return
-    return utc() - globals()["unfocus-time"] > 3
+if os.name == "nt":
+    is_minimised = lambda: user32.IsIconic(hwnd)
+    globals()["unfocus-time"] = 0
+    def is_unfocused():
+        if hwnd == user32.GetForegroundWindow(hwnd):
+            globals()["unfocus-time"] = utc()
+            return
+        return utc() - globals()["unfocus-time"] > 3
+else:
+    is_minimised = is_unfocused = lambda: False
 
 if options.get("maximised"):
     user32.ShowWindow(hwnd, 3)
@@ -690,6 +702,8 @@ flash_window = lambda bInvert=True: user32.FlashWindow(hwnd, bInvert)
 
 proglast = (0, 0)
 def taskbar_progress_bar(ratio=1, colour=0):
+    if os.name != "nt":
+        return
     if "shobjidl_core" not in globals():
         if win == "win32":
             spath = "misc/Shobjidl-32.dll"
@@ -756,7 +770,7 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import PIL, easygui, easygui_qt, numpy, math, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, pyaudio, zipfile, pickle, hashlib, base64, urllib, requests, datetime
+import PIL, easygui, easygui_qt, numpy, math, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, zipfile, pickle, hashlib, base64, urllib, requests, datetime
 import PyQt5
 from PyQt5 import QtCore, QtWidgets
 if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
@@ -771,7 +785,7 @@ deque = collections.deque
 suppress = contextlib.suppress
 d2r = pi / 180
 ts_us = lambda: time.time_ns() // 1000
-async_wait = lambda: time.sleep(0.001)
+async_wait = lambda: time.sleep(0.002)
 
 
 commitf = "misc/commit.tmp"
@@ -897,13 +911,6 @@ def unquote(s):
         return as_str(base64.urlsafe_b64decode(s))
     return urllib.parse.unquote_plus(s)
 
-
-def pyafut():
-    pya = pyaudio.PyAudio()
-    globals()["OUTPUT_DEVICE"] = pya.get_default_output_device_info()["name"]
-    return pya
-
-afut = submit(pyafut)
 
 pt = None
 def pc():

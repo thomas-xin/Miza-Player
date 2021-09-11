@@ -34,6 +34,7 @@ PyQt5>=5.15.4
 requests>=2.26.0
 samplerate>=0.1.0
 scipy>=1.7.1
+soundcard>=0.4.1
 youtube-dl>=2021.6.6
 """.split("\n")
 

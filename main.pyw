@@ -689,42 +689,18 @@ def setup_buttons():
         reset_menu(full=False)
         record = button_images.record.result()
         def output_device():
-            afut.result().terminate()
-            globals()["afut"] = submit(pyaudio.PyAudio)
-            globals()["pya"] = afut.result()
-            count = pya.get_device_count()
-            apis = {}
-            ddict = mdict()
-            for i in range(count):
-                d = cdict(pya.get_device_info_by_index(i))
-                a = d.get("hostApi", -1)
-                if a not in apis:
-                    apis[a] = cdict(pya.get_host_api_info_by_index(a))
-                if d.maxOutputChannels > 0 and apis[a].name in ("MME", "Windows DirectSound", "Windows WASAPI"):
-                    try:
-                        if not pya.is_format_supported(
-                            48000,
-                            output_device=i,
-                            output_channels=2,
-                            output_format=pyaudio.paInt16,
-                        ):
-                            continue
-                    except:
-                        continue
-                    d.id = i
-                    ddict.add(a, d)
-            devices = ()
-            for dlist in ddict.values():
-                if len(dlist) > len(devices):
-                    devices = dlist
+            devices = sc.all_speakers()
             f = f"%0{len(str(len(devices)))}d"
             selected = easygui.get_choice(
                 "Change the output audio device!",
                 "Miza Player",
-                sorted(f % d.id + ": " + d.name for d in devices),
+                [d.name for d in devices],
             )
             if selected:
-                mixer.submit(f"~output {selected.split(': ', 1)[-1]}")
+                globals()["OUTPUT_DEVICE"] = selected
+                if DEVICE.name != OUTPUT_DEVICE:
+                    mixer.submit(f"~output {OUTPUT_DEVICE}")
+                    globals()["DEVICE"] = get_device(OUTPUT_DEVICE)
         def record_audio():
             if not sidebar.get("recording"):
                 sidebar.recording = f"cache/\x7f{ts_us()}.pcm"
@@ -743,7 +719,7 @@ def setup_buttons():
                         filetypes=ftypes,
                     )
                     if fn:
-                        os.system(f"{ffmpeg} -hide_banner -y -v error -f s16le -ar 48k -ac 2 -i {sidebar.recording} {fn}")
+                        os.system(f"{ffmpeg} -hide_banner -y -v error -f f32le -ar 48k -ac 2 -i {sidebar.recording} {fn}")
                 sidebar.recording = ""
             mixer.submit(f"~record " + sidebar.recording)
         def record_menu():
@@ -1430,48 +1406,80 @@ def reevaluate():
 
 device_waiting = None
 
-def get_device_by_name(name):
-    pya = afut.result()
-    for i in range(pya.get_device_count()):
-        d = pya.get_device_info_by_index(i)
-        if d.get("name") == name:
-            return i
-
 def wait_on():
     print(f"Waiting on {OUTPUT_DEVICE}...")
     while device_waiting:
         try:
-            afut.result().terminate()
-            globals()["afut"] = submit(pyaudio.PyAudio)
-            pya = afut.result()
-            i = get_device_by_name(OUTPUT_DEVICE)
-            print(i, pya.get_device_count())
-            if i is not None:
+            d = get_device(OUTPUT_DEVICE)
+            if d:
                 globals()["device_waiting"] = None
                 print("Device target found.")
                 mixer.submit(f"~output {OUTPUT_DEVICE}")
                 return
         except:
             print_exc()
-        time.sleep(1)
+        time.sleep(0.5)
     print("Device switch cancelled.")
 
-def get_audio_channel():
-    i = get_device_by_name(OUTPUT_DEVICE)
-    if not i:
-        afut.result().terminate()
-        globals()["afut"] = submit(pyaudio.PyAudio)
-        i = get_device_by_name(OUTPUT_DEVICE)
-        if not i:
-            raise FileNotFoundError
-    return afut.result().open(
-        output_device_index=i,
-        rate=48000,
-        channels=2,
-        format=pyaudio.paInt16,
-        output=True,
-        frames_per_buffer=800,
-    )
+def get_device(name):
+    for d in sc.all_speakers():
+        if d.name == name:
+            return d
+
+def sc_player(d):
+    player = d.player(48000, 2, 800)
+    player.fut = None
+    player._data_ = ()
+    player.__enter__()
+    # a monkey-patched play function that has a better buffer
+    # (soundcard's normal one is insufficient for continuous playback)
+    def play(self):
+        while not getattr(self, "closed", None):
+            if not len(self._data_):
+                async_wait()
+                continue
+            towrite = self._render_available_frames()
+            if towrite <= 0:
+                async_wait()
+                continue
+            if self.fut:
+                self.fut.result()
+            self.fut = concurrent.futures.Future()
+            b = self._data_[:towrite << 1].tobytes()
+            buffer = self._render_buffer(towrite)
+            CFFI.memmove(buffer[0], b, len(b))
+            self._render_release(towrite)
+            self._data_ = self._data_[towrite << 1:]
+            self.fut.set_result(None)
+    submit(play, player)
+    def write(data):
+        if not len(player._data_):
+            player._data_ = data
+            return
+        player.wait()
+        player.fut = concurrent.futures.Future()
+        player._data_ = np.concatenate((player._data_, data))
+        player.fut.set_result(None)
+    player.write = write        
+    def close():
+        player.closed = True
+        try:
+            player.__exit__(None, None, None)
+        except:
+            print_exc()
+    player.close = close
+    def wait():
+        if not len(player._data_):
+            return
+        while len(player._data_) > 6400:
+            async_wait()
+        while player.fut and not player.fut.done():
+            player.fut.result()
+    player.wait = wait
+    return player
+
+get_channel = lambda: sc_player(get_device(OUTPUT_DEVICE))
+channel = get_channel()
 
 def pos():
     try:
@@ -3124,6 +3132,7 @@ status_freq = 6000
 alphakeys = [0] * 34
 restarting = False
 fps = 0
+addi = cdict(result=lambda: None)
 try:
     if options.control.preserve and os.path.exists("dump.json"):
         with open("dump.json", "rb") as f:
@@ -3145,7 +3154,6 @@ try:
         if data.get("toolbar-editor"):
             if not player.paused:
                 pause_toggle(True)
-            addi = cdict(result=lambda: None)
             if not project.instruments:
                 add_instrument(True)
             toolbar.editor = True
@@ -3678,14 +3686,9 @@ except Exception as ex:
     if restarting:
         futs.add(submit(os.system, f"start /MIN cmd /k {sys.executable} main.pyw"))
     pygame.closed = True
-    pygame.quit()
     if type(ex) is not StopIteration:
         print_exc()
     print("Exiting...")
-    try:
-        afut.result().terminate()
-    except:
-        pass
     if mixer.is_running():
         mixer.clear()
         time.sleep(0.1)
@@ -3715,6 +3718,7 @@ except Exception as ex:
             fut.result(timeout=1)
         except:
             pass
+    pygame.quit()
     if type(ex) is not StopIteration:
         easygui.exceptionbox()
     PROC.kill()

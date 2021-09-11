@@ -1,10 +1,18 @@
 # ONE SMALL STEP FOR MAN, ONE GIANT LEAP FOR SMUDGE KIND! Invaded once again on the 6th March >:D
 
+import soundcard as sc
+import gc
+for obj in gc.get_objects():
+    if isinstance(obj, sc.cffi.FFI):
+        # no such thing as private variables in python, even in modules. can't hide this from me :P
+        CFFI = obj
+        break
+
 import sys
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, pyaudio, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools
+import os, sys, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools
 import concurrent.futures, scipy.special
 from math import *
 np = numpy
@@ -12,7 +20,7 @@ deque = collections.deque
 suppress = contextlib.suppress
 hwnd = int(sys.stdin.readline()[1:])
 
-async_wait = lambda: time.sleep(0.001)
+async_wait = lambda: time.sleep(0.004)
 
 is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 globals()["unfocus-time"] = 0
@@ -176,70 +184,71 @@ print = lambda *args, sep=" ", end="\n": point(repr(str(sep).join(map(str, args)
 print_exc = lambda: point(repr(traceback.format_exc()))
 
 
-def aff():
-    try:
-        pya = pyaudio.PyAudio()
-        globals()["OUTPUT_DEVICE"] = pya.get_default_output_device_info()["name"]
-        point(f"~o {OUTPUT_DEVICE}")
-        globals()["aout"] = submit(pya_init)
-        return pya
-    except:
-        print_exc()
-
-afut = submit(aff)
-aout = concurrent.futures.Future()
-aout.set_result(None)
-
-OUTPUT_FILE = None
-
-def get_device_by_name(name):
-    pya = afut.result()
-    for i in range(pya.get_device_count()):
-        d = pya.get_device_info_by_index(i)
-        if d.get("name") == name:
-            return i
-
-def pya_init():
-    try:
-        i = get_device_by_name(OUTPUT_DEVICE)
-        if i is None:
-            print(OUTPUT_DEVICE, "not found.")
-            i = afut.result().get_default_output_device_info()["index"]
-            point(f"~w {OUTPUT_DEVICE}")
-        else:
+def get_device(name):
+    for d in sc.all_speakers():
+        if d.name == name:
             point("~W")
-        try:
-            out = afut.result().open(
-                output_device_index=i,
-                rate=48000,
-                channels=2,
-                format=pyaudio.paInt16,
-                output=True,
-                frames_per_buffer=800,
-            )
-        except OSError:
-            out = None
-        if not out:
-            point(f"~w {OUTPUT_DEVICE}")
-            while not out:
-                try:
-                    out = afut.result().open(
-                        rate=48000,
-                        channels=2,
-                        format=pyaudio.paInt16,
-                        output=True,
-                        frames_per_buffer=800,
-                    )
-                except:
-                    print_exc()
-                    time.sleep(1)
-        globals()["channel2"] = out
-        return out
-    except:
-        print_exc()
+            return d
+    point(f"~w {OUTPUT_DEVICE}")
+    return sc.default_speaker()
 
-channel2 = None
-pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
+def sc_player(d):
+    player = d.player(48000, 2, 800)
+    player.fut = None
+    player._data_ = ()
+    player.__enter__()
+    # a monkey-patched play function that has a better buffer
+    # (soundcard's normal one is insufficient for continuous playback)
+    def play(self):
+        while not getattr(self, "closed", None):
+            if not len(self._data_):
+                async_wait()
+                continue
+            towrite = self._render_available_frames()
+            if towrite <= 0:
+                async_wait()
+                continue
+            if self.fut:
+                self.fut.result()
+            self.fut = concurrent.futures.Future()
+            b = self._data_[:towrite << 1].tobytes()
+            buffer = self._render_buffer(towrite)
+            CFFI.memmove(buffer[0], b, len(b))
+            self._render_release(towrite)
+            self._data_ = self._data_[towrite << 1:]
+            self.fut.set_result(None)
+    submit(play, player)
+    def write(data):
+        if not len(player._data_):
+            player._data_ = data
+            return
+        player.wait()
+        player.fut = concurrent.futures.Future()
+        player._data_ = np.concatenate((player._data_, data))
+        player.fut.set_result(None)
+    player.write = write        
+    def close():
+        player.closed = True
+        try:
+            player.__exit__(None, None, None)
+        except:
+            print_exc()
+    player.close = close
+    def wait():
+        if not len(player._data_):
+            return
+        while len(player._data_) > 6400:
+            async_wait()
+        while player.fut and not player.fut.done():
+            player.fut.result()
+    player.wait = wait
+    return player
+
+get_channel = lambda: sc_player(get_device(OUTPUT_DEVICE))
+DEVICE = None
+OUTPUT_DEVICE = None
+OUTPUT_FILE = None
+channel = cdict(close=lambda: None)
 
 ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
@@ -481,8 +490,6 @@ def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
                     submit(stdclose, p)
                     opos = pos
                     transfer = True
-                    if aout.done():
-                        globals()["channel2"] = aout.result()
             try:
                 b = f.read(rsize)
             except ValueError:
@@ -702,11 +709,11 @@ def oscilloscope(buffer):
                 a = np.max(v)
                 b = np.min(v)
                 osci[i] = a if a >= -b else b
-            osci = np.clip(osci * (1 / 65536), -1, 1, out=osci)
+            osci = np.clip(osci * 0.5, -1, 1, out=osci)
             if packet:
                 size = osize
                 OSCI = pygame.Surface(size)
-                time.sleep(0.005)
+                async_wait()
                 if packet:
                     point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
                     for i in range(1, len(osci)):
@@ -722,7 +729,7 @@ def oscilloscope(buffer):
                             point,
                             prev,
                         )
-                    time.sleep(0.005)
+                    async_wait()
                     if packet:
                         b = pygame.image.tostring(OSCI, "RGB")
                         while stderr_lock:
@@ -852,11 +859,11 @@ def spectrogram_update():
 
 spec_empty = np.zeros(res_scale, dtype=np.float32)
 spec_buffer = spec_empty
-def spectrogram(buffer):
+def spectrogram():
     global spec_buffer, spec2_fut, packet_advanced3
     try:
-        if packet:
-            buffer = np.clip(sample.astype(np.float32) / 32767, -1, None)
+        if packet and sample is not None:
+            buffer = sample.astype(np.float32)
             spec_buffer = np.append(spec_buffer[-res_scale + len(buffer):], buffer)
             if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
                 spec2_fut = submit(spectrogram_update)
@@ -900,8 +907,8 @@ def render():
                     if settings.oscilloscope and osize[0] and osize[1] and (not osci_fut or osci_fut.done()):
                         osci_fut = submit(oscilloscope, buffer)
                     out = []
-                    out.append(round(max(np.max(buffer), -np.min(buffer)) / 32767 * 100, 3))
-                    out.append(round(amp / 32767 * 100, 2))
+                    out.append(round(max(np.max(buffer), -np.min(buffer)) * 100, 3))
+                    out.append(round(amp * 100, 2))
 
                     if packet:
                         vel1 = buffer[::2][1:] - buffer[::2][:-1]
@@ -909,12 +916,12 @@ def render():
                         amp1 = np.mean(np.abs(vel1))
                         amp2 = np.mean(np.abs(vel2))
                         vel = (amp1 + amp2)
-                        out.append(round(vel / 131068 * 100, 3))
+                        out.append(round(vel / 4 * 100, 3))
 
                         if packet:
                             amp1 = np.mean(np.abs(vel1[::2][1:] - vel1[::2][:-1]))
                             amp2 = np.mean(np.abs(vel2[1::2][1:] - vel2[1::2][:-1]))
-                            out.append(round((amp1 + amp2) / 262136 * 100, 3))
+                            out.append(round((amp1 + amp2) / 8 * 100, 3))
 
                             out = [min(i, 100) for i in out]
                             out.append(p_amp)
@@ -1024,23 +1031,12 @@ def play(pos):
                 else:
                     s = synthesize()
                 sfut = submit(synthesize)
-                wave = s
-                if settings.volume != 1 or wave is not None:
+                sample = smp.astype(np.float32)
+                if settings.volume != 1 or s is not None:
                     if settings.volume != 1:
-                        s = smp.astype(np.float32)
-                        s *= settings.volume
-                    else:
-                        s = smp
-                    if wave is not None:
-                        wave += s
-                        s = wave
-                    if wave is not None or abs(settings.volume) > 1 or settings.volume < -32767 / 32768:
-                        s = np.clip(s, -32767, 32767)
-                    sample = s.astype(np.int16)
-                    b = sample.tobytes()
-                else:
-                    sample = smp
-                sbuffer = sample.astype(np.float32)
+                        sample *= settings.volume
+                    if s is not None:
+                        sample += s
                 if settings.silenceremove and np.mean(np.abs(sample)) < 64:
                     if quiet >= 15:
                         raise StopIteration
@@ -1048,53 +1044,39 @@ def play(pos):
                         quiet += 1
                 else:
                     quiet = 0
+                sample /= 32767
+                np.clip(sample, -1, 1, out=sample)
+                sbuffer = sample
                 lastpacket = packet
-                packet = b
+                packet = sample.tobytes()
                 packet_advanced = True
                 packet_advanced2 = True
                 packet_advanced3 = True
                 if OUTPUT_FILE:
-                    submit(OUTPUT_FILE.write, b)
-                while waiting:
-                    waiting.result()
-                if channel2:
-                    b = bytes(b)
-                    fut = submit(channel2.write, b)
-                    try:
-                        fut.result(timeout=1)
-                    except:
-                        print("Pyaudio timed out.")
-                        globals()["waiting"] = concurrent.futures.Future()
-                        aout.result().close()
-                        afut.result().terminate()
-                        globals()["afut"] = submit(pyaudio.PyAudio)
-                        globals()["aout"] = submit(pya_init)
-                        globals()["channel2"] = None
-                        waiting.set_result(None)
-                        globals()["waiting"] = None
-                if not channel2:
-                    buffer = sample.reshape((1600, 2))
-                    sound = pygame.sndarray.make_sound(buffer)
-                    channel = pygame.mixer.Channel(0)
-                    for i in range(24):
-                        if not channel.get_queue():
-                            break
-                        time.sleep(0.005)
-                    if channel.get_queue():
-                        print("Pygame timed out.")
-                        channel.stop()
-                        pygame.mixer.quit()
-                        pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
-                        if aout.done():
-                            globals()["channel2"] = aout.result()
+                    submit(OUTPUT_FILE.write, packet)
                 if not point_fut or point_fut.done():
                     point_fut = submit(point, f"~{frame} {duration}")
-                if not channel2:
-                    channel.queue(sound)
                 if settings.spectrogram >= 0 and ssize[0] and ssize[1] and not is_minimised():
                     if spec_fut:
                         spec_fut.result()
-                    spec_fut = submit(spectrogram, sbuffer)
+                    spec_fut = submit(spectrogram)
+                while waiting:
+                    waiting.result()
+                while True:
+                    channel.wait()
+                    fut = submit(channel.write, sample)
+                    try:
+                        fut.result(timeout=1.2)
+                    except:
+                        print_exc()
+                        print("SoundCard timed out.")
+                        globals()["waiting"] = concurrent.futures.Future()
+                        submit(channel.close)
+                        globals()["channel"] = get_channel()
+                        waiting.set_result(None)
+                        globals()["waiting"] = None
+                    else:
+                        break
             except StopIteration:
                 pass
             frame += settings.speed * 2 ** (settings.nightcore / 12)
@@ -1240,62 +1222,44 @@ def piano_player():
     global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3, sfut
     try:
         while True:
-            if channel2 and channel2.get_write_available() or not channel2 and not pygame.mixer.Channel(0).get_queue():
-                if sfut:
-                    s = sfut.result()
-                else:
-                    s = synthesize()
-                sfut = submit(synthesize)
-                if s is not None and len(s):
-                    s = np.clip(s, -32767, 32767)
-                    sample = s.astype(np.int16)
-                    b = sample.tobytes()
-                    lastpacket = packet
-                    packet = b
-                    packet_advanced = True
-                    packet_advanced2 = True
-                    packet_advanced3 = True
-                    sbuffer = sample.astype(np.float32)
-                    while waiting:
-                        waiting.result()
-                    if channel2:
-                        fut = submit(channel2.write, b)
-                        try:
-                            fut.result(timeout=1)
-                        except:
-                            print("Pyaudio timed out.")
-                            globals()["waiting"] = concurrent.futures.Future()
-                            aout.result().close()
-                            afut.result().terminate()
-                            globals()["afut"] = submit(pyaudio.PyAudio)
-                            globals()["aout"] = submit(pya_init)
-                            globals()["channel2"] = None
-                            waiting.set_result(None)
-                            globals()["waiting"] = None
-                    if not channel2:
-                        buffer = sample.reshape((1600, 2))
-                        sound = pygame.sndarray.make_sound(buffer)
-                        channel = pygame.mixer.Channel(0)
-                        for i in range(12):
-                            if not channel.get_queue():
-                                break
-                            time.sleep(0.005)
-                        if channel.get_queue():
-                            print("Pygame timed out.")
-                            channel.stop()
-                            pygame.mixer.quit()
-                            pygame.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
-                            if aout.done():
-                                globals()["channel2"] = aout.result()
-                    if not point_fut or point_fut.done():
-                        point_fut = submit(point, "~0 inf")
-                    if not channel2:
-                        channel.queue(sound)
+            if sfut:
+                s = sfut.result()
+            else:
+                s = synthesize()
+            sfut = submit(synthesize)
+            if s is not None and len(s):
+                s /= 32767
+                sample = np.clip(s, -1, 1, out=s)
+                sample = np.stack((sample[::2], sample[1::2]), axis=-1)
+                lastpacket = packet
+                packet = sample.tobytes()
+                packet_advanced = True
+                packet_advanced2 = True
+                packet_advanced3 = True
+                if OUTPUT_FILE:
+                    submit(OUTPUT_FILE.write, packet)
+                while waiting:
+                    waiting.result()
+                while True:
+                    fut = submit(channel.write, sample)
+                    try:
+                        fut.result(timeout=1)
+                    except:
+                        print_exc()
+                        print("SoundCard timed out.")
+                        globals()["waiting"] = concurrent.futures.Future()
+                        channel.close()
+                        globals()["channel"] = get_channel()
+                    else:
+                        break
+                sample = sample.ravel()
+                if not point_fut or point_fut.done():
+                    point_fut = submit(point, "~0 inf")
                 if settings.get("spectrogram") and ssize[0] and ssize[1] and not is_minimised():
                     if spec_fut:
                         spec_fut.result()
-                    spec_fut = submit(spectrogram, sbuffer)
-            time.sleep(0.005)
+                    spec_fut = submit(spectrogram)
+            async_wait()
     except:
         print_exc()
 
@@ -1470,8 +1434,6 @@ while not sys.stdin.closed and failed < 8:
             if command.startswith("~keys"):
                 s = command[6:]
                 alphakeys = set(map(int, s.split(","))) if s else set()
-                if aout.done() and alphakeys or prevkeys:
-                    channel2 = aout.result()
                 continue
             if command.startswith("~editor"):
                 s = command[8:]
@@ -1530,14 +1492,10 @@ while not sys.stdin.closed and failed < 8:
                     subprocess.Popen(cmd)
                 continue
             if command.startswith("~output"):
-                OUTPUT_DEVICE = command[8:]
+                channel.close()
+                OUTPUT_DEVICE = get_device(command[8:])
                 waiting = concurrent.futures.Future()
-                if aout.result():
-                    aout.result().close()
-                afut.result().terminate()
-                afut = submit(pyaudio.PyAudio)
-                aout = submit(pya_init)
-                channel2 = None
+                channel = sc_player(OUTPUT_DEVICE)
                 waiting.set_result(None)
                 waiting = None
                 continue
@@ -1573,8 +1531,6 @@ while not sys.stdin.closed and failed < 8:
                 pos, duration = map(float, (pos, duration))
                 stream = command
             shuffling = False
-            if aout.done():
-                channel2 = aout.result()
             if proc:
                 proc_waiting = True
                 temp, proc = proc, None
@@ -1742,4 +1698,4 @@ while not sys.stdin.closed and failed < 8:
     except:
         print_exc()
     time.sleep(0.005)
-afut.result().terminate()
+channel.close()

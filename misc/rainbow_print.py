@@ -105,6 +105,7 @@ class RainbowPrint:
         __builtins__["print"] = sys.stdout = sys.stderr = self
 
     def flush(self):
+        m = 120
         try:
             if self.empty:
                 return
@@ -120,7 +121,13 @@ class RainbowPrint:
             self.data.close()
             self.data = io.StringIO()
             for i, line in enumerate(spl):
-                spl[i] = next(self.it) + line + C.reset
+                s = ""
+                while len(line) > m:
+                    s += next(self.it) + line[:m]
+                    line = line[m:]
+                if line:
+                    s += next(self.it) + line + C.reset
+                spl[i] = s
             sys.__stdout__.write("".join(spl))
         except:
             sys.__stdout__.write(traceback.format_exc())

@@ -258,6 +258,7 @@ def mixer_submit(s, force, debug):
         while mixer_lock:
             mixer_lock.result()
     if not force:
+        # A special rate limit system that will skip requests spammed too fast, but will allow the last one after a delay
         ts = pc()
         if laststart:
             diff = ts - min(laststart)
@@ -323,6 +324,8 @@ control_default = cdict(
     ripples=1,
     autoupdate=0,
 )
+control_default["gradient-vertices"] = 4
+control_default["spiral-vertices"] = 6
 editor_default = cdict(
     mode="I",
     freeform=False,
@@ -443,13 +446,10 @@ def start_mixer():
         if hasmisc:
             s = io.StringIO()
             s.write(("%" + str(hwnd) + "\n"))
-            for k, v in options.audio.items():
-                s.write(f"~setting #{k} {v}\n")
-            s.write(f"~setting #gradient-vertices {options.control.setdefault('gradient-vertices', 4)}\n")
-            s.write(f"~setting #spiral-vertices {options.control.setdefault('spiral-vertices', 6)}\n")
-            s.write(f"~setting #shuffle {options.control.setdefault('shuffle', 0)}\n")
-            s.write(f"~setting unfocus {options.control.setdefault('unfocus', 1)}\n")
-            s.write(f"~setting #silenceremove {options.control.setdefault('silenceremove', 0)}\n")
+            d = options.audio.copy()
+            d.update(options.control)
+            j = json.dumps(d, separators=(",", ":"))
+            s.write(f"~setting #{j}\n")
             s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
             s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
             if OUTPUT_DEVICE:
@@ -885,6 +885,20 @@ repo_fut = submit(update_repo)
 
 options.history = astype(options.get("history", ()), alist)
 globals().update(options)
+
+def zip2bytes(data):
+    if not hasattr(data, "read"):
+        data = io.BytesIO(data)
+    with zipfile.ZipFile(data, compression=zipfile.ZIP_DEFLATED, allowZip64=True, strict_timestamps=False) as z:
+        b = z.read("D")
+    return b
+
+def bytes2zip(data):
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+        z.writestr("D", data=data)
+    b.seek(0)
+    return b.read()
 
 shash = lambda s: as_str(base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
 

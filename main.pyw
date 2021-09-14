@@ -58,7 +58,6 @@ player = cdict(
         peak=0,
         amplitude=0,
         velocity=0,
-        energy=0,
     ),
     editor=cdict(
         selection=cdict(
@@ -194,7 +193,9 @@ def transfer_instrument(*instruments):
         for instrument in instruments:
             if instrument.get("wave") is None:
                 instrument.wave = synth_gen(**instrument.synth)
-            b = base64.b64encode(instrument.wave.tobytes())
+            if instrument.get("encoded") is None:
+                instrument.encoded = base64.b64encode(bytes2zip(instrument.wave.tobytes()))
+            b = instrument.encoded
             opt = json.dumps(instrument.get("opt", default_instrument_opt), separators=(",", ":"))
             a = f"~wave {instrument.id} {opt} ".encode("ascii")
             mixer.submit(a + b)
@@ -898,6 +899,7 @@ def save_project(fn=None):
         for instrument in project.instruments.values():
             if "synth" in instrument:
                 instrument.pop("wave", None)
+                instrument.pop("encoded", None)
         pdata = io.BytesIO()
         with zipfile.ZipFile(pdata, mode="w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
             with z.open("<~MPP~<", "w", force_zip64=True) as f:
@@ -1348,6 +1350,8 @@ def restart_mixer():
             mixer.kill()
         mixer = None
         mixer = start_mixer()
+        mixer.state(player.paused)
+        submit(transfer_instrument, *project.instruments.values())
         return seek_abs(player.pos)
 
 def play():
@@ -1426,18 +1430,18 @@ def get_device(name):
         if d.name == name:
             return d
 
+SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
     player = d.player(48000, 2, 800)
+    player.closed = False
+    player.playing = None
     player.fut = None
     player._data_ = ()
     player.__enter__()
     # a monkey-patched play function that has a better buffer
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
-        while not getattr(self, "closed", None):
-            if not len(self._data_):
-                async_wait()
-                continue
+        while len(self._data_):
             towrite = self._render_available_frames()
             if towrite <= 0:
                 async_wait()
@@ -1450,16 +1454,24 @@ def sc_player(d):
             CFFI.memmove(buffer[0], b, len(b))
             self._render_release(towrite)
             self._data_ = self._data_[towrite << 1:]
+            if self.closed:
+                return
+            if not len(self._data_):
+                self._data_ = SC_EMPTY
             self.fut.set_result(None)
-    submit(play, player)
     def write(data):
+        if player.closed:
+            return
         if not len(player._data_):
             player._data_ = data
+            player.playing = submit(play, player)
             return
         player.wait()
         player.fut = concurrent.futures.Future()
         player._data_ = np.concatenate((player._data_, data))
         player.fut.set_result(None)
+        if player.playing.done():
+            player.playing = submit(play, player)
     player.write = write        
     def close():
         player.closed = True
@@ -1527,11 +1539,15 @@ def pos():
                 player.stats.peak = spl[0]
                 player.stats.amplitude = spl[1]
                 player.stats.velocity = spl[2]
-                player.stats.energy = spl[3]
-                player.amp = float(spl[4])
+                player.amp = float(spl[-1])
                 continue
             elif s[0] == "y":
                 player.amp = float(s[2:])
+                continue
+            elif s[0] == "t":
+                i = int(s[2:])
+                transfer_instrument(i)
+                select_instrument(i)
                 continue
             i, dur = map(float, s.split(" ", 1))
             if not progress.seeking:
@@ -1669,7 +1685,6 @@ def update_menu():
     player.flash_o = max(0, player.get("flash_o", 0) - duration * 60)
     toolbar.pause.timestamp = pc()
     ratio = 1 + 1 / (duration * 8)
-    progress.vis = (progress.vis * (ratio - 1) + player.pos) / ratio
     progress.alpha *= 0.998 ** (duration * 480)
     if progress.alpha < 16:
         progress.alpha = progress.num = 0
@@ -1679,7 +1694,6 @@ def update_menu():
     elif not is_active():
         player.amp = 0
         player.pop("osci", None)
-    progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
     toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * (-2 if player.paused else 2))
     toolbar.pause.speed *= 0.995 ** (duration * 480)
     sidebar.scroll.target = max(0, min(sidebar.scroll.target, len(queue) * 32 - screensize[1] + options.toolbar_height + 36 + 32))
@@ -1960,7 +1974,7 @@ def load_bubble(bubble_path):
         globals()["h-cache"] = {}
 
         def bubble_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
-            diameter = round(radius * 2)
+            diameter = round_random(radius * 2)
             if not diameter > 0:
                 return
             try:
@@ -1973,7 +1987,7 @@ def load_bubble(bubble_path):
             blit_complex(
                 dest,
                 surf,
-                [x - y / 2 for x, y in zip(pos, surf.get_size())],
+                [round_random(x - y / 2) for x, y in zip(pos, surf.get_size())],
                 alpha=alpha,
                 colour=colour,
             )
@@ -1987,7 +2001,7 @@ def load_spinner(spinner_path):
         globals()["s-cache"] = {}
 
         def spinner_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
-            diameter = round(radius * 2)
+            diameter = round_random(radius * 2)
             if not diameter > 0:
                 return
             try:
@@ -2002,7 +2016,7 @@ def load_spinner(spinner_path):
             blit_complex(
                 dest,
                 surf,
-                [x - y / 2 for x, y in zip(pos, surf.get_size())],
+                [round_random(x - y / 2) for x, y in zip(pos, surf.get_size())],
                 alpha=alpha,
                 colour=colour,
             )
@@ -2028,6 +2042,9 @@ def spinnies():
         dur = max(0.001, min(t - ts, 0.125))
         ts = t
         try:
+            ratio = 1 + 1 / (dur * 8)
+            progress.vis = (progress.vis * (ratio - 1) + player.pos) / ratio
+            progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
             progress.angle = -t * pi
             pops = set()
             for i, p in sorted(enumerate(i for i in progress.particles if i), key=lambda t: t[1].life):
@@ -2046,19 +2063,18 @@ def spinnies():
             x = min(progress.pos[0] - progress.width // 2 + progress.length, max(progress.pos[0] - progress.width // 2, x))
             d = abs(pc() % 2 - 1)
             hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
-            for i in shuffle(range(3)):
-                r = round_random(progress.spread * toolbar.pause.radius)
-                if r:
-                    a = progress.angle + i / 3 * tau
-                    point = [cos(a) * r, sin(a) * r]
-                    p = (x + point[0], progress.pos[1] + point[1])
-                    progress.particles.append(cdict(
-                        centre=(x, progress.pos[1]),
-                        angle=a,
-                        rad=r,
-                        life=7,
-                        hsv=hsv,
-                    ))
+            r = progress.spread * toolbar.pause.radius
+            if r >= 1:
+                a = progress.angle
+                point = [cos(a) * r, sin(a) * r]
+                p = (x + point[0], progress.pos[1] + point[1])
+                progress.particles.append(cdict(
+                    centre=(x, progress.pos[1]),
+                    angle=a,
+                    rad=r,
+                    life=7,
+                    hsv=hsv,
+                ))
             d = 1 / 60
             if pc() - t < d:
                 time.sleep(max(0, t - pc() + d))
@@ -2852,34 +2868,35 @@ def draw_menu():
                     fill_ratio=0.5,
                 )
             for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
-                ri = max(1, round_random(p.life ** 1.2 * toolbar.pause.radius / 72))
-                col = [round(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-                a = round(min(255, (p.life - 2.5) * 12))
-                point = [cos(p.angle) * p.rad, sin(p.angle) * p.rad]
-                pos = (p.centre[0] + point[0], p.centre[1] + point[1])
-                if ri > 2:
-                    reg_polygon_complex(
-                        DISP,
-                        pos,
-                        col,
-                        0,
-                        ri,
-                        ri,
-                        alpha=a,
-                        thickness=2,
-                        repetition=ri - 2,
-                        soft=True,
-                    )
-                else:
-                    pygame.draw.circle(
-                        DISP,
-                        col + [a],
-                        pos,
-                        ri,
-                    )
+                col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
+                a = round_random(min(255, (p.life - 2.5) * 12))
+                for j in shuffle(range(3)):
+                    point = [cos(p.angle + j * tau / 3) * p.rad, sin(p.angle + j * tau / 3) * p.rad]
+                    pos = [round_random(x) for x in (p.centre[0] + point[0], p.centre[1] + point[1])]
+                    ri = max(1, round_random(p.life ** 1.2 * toolbar.pause.radius / 72))
+                    if ri > 2:
+                        reg_polygon_complex(
+                            DISP,
+                            pos,
+                            col,
+                            0,
+                            ri,
+                            ri,
+                            alpha=a,
+                            thickness=2,
+                            repetition=ri - 2,
+                            soft=True,
+                        )
+                    else:
+                        gfxdraw.aacircle(
+                            DISP,
+                            *pos,
+                            1,
+                            col + [a],
+                        )
             d = abs(pc() % 2 - 1)
             hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
-            col = [round(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
+            col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
             for i in shuffle(range(3)):
                 a = progress.angle + i / 3 * tau
                 point = [cos(a) * r, sin(a) * r]
@@ -3133,6 +3150,7 @@ alphakeys = [0] * 34
 restarting = False
 fps = 0
 addi = cdict(result=lambda: None)
+lp = None
 try:
     if options.control.preserve and os.path.exists("dump.json"):
         with open("dump.json", "rb") as f:
@@ -3150,10 +3168,12 @@ try:
             pygame.display.iconify()
         if data.get("project"):
             b = base64.b64decode(data["project"].encode("ascii"))
-            submit(load_project, io.BytesIO(b), switch=False)
+            lp = submit(load_project, io.BytesIO(b), switch=False)
         if data.get("toolbar-editor"):
             if not player.paused:
                 pause_toggle(True)
+            if lp:
+                lp.result()
             if not project.instruments:
                 add_instrument(True)
             toolbar.editor = True
@@ -3223,6 +3243,8 @@ try:
             if minimised:
                 toolbar.ripples.clear()
                 sidebar.ripples.clear()
+        if lp:
+            lp.result()
         if not project.instruments:
             addi = submit(add_instrument, True)
         if not player.get("fut") and not player.paused:
@@ -3506,7 +3528,7 @@ try:
                         surface=DISP,
                         font="Comic Sans MS",
                     )
-                    for i, k in enumerate(("peak", "amplitude", "velocity", "energy"), 1):
+                    for i, k in enumerate(("peak", "amplitude", "velocity"), 1):
                         v = player.stats.get(k, 0) if is_active() else 0
                         message_display(
                             f"{k.capitalize()}: {v}%",
@@ -3529,7 +3551,7 @@ try:
                     message_display(
                         f"Frequency: {note}",
                         14,
-                        (4, 70),
+                        (4, 56),
                         align=0,
                         surface=DISP,
                         font="Comic Sans MS",

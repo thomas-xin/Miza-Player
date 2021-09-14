@@ -12,13 +12,16 @@ import sys
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools
+import os, sys, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools, io, zipfile
 import concurrent.futures, scipy.special
 from math import *
 np = numpy
 deque = collections.deque
 suppress = contextlib.suppress
-hwnd = int(sys.stdin.readline()[1:])
+try:
+    hwnd = int(sys.stdin.readline()[1:])
+except ValueError:
+    hwnd = 0
 
 async_wait = lambda: time.sleep(0.004)
 
@@ -62,6 +65,19 @@ def as_str(s):
 
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
 
+def zip2bytes(data):
+    if not hasattr(data, "read"):
+        data = io.BytesIO(data)
+    with zipfile.ZipFile(data, compression=zipfile.ZIP_DEFLATED, allowZip64=True, strict_timestamps=False) as z:
+        b = z.read("D")
+    return b
+
+def bytes2zip(data):
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+        z.writestr("D", data=data)
+    b.seek(0)
+    return b.read()
 
 def supersample(a, size, hq=False):
     n = len(a)
@@ -192,8 +208,9 @@ def get_device(name):
     point(f"~w {OUTPUT_DEVICE}")
     return sc.default_speaker()
 
+SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
-    player = d.player(48000, 2, 400)
+    player = d.player(48000, 2, 800)
     player.closed = False
     player.playing = None
     player.fut = None
@@ -215,6 +232,10 @@ def sc_player(d):
             CFFI.memmove(buffer[0], b, len(b))
             self._render_release(towrite)
             self._data_ = self._data_[towrite << 1:]
+            if self.closed:
+                return
+            if not len(self._data_):
+                self._data_ = SC_EMPTY
             self.fut.set_result(None)
     def write(data):
         if player.closed:
@@ -240,7 +261,7 @@ def sc_player(d):
     def wait():
         if not len(player._data_):
             return
-        while len(player._data_) > 4800:
+        while len(player._data_) > 6400:
             async_wait()
         while player.fut and not player.fut.done():
             player.fut.result()
@@ -916,16 +937,11 @@ def render():
                         vel = (amp1 + amp2)
                         out.append(round(vel / 4 * 100, 3))
 
+                        out = [min(i, 100) for i in out]
+                        out.append(p_amp)
+
                         if packet:
-                            amp1 = np.mean(np.abs(vel1[::2][1:] - vel1[::2][:-1]))
-                            amp2 = np.mean(np.abs(vel2[1::2][1:] - vel2[1::2][:-1]))
-                            out.append(round((amp1 + amp2) / 8 * 100, 3))
-
-                            out = [min(i, 100) for i in out]
-                            out.append(p_amp)
-
-                            if packet:
-                                point("~x " + " ".join(map(str, out)))
+                            point("~x " + " ".join(map(str, out)))
 
                     if settings.spectrogram >= 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
                         if is_strict_minimised():
@@ -967,7 +983,7 @@ def play(pos):
                             point("~r")
                             proc = None
                             raise
-                        time.sleep(0.005)
+                        async_wait()
                         continue
                 try:
                     b = file.read(req)
@@ -981,7 +997,7 @@ def play(pos):
                     b = b""
             else:
                 while not getattr(proc, "readable", lambda: True)():
-                    time.sleep(0.005)
+                    async_wait()
                 try:
                     fut = submit(proc.stdout.read, req)
                     b = fut.result(timeout=4)
@@ -1030,21 +1046,20 @@ def play(pos):
                 else:
                     s = synthesize()
                 sfut = submit(synthesize)
+                sample = sample.astype(np.float32)
+                sample /= 32767
                 if settings.volume != 1 or s is not None:
-                    sample = sample.astype(np.float32)
                     if settings.volume != 1:
                         sample *= settings.volume
                     if s is not None:
                         sample += s
-                if settings.silenceremove and np.mean(np.abs(sample)) < 64:
+                if settings.silenceremove and np.mean(np.abs(sample)) < 1 / 512:
                     if quiet >= 15:
                         raise StopIteration
                     else:
                         quiet += 1
                 else:
                     quiet = 0
-                sample = sample.astype(np.float32)
-                sample /= 32767
                 np.clip(sample, -1, 1, out=sample)
                 sbuffer = sample
                 lastpacket = packet
@@ -1109,7 +1124,7 @@ sel_instrument = 0
 class Sample(collections.abc.Hashable):
 
     def __init__(self, data, opt):
-        self.data = np.frombuffer(base64.b64decode(data), dtype=np.float32)
+        self.data = np.frombuffer(zip2bytes(base64.b64decode(data)), dtype=np.float16).astype(np.float32)
         self.cache = {}
         self.opt = opt
 
@@ -1187,10 +1202,10 @@ def synthesize():
                 wave *= samplespace
                 wave *= -0.5
                 s[:x + c] += wave
-    time.sleep(0.005)
+    async_wait()
     if s is not None:
         globals()["buffoffs"] += FR
-        m = 32767
+        m = 1
         if dc < 5:
             lin = basewave + dc
             lin -= 2
@@ -1206,8 +1221,8 @@ def synthesize():
             m /= den
             da = db
         m *= settings.get("volume", 1)
-        s *= m
-        s = np.round(s, out=s)
+        if m != 1:
+            s *= m
         s = np.repeat(s, 2)
     else:
         globals()["buffoffs"] = 0
@@ -1221,14 +1236,19 @@ def synthesize():
 def piano_player():
     global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3, sfut
     try:
+        while not hasattr(channel, "wait"):
+            time.sleep(0.1)
         while True:
+            channel.wait()
+            if len(channel._data_) > 400:
+                async_wait()
+                continue
             if sfut:
                 s = sfut.result()
             else:
                 s = synthesize()
             sfut = submit(synthesize)
             if s is not None and len(s):
-                s /= 32767
                 sample = np.clip(s, -1, 1, out=s)
                 lastpacket = packet
                 packet = sample.tobytes()
@@ -1303,7 +1323,6 @@ def render_notes(i, notes):
         v = n_volume(n)
         if v <= 0:
             continue
-        v *= 32768
         instrument = wavecache[n_instrument(n)]
         u = instrument.opt
         wave = instrument.data
@@ -1357,7 +1376,7 @@ def render_notes(i, notes):
                 left[sl] += lsamp
                 right[sl] += rsamp
     samples, synth_samples = synth_samples[:samplecount << 1], synth_samples[samplecount << 1:]
-    np.clip(samples, -32768, 32767, out=samples)
+    np.clip(samples, -1, 1, out=samples)
     return samples
 
 
@@ -1412,7 +1431,7 @@ while not sys.stdin.closed and failed < 8:
                 bar = int(b)
                 notes = json.loads(s)
                 samples = render_notes(b, notes)
-                out = samples.astype(np.int16).tobytes()
+                out = samples.astype(np.float32).tobytes()
                 with open(f"cache/&p{p}b{b}.pcm", "wb") as f:
                     f.write(out)
                 continue
@@ -1429,8 +1448,10 @@ while not sys.stdin.closed and failed < 8:
                 continue
             if command.startswith("~select"):
                 s = int(command[8:])
-                assert wavecache[s]
-                sel_instrument = s
+                if s in wavecache:
+                    sel_instrument = s
+                else:
+                    point(f"~t {s}")
                 continue
             if command.startswith("~keys"):
                 s = command[6:]
@@ -1509,14 +1530,21 @@ while not sys.stdin.closed and failed < 8:
                     OUTPUT_FILE = None
                 continue
             if command.startswith("~setting"):
-                setting, value = command[9:].split()
-                if setting.startswith("#"):
-                    setting = setting[1:]
+                s = command[9:]
+                if s.startswith("#"):
+                    s = s[1:]
                     nostart = True
                 else:
                     nostart = False
-                settings[setting] = eval(value, {}, {})
-                if nostart or setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus") or not stream:
+                if s.startswith("{"):
+                    sets = json.loads(s)
+                    settings.update(sets)
+                else:
+                    setting, value = s.split()
+                    settings[setting] = eval(value, {}, {})
+                    if setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus"):
+                        continue
+                if nostart or not stream:
                     continue
             elif command.startswith("~drop"):
                 drop += float(command[5:]) * 30

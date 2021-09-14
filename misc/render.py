@@ -237,7 +237,7 @@ class Bar(Particle):
                 )
 
     def post_render(self, sfx, scale, **void):
-        size = round_random(self.height2)
+        size = self.height2
         if size > 8:
             ix = barcount - 1 - self.x - 1
             sx = ix / barcount * ssize2[0]

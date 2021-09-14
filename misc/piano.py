@@ -82,18 +82,27 @@ def helix_render(self):
     for i in range(3):
         size = round_random(max(1, 4 / fade) + random.random() * 2)
         y = self.pos[1] + (self.width + fade ** 0.7 * 48 - 46) * sin(self.ang - self.frame ** 0.3 * 8 + (i + 0.25) * tau / 3)
-        reg_polygon_complex(
-            DISP,
-            (self.pos[0], y),
-            col,
-            0,
-            size,
-            size,
-            alpha=alpha,
-            thickness=min(size, 2),
-            repetition=max(1, size - 2),
-            soft=True,
-        )
+        pos = [round_random(x) for x in (self.pos[0], y)]
+        if size > 1:
+            reg_polygon_complex(
+                DISP,
+                pos,
+                col,
+                0,
+                size,
+                size,
+                alpha=alpha,
+                thickness=min(size, 2),
+                repetition=max(1, size - 2),
+                soft=True,
+            )
+        else:
+            gfxdraw.aacircle(
+                DISP,
+                *pos,
+                1,
+                col + [alpha],
+            )
 
 def blinds_render(self):
     h = 2
@@ -125,8 +134,8 @@ def blinds_render(self):
 
 def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
     if amplitude == 0 or shrink == 1:
-        return np.zeros(4096, dtype=np.float32)
-    linspout = lambda *args: np.linspace(*args, endpoint=False, dtype=np.float32)
+        return np.zeros(4096, dtype=np.float16)
+    linspout = lambda *args: np.linspace(*args, endpoint=False, dtype=np.float16)
     if shape < 1:
         x = linspout(0, tau, 4096)
         x = np.sin(x, out=x)
@@ -153,7 +162,7 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
             np.clip(x, -m, m, out=x)
     elif shape < 3:
         x = linspout(0, tau, 4096)
-        x = (np.sin(x, out=x) >= 0).astype(np.float64)
+        x = (np.sin(x, out=x) >= 0).astype(np.float16)
         x -= 0.5
         if shape != 2:
             shape -= 2
@@ -181,7 +190,7 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
         x = np.interp(indices, range(4096), x)
     if shrink != 0:
         r = round(4096 * (1 - shrink))
-        y = np.zeros(4096, dtype=np.float32)
+        y = np.zeros(4096, dtype=np.float16)
         indices = linspout(0, 4096, r)
         x = np.interp(indices, range(4096), x)
         y[2048 - r // 2:2048 + (r + 1) // 2] = x
@@ -191,7 +200,7 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
         np.abs(x, out=x)
         x **= exponent
         x[msk] *= -1
-    return np.asanyarray(x, dtype=np.float32)
+    return np.asanyarray(x, dtype=np.float16)
 
 pattern_end = lambda pattern: max(k + v / pattern.timesig[0] for k, v in pattern.ends.items()) if pattern.measures else 0
 
@@ -272,7 +281,7 @@ def render_bar(i):
 FRESH_PATTERNS = set()
 player.broken = False
 BUFSIZ = round(48000 * 2 * 4 / 30)
-reset_buff = b"\x00" * (BUFSIZ >> 4)
+reset_buff = np.zeros(BUFSIZ, dtype=np.float32)
 def editor_update():
     globals()["editor"] = player.editor
     mixer.clear()
@@ -299,7 +308,7 @@ def editor_update():
     editor.targ_x = int(editor.scroll_x)
     bar_sample = timesig[0] / pattern.tempo * 60 * 48000 * 2 * 4
     end = pattern_end(pattern)
-    if editor.targ_x > 16:
+    if editor.targ_x > 3:
         resetting = True
     else:
         resetting = False
@@ -316,7 +325,10 @@ def editor_update():
                 for i in measure_range(pattern, start, editor.targ_x + 2):
                     fn = f"cache/&p{editor.pattern}b{i}.pcm"
                     if not os.path.exists(fn):
-                        submit(render_bar, i)
+                        if start == 0:
+                            render_bar(i)
+                        else:
+                            submit(render_bar, i)
             first = True
             b = io.BytesIO()
             while not player.broken and not player.paused:
@@ -342,7 +354,7 @@ def editor_update():
                 break
             b.seek(0)
             try:
-                channel.write(b.read())
+                channel.write(np.frombuffer(b.read(), dtype=np.float32))
             except:
                 print_exc()
                 break
@@ -502,7 +514,7 @@ def editor_toolbar():
                 font="Comic Sans MS",
                 cache=True,
             )
-        if editor.fade < 63 / 64:
+        if editor.setdefault("fade", 1) < 63 / 64:
             im = pyg2pil(surf)
             a = im.getchannel("A")
             arr = np.linspace(editor.fade * 510, editor.fade * 510 - 255, mrect[2])
@@ -1121,7 +1133,7 @@ def render_piano():
                 else:
                     s += line
             if kheld[K_x]:
-                [delete_note(note_from_id(i)) for i in editor.selection.notes]
+                [delete_note(note_from_id(i)) for i in list(editor.selection.notes)]
                 editor.selection.cancel()
             pyperclip.copy(s)
         if kheld[K_v] and not editor.selection.get("cpy"):
@@ -1137,7 +1149,7 @@ def render_piano():
                         x = n_measure(n) * timesig[0] + n_pos(n) + n_length(n)
                         if pos < x:
                             pos = x
-                old_sel = copy.deepcopy(editor.selection)
+                selection = copy.deepcopy(editor.selection)
                 editor.selection.cancel()
                 editor.selection.cpy = 1
                 created = deque()

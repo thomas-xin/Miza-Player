@@ -210,7 +210,7 @@ def get_device(name):
 
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
-    player = d.player(48000, 2, 800)
+    player = d.player(48000, 2, 1600)
     player.closed = False
     player.playing = None
     player.fut = None
@@ -220,13 +220,17 @@ def sc_player(d):
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
         while len(self._data_):
+            if self.closed:
+                return
             towrite = self._render_available_frames()
-            if towrite <= 0:
+            if towrite < 100:
                 async_wait()
                 continue
             if self.fut:
                 self.fut.result()
             self.fut = concurrent.futures.Future()
+            if not len(self._data_):
+                self._data_ = SC_EMPTY
             b = self._data_[:towrite << 1].tobytes()
             buffer = self._render_buffer(towrite)
             CFFI.memmove(buffer[0], b, len(b))
@@ -234,21 +238,20 @@ def sc_player(d):
             self._data_ = self._data_[towrite << 1:]
             if self.closed:
                 return
-            if not len(self._data_):
-                self._data_ = SC_EMPTY
             self.fut.set_result(None)
     def write(data):
         if player.closed:
             return
+        player.wait()
         if not len(player._data_):
             player._data_ = data
-            player.playing = submit(play, player)
+            if not player.playing or player.playing.done():
+                player.playing = submit(play, player)
             return
-        player.wait()
         player.fut = concurrent.futures.Future()
         player._data_ = np.concatenate((player._data_, data))
         player.fut.set_result(None)
-        if player.playing.done():
+        if not player.playing or player.playing.done():
             player.playing = submit(play, player)
     player.write = write        
     def close():
@@ -1056,8 +1059,7 @@ def play(pos):
                 if settings.silenceremove and np.mean(np.abs(sample)) < 1 / 512:
                     if quiet >= 15:
                         raise StopIteration
-                    else:
-                        quiet += 1
+                    quiet += 1
                 else:
                     quiet = 0
                 np.clip(sample, -1, 1, out=sample)
@@ -1077,12 +1079,15 @@ def play(pos):
                     spec_fut = submit(spectrogram)
                 while waiting:
                     waiting.result()
+                futs = deque()
                 while True:
-                    channel.wait()
-                    fut = submit(channel.write, sample)
+                    futs.append(submit(channel.wait))
+                    futs.append(submit(channel.write, sample))
                     try:
-                        fut.result(timeout=1.2)
+                        for fut in futs:
+                            fut.result(timeout=1.2)
                     except:
+                        futs.clear()
                         print_exc()
                         print("SoundCard timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
@@ -1265,12 +1270,15 @@ def piano_player():
                     spec_fut = submit(spectrogram)
                 while waiting:
                     waiting.result()
+                futs = deque()
                 while True:
-                    channel.wait()
-                    fut = submit(channel.write, sample)
+                    futs.append(submit(channel.wait))
+                    futs.append(submit(channel.write, sample))
                     try:
-                        fut.result(timeout=1.2)
+                        for fut in futs:
+                            fut.result(timeout=1.2)
                     except:
+                        futs.clear()
                         print_exc()
                         print("SoundCard timed out.")
                         globals()["waiting"] = concurrent.futures.Future()

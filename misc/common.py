@@ -4,7 +4,7 @@ if os.name != "nt":
     raise NotImplementedError("This program is currently implemented to use Windows API and filesystem only.")
 
 
-async_wait = lambda: time.sleep(sys.float_info.min)
+async_wait = lambda: time.sleep(0.004)
 utc = time.time
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 from concurrent.futures import thread

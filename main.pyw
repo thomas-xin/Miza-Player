@@ -1443,7 +1443,7 @@ def sc_player(d):
     # a monkey-patched play function that has a better buffer
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
-        while len(self._data_):
+        while True:
             if self.closed:
                 return
             towrite = self._render_available_frames()

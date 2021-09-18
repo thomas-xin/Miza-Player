@@ -59,6 +59,7 @@ player = cdict(
         amplitude=0,
         velocity=0,
     ),
+    waiting=deque(),
     editor=cdict(
         selection=cdict(
             point=None,
@@ -1229,6 +1230,23 @@ def prepare(entry, force=False, download=False):
     return stream
 
 def start_player(pos=None, force=False):
+    entry = queue[0]
+    duration = entry.duration or 300
+    if pos is None:
+        if audio.speed >= 0:
+            pos = 0
+    elif pos >= duration:
+        if audio.speed > 0:
+            return skip()
+        pos = duration
+    elif pos <= 0:
+        if audio.speed < 0:
+            return skip()
+        pos = 0
+    player.waiting.append(None)
+    if pos is not None:
+        player.pos = pos
+        player.index = player.pos * 30
     if force and is_url(queue[0].url):
         queue[0].stream = None
         queue[0].research = True
@@ -1238,13 +1256,16 @@ def start_player(pos=None, force=False):
     player.pop("osci", None)
     stream = prepare(queue[0], force=True)
     if not queue[0].url:
+        player.waiting.popleft()
         return skip()
     stream = prepare(queue[0], force=True)
     entry = queue[0]
     if not entry.url:
+        player.waiting.popleft()
         return skip()
     if not stream:
         player.fut = None
+        player.waiting.popleft()
         return None, inf
     duration = entry.duration
     if not duration:
@@ -1258,20 +1279,24 @@ def start_player(pos=None, force=False):
             duration = get_duration_2(fn)[0]
             stream = entry.stream = fn
     entry.duration = duration or entry.duration
+    duration = entry.duration or 300
     if duration is None:
         player.fut = None
+        player.waiting.popleft()
         return None, inf
     if pos is None:
         if audio.speed >= 0:
             pos = 0
         else:
-            pos = entry.duration
-    elif pos >= entry.duration:
+            pos = duration
+    elif pos >= duration:
         if audio.speed > 0:
+            player.waiting.popleft()
             return skip()
-        pos = entry.duration
+        pos = duration
     elif pos <= 0:
         if audio.speed < 0:
+            player.waiting.popleft()
             return skip()
         pos = 0
     if control.shuffle == 2:
@@ -1279,11 +1304,12 @@ def start_player(pos=None, force=False):
     else:
         player.needs_shuffle = not is_url(stream)
     ensure_next(int(len(queue) > 1 and control.loop < 2))
-    h = shash(entry.url)
-    mixer.submit(stream + "\n" + str(pos) + " " + str(duration) + " " + str(entry.get("cdc", "auto")) + " " + h, force=False)
+    s = f"{stream}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
+    mixer.submit(s, force=False)
     player.pos = pos
     player.index = player.pos * 30
     player.end = duration or inf
+    player.waiting.pop()
     return stream, duration
 
 def start():
@@ -1477,7 +1503,7 @@ def sc_player(d):
         player.fut.set_result(None)
         if not player.playing or player.playing.done():
             player.playing = submit(play, player)
-    player.write = write        
+    player.write = write
     def close():
         player.closed = True
         try:
@@ -1553,6 +1579,8 @@ def pos():
                 i = int(s[2:])
                 transfer_instrument(i)
                 select_instrument(i)
+                continue
+            if player.waiting:
                 continue
             i, dur = map(float, s.split(" ", 1))
             if not progress.seeking:

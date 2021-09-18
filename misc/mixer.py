@@ -1734,5 +1734,5 @@ while not sys.stdin.closed and failed < 8:
             failed += 1
     except:
         print_exc()
-    time.sleep(0.005)
+    async_wait()
 channel.close()

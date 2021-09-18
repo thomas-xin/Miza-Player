@@ -61,7 +61,7 @@ org2xm = "org2xm.exe" if os.name == "nt" else "org2xm"
 
 collections2f = "misc/collections2.tmp"
 try:
-    update_collections = utc() - os.path.getmtime(collections2f) > 3600
+    update_collections = utc() - os.path.getmtime(collections2f) >= 300
 except FileNotFoundError:
     update_collections = True
 
@@ -127,114 +127,19 @@ if update_collections:
             subprocess.run(["setx", "path", s])
             os.environ["PATH"] = s
 
-    import requests
-    print("Verifying FFmpeg installation...")
-    if os.path.exists("ffmpeg.exe"):
-        futs = set()
-        futs.add(submit(os.remove, "ffmpeg.exe"))
-        futs.add(submit(os.remove, "ffprobe.exe"))
-        futs.add(submit(os.remove, "ffplay.exe"))
-        for fut in futs:
-            try:
-                fut.result()
-            except:
-                pass
+    print("Verifying FFmpeg, SoX, and Org2XM installations...")
     try:
-        v = "4.4"
-        r = subprocess.run(ffmpeg, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        s = r.stderr[:r.stderr.index(b"\n")].decode("utf-8", "replace").strip().lower()
-        if s.startswith("ffmpeg"):
-            s = s[6:].lstrip()
-        if s.startswith("version"):
-            s = s[7:].lstrip()
-        s = s.split("-", 1)[0]
-        if s < v:
-            print(f"FFmpeg version outdated ({v} > {s})")
-            raise FileNotFoundError
+        subprocess.Popen(ffmpeg, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(sox, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(org2xm, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except FileNotFoundError:
-        urls = """
-https://cdn.discordapp.com/attachments/699815878010732574/875783935244771358/z1.zip
-https://cdn.discordapp.com/attachments/699815878010732574/875783941947273236/z2.zip
-https://drive.google.com/u/0/uc?id=1MRIVBn9GngZdGSl_BqFQ9WLVjxMnYoDS&export=download
-https://drive.google.com/u/0/uc?id=1stdrdMrImHVT4IaLsdcGaRceAdn4VL58&export=download
-""".strip().splitlines()
-        import zipfile, io
-        if not os.path.exists("sndlib"):
-            os.mkdir("sndlib")
-        print(f"Downloading FFmpeg version {v}...")
-        futs = []
-        for url in urls:
-            futs.append(submit(requests.get, url))
-        for i, fut in enumerate(futs):
-            print(f"{i}/{len(futs)}", end="\r")
-            with fut.result() as resp:
-                f = io.BytesIO(resp.content)
-                if zipfile.is_zipfile(f):
-                    with zipfile.ZipFile(f) as z:
-                        z.extractall("sndlib")
-                else:
-                    f.seek(0)
-                    with open("sndlib/" + resp.url.rsplit("/", 1)[-1].lower(), "wb") as g:
-                        g.write(f.read())
-        print(f"{len(futs)}/{len(futs)}")
-        print("FFmpeg extraction complete.")
-        add_to_path()
-    print("Verifying SoX installation...")
-    try:
-        subprocess.run(sox, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except FileNotFoundError:
-        urls = """
-https://cdn.discordapp.com/attachments/699815878010732574/875773374893281380/sox.zip
-""".strip().splitlines()
-        import zipfile, io
-        if not os.path.exists("sndlib"):
-            os.mkdir("sndlib")
-        print(f"Downloading SoX version 14.4.2...")
-        futs = []
-        for url in urls:
-            futs.append(submit(requests.get, url))
-        for i, fut in enumerate(futs):
-            print(f"{i}/{len(futs)}", end="\r")
-            with fut.result() as resp:
-                f = io.BytesIO(resp.content)
-                if zipfile.is_zipfile(f):
-                    with zipfile.ZipFile(f) as z:
-                        z.extractall("sndlib")
-                else:
-                    f.seek(0)
-                    with open("sndlib/" + resp.url.rsplit("/", 1)[-1].lower(), "wb") as g:
-                        g.write(f.read())
-        print(f"{len(futs)}/{len(futs)}")
-        print("SoX extraction complete.")
-        add_to_path()
-    print("Verifying Org2XM installation...")
-    try:
-        subprocess.run(org2xm, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    except FileNotFoundError:
-        urls = """
-https://github.com/thomas-xin/Miza/raw/master/misc/org2xm.exe
-https://github.com/Clownacy/org2xm/raw/master/ORG210EN.DAT
-""".strip().splitlines()
-        import zipfile, io
-        if not os.path.exists("sndlib"):
-            os.mkdir("sndlib")
-        print(f"Downloading Org2XM...")
-        futs = []
-        for url in urls:
-            futs.append(submit(requests.get, url))
-        for i, fut in enumerate(futs):
-            print(f"{i}/{len(futs)}", end="\r")
-            with fut.result() as resp:
-                f = io.BytesIO(resp.content)
-                if zipfile.is_zipfile(f):
-                    with zipfile.ZipFile(f) as z:
-                        z.extractall("sndlib")
-                else:
-                    f.seek(0)
-                    with open("sndlib/" + resp.url.rsplit("/", 1)[-1].lower(), "wb") as g:
-                        g.write(f.read())
-        print(f"{len(futs)}/{len(futs)}")
-        print("Org2XM extraction complete.")
+        url = "https://dl.dropboxusercontent.com/s/q34exu54opnilli/sndlib.zip?dl=1"
+        subprocess.run((sys.executable, "downloader.py", url, "ffmpeg.zip"), cwd="misc")
+        print("Sound library extraction complete.")
+        import zipfile
+        with zipfile.ZipFile("misc/ffmpeg.zip", "r") as z:
+            z.extractall("sndlib")
+        os.remove("misc/ffmpeg.zip")
         add_to_path()
 
 

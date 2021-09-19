@@ -622,7 +622,7 @@ def editor_toolbar():
             fn = project_name + ".mpp"
         if fn:
             save_project(fn)
-    
+
     r = (c[0], c[1] - w, w, w)
     ct = (255, 127, 191) if options.editor.mode == "P" else (127, 96, 112)
     bevel_rectangle(DISP, ct, r, bevel=3)

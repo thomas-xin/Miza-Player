@@ -95,6 +95,9 @@ def supersample(a, size, hq=False):
     a = np.interp(interp, range(n), a)
     return np.mean(a.reshape(-1, x), 1, dtype=dtype)
 
+SR = 48000
+FR = 1600
+
 
 from concurrent.futures import thread
 
@@ -201,21 +204,28 @@ print_exc = lambda: point(repr(traceback.format_exc()))
 
 
 def get_device(name):
-    for d in sc.all_speakers():
-        if d.name == name:
-            point("~W")
-            return d
+    global DEVICE
+    try:
+        DEVICE = sc.get_speaker(name)
+    except IndexError:
+        pass
+    else:
+        point("~W")
+        return DEVICE
     point(f"~w {OUTPUT_DEVICE}")
-    return sc.default_speaker()
+    DEVICE = sc.default_speaker()
+    return DEVICE
 
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
-    player = d.player(48000, 2, 1600)
+    cc = d.channels
+    player = d.player(SR, cc, 1600)
     player.closed = False
     player.playing = None
     player.fut = None
     player._data_ = ()
     player.__enter__()
+    player.channels = cc
     # a monkey-patched play function that has a better buffer
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
@@ -223,14 +233,14 @@ def sc_player(d):
             if self.closed:
                 return
             towrite = self._render_available_frames()
-            if towrite < 100:
+            if towrite < 50 * cc:
                 async_wait()
                 continue
             if self.fut:
                 self.fut.result()
             self.fut = concurrent.futures.Future()
             if not len(self._data_):
-                self._data_ = SC_EMPTY
+                self._data_ = SC_EMPTY[:cc * 1600]
             b = self._data_[:towrite << 1].tobytes()
             buffer = self._render_buffer(towrite)
             CFFI.memmove(buffer[0], b, len(b))
@@ -242,6 +252,9 @@ def sc_player(d):
     def write(data):
         if player.closed:
             return
+        if cc < 2:
+            data = data[::2] + data[1::2]
+            data *= 0.5
         player.wait()
         if not len(player._data_):
             player._data_ = data
@@ -264,7 +277,7 @@ def sc_player(d):
     def wait():
         if not len(player._data_):
             return
-        while len(player._data_) > 6400:
+        while len(player._data_) > 3200 * cc:
             async_wait()
         while player.fut and not player.fut.done():
             player.fut.result()
@@ -433,8 +446,6 @@ def remove(file):
 def stdclose(p):
     try:
         if not p.stdin.closed:
-            # fut = submit(p.stdin.write, emptymem[:BSIZE])
-            # fut.result(timeout=1)
             fut = submit(p.stdin.close)
             fut.result(timeout=1)
         time.sleep(2)
@@ -960,7 +971,7 @@ def render():
     except:
         print_exc()
 
-emptybuff = b"\x00" * (1600 * 2 * 2)
+emptybuff = b"\x00" * (FR * 2 * 2)
 emptymem = memoryview(emptybuff)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
@@ -1081,9 +1092,12 @@ def play(pos):
                     waiting.result()
                 futs = deque()
                 while True:
-                    futs.append(submit(channel.wait))
-                    futs.append(submit(channel.write, sample))
                     try:
+                        cc = sc.get_speaker(DEVICE.id).channels
+                        if cc != channel.channels:
+                            raise
+                        futs.append(submit(channel.wait))
+                        futs.append(submit(channel.write, sample))
                         for fut in futs:
                             fut.result(timeout=1.2)
                     except:
@@ -1107,9 +1121,6 @@ def play(pos):
             pass
         print_exc()
 
-
-SR = 48000
-FR = 1600
 
 baserange = np.arange(FR, dtype=np.float64)
 basewave = baserange / FR
@@ -1272,9 +1283,12 @@ def piano_player():
                     waiting.result()
                 futs = deque()
                 while True:
-                    futs.append(submit(channel.wait))
-                    futs.append(submit(channel.write, sample))
                     try:
+                        cc = sc.get_speaker(DEVICE.id).channels
+                        if cc != channel.channels:
+                            raise
+                        futs.append(submit(channel.wait))
+                        futs.append(submit(channel.write, sample))
                         for fut in futs:
                             fut.result(timeout=1.2)
                     except:
@@ -1413,7 +1427,7 @@ proc = None
 fn = None
 file = None
 paused = None
-req = 1600 * 2 * 2
+req = FR * 2 * 2
 frame = 0
 drop = 0
 quiet = 0
@@ -1468,7 +1482,7 @@ while not sys.stdin.closed and failed < 8:
             if command.startswith("~editor"):
                 s = command[8:]
                 editor = cdict(json.loads(s))
-                editor.note_length = 60 / editor.tempo * 48000
+                editor.note_length = 60 / editor.tempo * SR
                 continue
             if command == "~clear":
                 if proc:
@@ -1624,14 +1638,14 @@ while not sys.stdin.closed and failed < 8:
                     kill=f.close,
                 )
                 if pos:
-                    i = round(pos * 48000 * 2) * 2
+                    i = round(pos * SR * 2) * 2
                     f.seek(i)
             elif stream[0] == "<" and stream[-1] == ">":
                 pya = afut.result()
                 i = int(stream.strip("<>"))
                 d = pya.get_device_info_by_index(i)
                 ai = pya.open(
-                    48000,
+                    SR,
                     2,
                     pyaudio.paInt16,
                     input=True,

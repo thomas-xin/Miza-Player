@@ -685,8 +685,8 @@ deque = collections.deque
 suppress = contextlib.suppress
 d2r = pi / 180
 ts_us = lambda: time.time_ns() // 1000
-async_wait = lambda: time.sleep(0.002)
-
+async_wait = lambda: time.sleep(0.003)
+SR = 48000
 
 commitf = "misc/commit.tmp"
 

@@ -1376,7 +1376,6 @@ def restart_mixer():
             for p in mixer.children(True):
                 p.kill()
             mixer.kill()
-        mixer = None
         mixer = start_mixer()
         mixer.state(player.paused)
         submit(transfer_instrument, *project.instruments.values())
@@ -1453,19 +1452,23 @@ def wait_on():
         time.sleep(0.5)
     print("Device switch cancelled.")
 
+get_device = sc.get_speaker
 def get_device(name):
-    for d in sc.all_speakers():
-        if d.name == name:
-            return d
+    try:
+        return sc.get_speaker(name)
+    except IndexError:
+        return sc.default_speaker()
 
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
-    player = d.player(48000, 2, 1600)
+    cc = d.channels
+    player = d.player(SR, cc, 1600)
     player.closed = False
     player.playing = None
     player.fut = None
     player._data_ = ()
     player.__enter__()
+    player.channels = cc
     # a monkey-patched play function that has a better buffer
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
@@ -1473,14 +1476,14 @@ def sc_player(d):
             if self.closed:
                 return
             towrite = self._render_available_frames()
-            if towrite < 100:
+            if towrite < 50 * cc:
                 async_wait()
                 continue
             if self.fut:
                 self.fut.result()
             self.fut = concurrent.futures.Future()
             if not len(self._data_):
-                self._data_ = SC_EMPTY
+                self._data_ = SC_EMPTY[:cc * 1600]
             b = self._data_[:towrite << 1].tobytes()
             buffer = self._render_buffer(towrite)
             CFFI.memmove(buffer[0], b, len(b))
@@ -1492,6 +1495,9 @@ def sc_player(d):
     def write(data):
         if player.closed:
             return
+        if cc < 2:
+            data = data[::2] + data[1::2]
+            data *= 0.5
         player.wait()
         if not len(player._data_):
             player._data_ = data
@@ -1503,7 +1509,7 @@ def sc_player(d):
         player.fut.set_result(None)
         if not player.playing or player.playing.done():
             player.playing = submit(play, player)
-    player.write = write
+    player.write = write        
     def close():
         player.closed = True
         try:
@@ -1514,7 +1520,7 @@ def sc_player(d):
     def wait():
         if not len(player._data_):
             return
-        while len(player._data_) > 6400:
+        while len(player._data_) > 3200 * cc:
             async_wait()
         while player.fut and not player.fut.done():
             player.fut.result()

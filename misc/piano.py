@@ -767,7 +767,7 @@ def render_piano():
     ssize = tuple(ssize)
     itx = ceil(editor.targ_x // 1 * barlength - soffs / note_width * timesig[1])
     keys = ceil((ssize[1] - 16) / note_spacing + 1)
-    centre = 48 + (keys + 1 >> 1) + floor(editor.targ_y)
+    centre = 48 + (keys + 1 >> 1) + ceil(editor.targ_y)
     offs_y = round((offs_y + soffs) % note_spacing - 1.5 * note_spacing)
     bv = ceil(note_height / 5)
     if not surf or surf.get_size() != ssize:
@@ -1088,7 +1088,7 @@ def render_piano():
                 if deleted:
                     for n in deleted:
                         delete_note(n)
-                    editor.undo.append(["undo_delete_note", deleted])
+                    editor_action(["undo_delete_note", deleted])
             except StopIteration:
                 pass
             if editor.note.instrument is not None:
@@ -1109,7 +1109,7 @@ def render_piano():
                         create_note(N)
                         hold_note(N, True)
                         print(N)
-                        editor.undo.append(["delete_note", N])
+                        editor_action(["delete_note", N])
                     elif not any(mheld) and not kheld[K_DELETE]:
                         r = tuple(xy) + (editor.note.length * note_width + 1, note_height + 1)
                         c = project.instruments[editor.note.instrument].colour + (96 + 192 * abs(pc() % 1 - 0.5),)
@@ -1170,12 +1170,16 @@ def render_piano():
                     create_note(n, True)
                     editor.selection.notes.add(id(n))
 
-                editor.undo.append(["undo_paste", created, selection])
+                editor_action(["undo_paste", created, selection])
                 print(list(map(note_from_id, editor.selection.notes)))
         if kheld[K_z]:
             undone = True
             if not player.undone and editor.undo:
-                action = editor.undo.pop(-1)
+                globals()["pdata"] = None
+                try:
+                    action = editor.undo.pop(-1)
+                except:
+                    action = editor.undo.pop()
                 func = globals().get(action.pop(0))
                 if func:
                     func(*action)
@@ -1264,9 +1268,9 @@ def render_piano():
             editor.selection.orig = (None, None)
         else:
             editor.selection.orig = ntuple
-        editor.undo.append(["undo_move", deleted, created])
+        editor_action(["undo_move", deleted, created])
     elif deleted:
-        editor.undo.append(["undo_delete_note", deleted])
+        editor_action(["undo_delete_note", deleted])
 
     r = player.rect[:2] + (16, player.rect[3] - 16)
     hovered = in_rect(mpos, r)
@@ -1376,6 +1380,10 @@ def render_piano():
     globals()["_targ_x"] = editor.targ_x
     globals()["_targ_y"] = editor.targ_y
 
+
+def editor_action(undo):
+    editor_action(undo)
+    globals()["pdata"] = None
 
 def undo_delete_note(deleted):
     [create_note(n) for n in deleted]

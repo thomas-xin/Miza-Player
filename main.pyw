@@ -1320,6 +1320,7 @@ def start():
     player.end = inf
     return None, inf
 
+last_save = 0
 def skip():
     if queue:
         e = queue.popleft()
@@ -1335,6 +1336,10 @@ def skip():
             if len(queue) > sidebar.maxitems - 1:
                 queue[sidebar.maxitems - 1].pos = sidebar.maxitems - 1
             sidebar.particles.append(e)
+        t = pc()
+        if t >= last_save + 10:
+            submit(save_settings)
+            globals()["last_save"] = t
         if queue:
             return enqueue(queue[0])
         mixer.clear()
@@ -3108,15 +3113,18 @@ def draw_menu():
                 cache=True,
             )
 
+pdata = None
 def save_settings():
+    print("Saving settings...")
     temp = options.screensize
     options.screensize = screensize2
     if options != orig_options:
         with open(config, "w", encoding="utf-8") as f:
             json.dump(dict(options), f, indent="\t", default=json_default)
     if options.control.preserve:
-        b = io.BytesIO()
-        fut = submit(save_project, b)
+        if not pdata:
+            b = io.BytesIO()
+            fut = submit(save_project, b)
         entries = []
         for entry in queue:
             url = entry.url
@@ -3148,8 +3156,10 @@ def save_settings():
             data["paused"] = True
         if is_minimised():
             data["minimised"] = True
-        fut.result()
-        data["project"] = base64.b64encode(b.read()).decode("ascii")
+        if not pdata:
+            fut.result()
+            globals()["pdata"] = base64.b64encode(b.read()).decode("ascii")
+        data["project"] = pdata
         with open("dump.json", "w", encoding="utf-8") as f:
             json.dump(data, f, separators=(",", ":"), default=json_default)
     options.screensize = temp
@@ -3224,7 +3234,7 @@ try:
             player.fut = submit(start_player, data["pos"], force=True)
     tick = 0
     while True:
-        if not tick + 1 & 8191:
+        if not tick + 2 & 65535:
             try:
                 if utc() - os.path.getmtime(collections2f) > 3600:
                     submit(update_collections2)
@@ -3232,7 +3242,10 @@ try:
             except FileNotFoundError:
                 submit(update_repo)
                 update_collections2()
-            submit(save_settings)
+            t = pc()
+            if t >= last_save + 10:
+                submit(save_settings)
+                globals()["last_save"] = t
         if not tick % (status_freq + (status_freq & 1)):
             submit(send_status)
         fut = common.__dict__.pop("repo-update", None)

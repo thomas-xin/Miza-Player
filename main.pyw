@@ -3115,7 +3115,6 @@ def draw_menu():
 
 pdata = None
 def save_settings():
-    print("Saving settings...")
     temp = options.screensize
     options.screensize = screensize2
     if options != orig_options:

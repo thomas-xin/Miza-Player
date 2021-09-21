@@ -1059,6 +1059,8 @@ def play(pos):
                     s = sfut.result()
                 else:
                     s = synthesize()
+                if settings.silenceremove and quiet >= 15 and s is None and np.mean(np.abs(sample)) < 1 / 512:
+                    raise StopIteration
                 sfut = submit(synthesize)
                 sample = sample.astype(np.float32)
                 sample /= 32767

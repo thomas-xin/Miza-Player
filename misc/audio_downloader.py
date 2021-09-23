@@ -1451,7 +1451,7 @@ class AudioDownloader:
             self.searched[item] = obj
         return output
 
-    # Gets the stream URL of a queue entry, starting download when applicable.
+    # Gets the stream URL of a queue entry, `download` being a redundant variable kept for compatibility.
     def get_stream(self, entry, force=False, download=True):
         stream = entry.get("stream", None)
         icon = entry.get("icon", None)

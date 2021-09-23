@@ -420,6 +420,22 @@ def duration_est():
             print_exc()
         time.sleep(0.5)
 
+def download(url, fn):
+    try:
+        cmd = ffmpeg_start
+        if is_url(url):
+            cmd += ffmpeg_stream
+        cmd += ("-nostdin", "-i", url)
+        if fn.endswith(".pcm"):
+            cmd += ("-f", "s16le")
+        else:
+            cmd += ("-b:a", "192k")
+        cmd += ("-ar", "48k", "-ac", "2", fn)
+        print(cmd)
+        subprocess.run(cmd)
+    except:
+        print_exc()
+
 
 removing = set()
 def remover():
@@ -1092,18 +1108,16 @@ def play(pos):
                     spec_fut = submit(spectrogram)
                 while waiting:
                     waiting.result()
-                futs = deque()
                 while True:
                     try:
                         cc = sc.get_speaker(DEVICE.id).channels
                         if cc != channel.channels:
                             raise
-                        futs.append(submit(channel.wait))
-                        futs.append(submit(channel.write, sample))
-                        for fut in futs:
-                            fut.result(timeout=1.2)
+                        fut = submit(channel.wait)
+                        fut.result(timeout=0.8)
+                        fut = submit(channel.write, sample)
+                        fut.result(timeout=0.4)
                     except:
-                        futs.clear()
                         print_exc()
                         print("SoundCard timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
@@ -1258,7 +1272,7 @@ def piano_player():
             time.sleep(0.1)
         while True:
             channel.wait()
-            if len(channel._data_) > 400:
+            if len(channel._data_) > 1600 * channel.channels:
                 async_wait()
                 continue
             if sfut:
@@ -1283,18 +1297,16 @@ def piano_player():
                     spec_fut = submit(spectrogram)
                 while waiting:
                     waiting.result()
-                futs = deque()
                 while True:
                     try:
                         cc = sc.get_speaker(DEVICE.id).channels
                         if cc != channel.channels:
                             raise
-                        futs.append(submit(channel.wait))
-                        futs.append(submit(channel.write, sample))
-                        for fut in futs:
-                            fut.result(timeout=1.2)
+                        fut = submit(channel.wait)
+                        fut.result(timeout=0.8)
+                        fut = submit(channel.write, sample)
+                        fut.result(timeout=0.4)
                     except:
-                        futs.clear()
                         print_exc()
                         print("SoundCard timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
@@ -1404,7 +1416,8 @@ def render_notes(i, notes):
     return samples
 
 
-ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+seen_urls = set()
+ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-v", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
 settings = cdict()
 alphakeys = prevkeys = ()
@@ -1523,19 +1536,8 @@ while not sys.stdin.closed and failed < 8:
                 continue
             if command.startswith("~download"):
                 st, fn2 = command[10:].split(" ", 1)
-                # fn2 = "cache/~" + h + ".pcm"
                 if not os.path.exists(fn2) or time.time() - os.path.getmtime(fn2) > 86400 * 7:
-                    cmd = ffmpeg_start
-                    if is_url(st):
-                        cmd += ffmpeg_stream
-                    cmd += ("-nostdin", "-i", st)
-                    if fn2.endswith(".pcm"):
-                        cmd += ("-f", "s16le")
-                    else:
-                        cmd += ("-b:a", "192k")
-                    cmd += ("-ar", "48k", "-ac", "2", fn2)
-                    print(cmd)
-                    subprocess.Popen(cmd)
+                    submit(download, st, fn2)
                 continue
             if command.startswith("~output"):
                 OUTPUT_DEVICE = command[8:]
@@ -1683,10 +1685,7 @@ while not sys.stdin.closed and failed < 8:
                         ostream = stream
                         stream = "cache/~" + sh + ".pcm"
                         if not os.path.exists(stream) or os.path.getsize(stream) / 48000 / 2 / 2 < duration - 1:
-                            cmd = ffmpeg_start
-                            if is_url(stream):
-                                cmd += ffmpeg_stream
-                            cmd += ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
+                            cmd = ffmpeg_start + ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
                             print(cmd)
                             resp = subprocess.run(cmd)
                     fn = None
@@ -1694,6 +1693,10 @@ while not sys.stdin.closed and failed < 8:
                 cmd = ffmpeg_start
                 if is_url(stream):
                     cmd += ffmpeg_stream
+                    if sh in seen_urls:
+                        submit(download, stream, "cache/~" + sh + ".pcm")
+                    else:
+                        seen_urls.add(sh)
                 cmd = list(cmd)
                 pcm = False
                 if not fn:

@@ -1209,7 +1209,11 @@ def prepare(entry, force=False, download=False):
                 submit(render_lyrics, queue[0])
     elif force and is_url(entry.get("url")):
         ytdl = downloader.result()
-        stream = ytdl.get_stream(entry, force=True, download=False)
+        if force > 1:
+            data = ytdl.extract(entry.url)
+            stream = data[0].setdefault("stream", data[0].url)
+        else:
+            stream = ytdl.get_stream(entry, force=True, download=False)
     else:
         stream = entry.stream
     stream = stream.strip()
@@ -1254,11 +1258,11 @@ def start_player(pos=None, force=False):
     player.last = 0
     player.amp = 0
     player.pop("osci", None)
-    stream = prepare(queue[0], force=True)
+    stream = prepare(queue[0], force=force + 1)
     if not queue[0].url:
         player.waiting.popleft()
         return skip()
-    stream = prepare(queue[0], force=True)
+    stream = prepare(queue[0], force=force + 1)
     entry = queue[0]
     if not entry.url:
         player.waiting.popleft()
@@ -3338,7 +3342,9 @@ try:
                 mpos = (nan,) * 2
             kprev = kheld
             kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
+            kc2 = astype(kclick, np.bool_)
             kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
+            np.logical_or(kc2, kclick, out=kc2)
             krelease = [not x and y for x, y in zip(kheld, kprev)]
             kspam = KeyList(x == 1 or y >= 20 for x, y in zip(kclick, kheld))
             # if any(kclick):

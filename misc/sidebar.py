@@ -130,7 +130,7 @@ def render_sidebar(dur=0):
             4,
         )
     if offs > 4 - sidebar_width:
-        if queue and (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_s]:
+        if queue and (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_s]:
             name = None
             entries = deque()
             for entry in queue:
@@ -155,7 +155,7 @@ def render_sidebar(dur=0):
         DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), SRCALPHA)
         DISP2.fill((0, 0, 0, 0))
         # DISP2.set_colorkey(sc)
-        if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
+        if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_v]:
             submit(enqueue_auto, *pyperclip.paste().splitlines())
         if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
             sidebar.pop("dragging", None)
@@ -182,7 +182,7 @@ def render_sidebar(dur=0):
                     entry.pop("selected", None)
                 sidebar.pop("last_selected", None)
                 lq = nan
-        elif kclick[K_ESCAPE]:
+        elif kc2[K_ESCAPE]:
             for entry in queue:
                 entry.pop("selected", None)
             sidebar.pop("last_selected", None)
@@ -216,7 +216,7 @@ def render_sidebar(dur=0):
             breaking = lambda i: False
         else:
             breaking = lambda i: i < base or i >= base + maxitems
-        if any(kclick) or any(mclick):
+        if any(kc2) or any(mclick):
             entries = enumerate(queue)
         else:
             entries = enumerate(queue[base:base + maxitems], base)
@@ -226,14 +226,14 @@ def render_sidebar(dur=0):
                 pops.add(i)
                 continue
             if entry.get("selected"):
-                if kclick[K_DELETE] or kclick[K_BACKSPACE] or CTRL(kheld) and kclick[K_x]:
+                if kc2[K_DELETE] or kc2[K_BACKSPACE] or CTRL(kheld) and kc2[K_x]:
                     pops.add(i)
                     if sidebar.get("last_selected") == entry:
                         sidebar.pop("last_selected", None)
-                if CTRL(kheld) and (kclick[K_c] or kclick[K_x]):
+                if CTRL(kheld) and (kc2[K_c] or kc2[K_x]):
                     entry.flash = 16
                     copies.append(entry.url)
-            elif CTRL(kheld) and kclick[K_a]:
+            elif CTRL(kheld) and kc2[K_a]:
                 entry.selected = True
                 sidebar.last_selected = entry
                 lq = i

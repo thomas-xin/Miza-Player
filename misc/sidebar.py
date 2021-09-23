@@ -157,7 +157,7 @@ def render_sidebar(dur=0):
         # DISP2.set_colorkey(sc)
         if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_v]:
             submit(enqueue_auto, *pyperclip.paste().splitlines())
-        if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
+        if in_rect(mpos, sidebar.rect) and mc2[0] or not mheld[0]:
             sidebar.pop("dragging", None)
         if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue if entry):
             sidebar.pop("last_selected")
@@ -176,7 +176,7 @@ def render_sidebar(dur=0):
         otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
         etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
         target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
-        if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
+        if mc2[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
             if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                 for entry in queue:
                     entry.pop("selected", None)
@@ -209,14 +209,14 @@ def render_sidebar(dur=0):
                     alpha=round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
                     filled=False,
                 )
-                if not swap and not mclick[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
+                if not swap and not mc2[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
                     if target != i:
                         swap = target - i
-        if (SHIFT(kheld) or CTRL(kheld)) and mclick[0]:
+        if (SHIFT(kheld) or CTRL(kheld)) and mc2[0]:
             breaking = lambda i: False
         else:
             breaking = lambda i: i < base or i >= base + maxitems
-        if any(kc2) or any(mclick):
+        if any(kc2) or any(mc2):
             entries = enumerate(queue)
         else:
             entries = enumerate(queue[base:base + maxitems], base)
@@ -238,8 +238,11 @@ def render_sidebar(dur=0):
                 sidebar.last_selected = entry
                 lq = i
             if breaking(i):
-                entry.flash = 8
-                entry.pos = i
+                entry.flash = 5
+                if control.shuffle:
+                    entry.pos = random.randint(0, len(queue) - 1)
+                else:
+                    entry.pos = i
                 continue
             if not isfinite(lq):
                 lq2 = nan
@@ -255,7 +258,7 @@ def render_sidebar(dur=0):
                     if a <= i <= b:
                         selectable = True
             if selectable or entry.get("selected"):
-                if mclick[0] and selectable:
+                if mc2[0] and selectable:
                     if not sidebar.abspos:
                         if entry.get("selected") and CTRL(kheld):
                             entry.selected = False
@@ -269,7 +272,7 @@ def render_sidebar(dur=0):
                                 sidebar.last_selected = entry
                                 lq2 = i
                                 sidebar.selection_offset = np.array(mpos2) - rect[:2]
-                elif mclick[1] and i == etarget:
+                elif mc2[1] and i == etarget:
                     if not entry.get("selected"):
                         for e in queue:
                             if e == entry:

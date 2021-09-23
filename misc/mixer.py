@@ -1693,8 +1693,9 @@ while not sys.stdin.closed and failed < 8:
                 cmd = ffmpeg_start
                 if is_url(stream):
                     cmd += ffmpeg_stream
-                    if sh in seen_urls:
-                        submit(download, stream, "cache/~" + sh + ".pcm")
+                    fn2 = "cache/~" + sh + ".pcm"
+                    if sh in seen_urls and not os.path.exists(fn2):
+                        submit(download, stream, fn2)
                     else:
                         seen_urls.add(sh)
                 cmd = list(cmd)

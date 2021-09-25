@@ -3779,7 +3779,6 @@ except Exception as ex:
             mixer.submit("~quit")
         except:
             pass
-    PROC = psutil.Process()
     for c in PROC.children(recursive=True):
         futs.add(submit(c.kill))
     for e in os.scandir("cache"):

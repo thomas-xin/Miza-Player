@@ -230,7 +230,7 @@ def sc_player(d):
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
         while True:
-            if self.closed:
+            if self.closed or paused:
                 return
             towrite = self._render_available_frames()
             if towrite < 50 * cc:

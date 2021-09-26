@@ -332,13 +332,6 @@ def start_mixer():
     if "pygame" in globals() and getattr(pygame, "closed", None):
         return
     mixer = psutil.Popen(argp + ["misc/mixer.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    try:
-        if os.name == "nt":
-            mixer.ionice(psutil.IOPRIO_HIGH)
-        else:
-            mixer.ionice(psutil.IOPRIO_CLASS_RT, value=7)
-    except:
-        pass
     if "pygame" not in globals():
         import ctypes, struct, io
         user32 = ctypes.windll.user32
@@ -401,13 +394,6 @@ else:
     mixer = cdict()
 
 PROC = psutil.Process()
-try:
-    if os.name == "nt":
-        PROC.ionice(psutil.IOPRIO_HIGH)
-    else:
-        PROC.ionice(psutil.IOPRIO_CLASS_RT, value=7)
-except:
-    pass
 
 psize = struct.calcsize("P")
 if psize == 8:

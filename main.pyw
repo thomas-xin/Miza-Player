@@ -3763,6 +3763,7 @@ except Exception as ex:
     futs.add(submit(requests.delete, mp))
     save_settings()
     if restarting:
+        futs.add(submit(update_collections2))
         try:
             os.remove(collections2f)
         except:

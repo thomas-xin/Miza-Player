@@ -1234,7 +1234,6 @@ def synthesize():
                 wave *= samplespace
                 wave *= -0.5
                 s[:x + c] += wave
-    async_wait()
     if s is not None:
         globals()["buffoffs"] += FR
         m = 1

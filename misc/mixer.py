@@ -231,6 +231,8 @@ def sc_player(d):
     def play(self):
         while True:
             if self.closed or paused and not paused.done():
+                if len(self._data_) > 3200 * cc:
+                    self._data_ = self._data_[-3200 * cc:]
                 return
             towrite = self._render_available_frames()
             if towrite < 50 * cc:
@@ -258,14 +260,11 @@ def sc_player(d):
         player.wait()
         if not len(player._data_):
             player._data_ = data
-            if not player.playing or player.playing.done():
-                player.playing = submit(play, player)
-            return
+            return verify()
         player.fut = concurrent.futures.Future()
         player._data_ = np.concatenate((player._data_, data))
         player.fut.set_result(None)
-        if not player.playing or player.playing.done():
-            player.playing = submit(play, player)
+        return verify()
     player.write = write        
     def close():
         player.closed = True
@@ -277,10 +276,14 @@ def sc_player(d):
     def wait():
         if not len(player._data_):
             return
+        verify()
         while len(player._data_) > 3200 * cc:
             async_wait()
         while player.fut and not player.fut.done():
             player.fut.result()
+    def verify():
+        if not player.playing or player.playing.done():
+            player.playing = submit(play, player)
     player.wait = wait
     return player
 

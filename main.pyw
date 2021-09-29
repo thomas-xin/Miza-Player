@@ -1743,6 +1743,7 @@ def update_menu():
         player.amp = 0
         player.pop("osci", None)
     toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * (-2 if player.paused else 2))
+    toolbar.pause.angle %= tau
     toolbar.pause.speed *= 0.995 ** (duration * 480)
     sidebar.scroll.target = max(0, min(sidebar.scroll.target, len(queue) * 32 - screensize[1] + options.toolbar_height + 36 + 32))
     r = ratio if sidebar.scrolling else (ratio - 1) / 3 + 1

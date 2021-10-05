@@ -25,7 +25,8 @@ bs4>=0.0.1
 easygui>=0.98.2
 easygui_qt>=0.9.3
 numpy>=1.21.2
-pillow>=8.3.1
+orjson>=3.6.3
+pillow>=8.3.2
 psutil>=5.8.0
 pygame>=2.0.1
 pyperclip>=1.8.2
@@ -41,7 +42,11 @@ youtube-dl>=2021.6.6
 if os.name == "nt":
     modlist.append("pipwin>=0.5.1")
 else:
-    modlist.append("pyaudio>=0.2.11")
+    modlist.extend((
+        "pyopengl>=3.1.5",
+        "pyopengl-accelerate>=3.1.5",
+        "glfw>=2.3.0",
+    ))
 
 try:
     import pkg_resources, struct
@@ -82,8 +87,19 @@ if installing:
     subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "pip"])
     for i in installing:
         i.wait()
-try:
-    if str(pkg_resources.get_distribution("pyaudio")) < "PyAudio 0.2.11":
-        raise ValueError
-except (pkg_resources.DistributionNotFound, ValueError):
-    subprocess.run([sys.executable, "-m", "pipwin", "install", "pyaudio"])
+if os.name == "nt":
+    try:
+        if pkg_resources.get_distribution("pyopengl").version < "3.1.5":
+            raise ValueError
+    except:
+        subprocess.run([sys.executable, "-m", "pipwin", "install", "pyopengl"])
+    try:
+        if pkg_resources.get_distribution("pyopengl-accelerate").version < "3.1.5":
+            raise ValueError
+    except:
+        subprocess.run([sys.executable, "-m", "pipwin", "install", "pyopengl-accelerate"])
+    try:
+        if pkg_resources.get_distribution("glfw").version < "2.3.0":
+            raise ValueError
+    except:
+        subprocess.run([sys.executable, "-m", "pipwin", "install", "glfw"])

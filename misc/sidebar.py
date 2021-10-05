@@ -96,7 +96,10 @@ def render_sidebar(dur=0):
             )
         if offs > -sidebar_width + 4:
             n = len(queue)
-            t = sum(e.get("duration") or 300 for e in queue if e) - (player.pos or 0)
+            if control.loop:
+                t = inf
+            else:
+                t = sum(e.get("duration") or 300 for e in queue if e) - (player.pos or 0)
             message_display(
                 f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
                 13,
@@ -156,7 +159,7 @@ def render_sidebar(dur=0):
         DISP2.fill((0, 0, 0, 0))
         # DISP2.set_colorkey(sc)
         if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_v]:
-            submit(enqueue_auto, *pyperclip.paste().splitlines())
+            submit(enqueue_auto, *pyperclip.paste().split())
         if in_rect(mpos, sidebar.rect) and mc2[0] or not mheld[0]:
             sidebar.pop("dragging", None)
         if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue if entry):

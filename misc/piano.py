@@ -1154,7 +1154,7 @@ def render_piano():
                 editor.selection.cpy = 1
                 created = deque()
                 i_id = None
-                for line in p.split("\n"):
+                for line in p.split():
                     N = json.loads("[" + line + "]")
                     x = pos + N[0]
                     N[0] = x % timesig[0]

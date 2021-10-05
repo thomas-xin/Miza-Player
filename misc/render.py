@@ -2,8 +2,7 @@ import sys
 write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame
 sys.stdout.write = write
-
-import time, numpy, math, random, json, collections, colorsys, traceback, concurrent.futures
+import time, numpy, math, random, orjson, collections, colorsys, traceback
 from math import *
 from traceback import print_exc
 np = numpy
@@ -20,46 +19,7 @@ def pil2pyg(im):
     b = im.tobytes()
     return pygame.image.frombuffer(b, im.size, mode)
 
-async_wait = lambda: time.sleep(0.001)
-
-from concurrent.futures import thread
-
-def _adjust_thread_count(self):
-    # if idle threads are available, don't spin new threads
-    try:
-        if self._idle_semaphore.acquire(timeout=0):
-            return
-    except AttributeError:
-        pass
-
-    # When the executor gets lost, the weakref callback will wake up
-    # the worker threads.
-    def weakref_cb(_, q=self._work_queue):
-        q.put(None)
-
-    num_threads = len(self._threads)
-    if num_threads < self._max_workers:
-        thread_name = '%s_%d' % (self._thread_name_prefix or self, num_threads)
-        t = thread.threading.Thread(
-            name=thread_name,
-            target=thread._worker,
-            args=(
-                thread.weakref.ref(self, weakref_cb),
-                self._work_queue,
-                self._initializer,
-                self._initargs,
-            ),
-            daemon=True
-        )
-        t.start()
-        self._threads.add(t)
-        thread._threads_queues[t] = self._work_queue
-
-concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
-
 import pygame.gfxdraw as gfxdraw
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=5)
-submit = exc.submit
 pygame.font.init()
 FONTS = {}
 
@@ -255,15 +215,99 @@ class Bar(Particle):
             y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
             sfx.blit(surf, (x, y))
 
+def animate_disc():
+    if not vertices:
+        return
+    bars = bars2
+    spec = CIRCLE_SPEC
+    if not spec:
+        class Circle_Spec:
+            angle = 0
+            ry = 0
+            rz = 0
+        globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
+    w, h = specsize
+    depth = 3
+    glLineWidth(5)
+    ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+    rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+    glRotatef(1, 0, ry, rz)
+    spec.ry = (spec.ry + ry) % 360
+    spec.rz = (spec.rz + rz) % 360
+    glEnableClientState(GL_VERTEX_ARRAY)
+    glEnableClientState(GL_COLOR_ARRAY)
+    hsv = globals()["hsv"]
+    hsv.T[0][:] = [(pc_ / 3 + bar.x / barcount / freqscale2) % 1 for bar in reversed(bars)]
+    alpha = np.array([bar.height / barheight * 2 for bar in reversed(bars)], dtype=np.float16)
+    sat = np.clip(alpha - 1, None, 1)
+    np.subtract(1, sat, out=sat)
+    hsv.T[1][:] = sat
+    np.clip(hsv, None, 1, out=hsv)
+    hsv *= 255
+    hsv = hsv.astype(np.uint8)
+    hsv.T[2][:] = 255
+    img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
+    colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
+    colours *= 1 / 255
+    mult = np.linspace(1, 0, len(alpha))
+    mult **= 2
+    alpha *= mult
+    colours.T[-1][:] = alpha
+    colours = np.repeat(colours, 2, axis=0)[1:-1]
+    colours = np.tile(colours, (vertices * depth, 1))
+    hi = hsv.T[0].astype(np.float32)
+    hi *= -tau / 255
+    np.sin(hi, out=hi)
+    hi *= 0.25
+    hi = np.repeat(hi, 2, axis=0)[1:-1]
+    hi = np.tile(hi, (vertices * depth, 1)).T
+    maxlen = ceil(384 / vertices)
+    if linearray.maxlen != maxlen:
+        globals()["linearray"] = deque(maxlen=maxlen)
+    linearray.append((colours.astype(np.float32), deque(maxlen=depth * vertices)))
+    for i in range(depth):
+        angle = spec.angle + tau - tau / vertices if vertices else spec.angle
+        zs = np.linspace(spec.angle, angle, vertices)
+        directions = ([cos(z), sin(z), 1] for z in zs)
+        for d in directions:
+            vectors = np.repeat(radii * d, 2, axis=0)[1:-1]
+            linearray[-1][-1].append(vectors.astype(np.float32))
+        spec.angle += 1 / 360 / depth * tau
+    r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
+    for i, t in enumerate(linearray):
+        c, m = t
+        c.T[-1] *= r
+        glColorPointer(4, GL_FLOAT, 0, c.ravel())
+        verts = np.array(m, dtype=np.float32)
+        verts.T[-1][:] = hi
+        glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
+        glDrawArrays(GL_LINES, 0, verts.shape[0] * verts.shape[1])
+    glFlush()
+    glDisableClientState(GL_VERTEX_ARRAY)
+    glDisableClientState(GL_COLOR_ARRAY)
+    sfx = glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    return sfx
+
 bars = [Bar(i - 1, barcount) for i in range(barcount)]
 bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
 CIRCLE_SPEC = None
+radii = np.repeat(np.array([bar.x / barcount2 for bar in reversed(bars2)], dtype=np.float16), 3).reshape((barcount2, 3))
+radii.T[-1] = 1
+hsv = np.empty((len(bars2), 3), dtype=np.float16)
+tex = None
+linearray = deque()
+# r = 23 / 24
+# s = 1 / 48
+# colourmatrix = (
+#     r, s, 0, 0,
+#     0, r, s, 0,
+#     s, 0, r, 0,
+# )
 
 def spectrogram_render(bars):
-    global ssize2, specs, dur
+    global ssize2, specs, dur, tex
     try:
-        if specs != 3:
-            globals()["CIRCLE_SPEC"] = None
         if specs == 1:
             sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
             for bar in bars:
@@ -274,51 +318,7 @@ def spectrogram_render(bars):
             for bar in bars:
                 bar.render2(sfx=sfx)
         else:
-            spec = CIRCLE_SPEC
-            D = 5
-            R = D / 2 / freqscale2
-            if not spec:
-                class Circle_Spec:
-                    angle = 0
-                    rotation = 0
-                globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
-                spec.image = Image.new("RGB", (barcount * D - D,) * 2)
-            else:
-                r = 15 / 16
-                s = 1 / 48
-                colourmatrix = (
-                    r, s, 0, 0,
-                    0, r, s, 0,
-                    s, 0, r, 0,
-                )
-                spec.image = spec.image.convert("RGB", colourmatrix)
-                # spec.image = im
-            sfx = pil2pyg(spec.image)
-            for i in range(2):
-                c = [x + 1 >> 1 for x in sfx.get_size()]
-                zs = np.linspace(spec.angle, spec.angle + tau - tau / vertices if vertices else spec.angle, vertices)
-                xs = [cos(z) for z in zs]
-                ys = [sin(z) for z in zs]
-                for bar in sorted(bars, key=lambda bar: bar.height):
-                    size = min(2 * barheight, round_random(bar.height))
-                    amp = size / barheight * 2
-                    val = min(1, amp)
-                    sat = 1 - min(1, max(0, amp - 1))
-                    colour = tuple(round_random(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount / freqscale2) % 1, sat, val))
-                    x = bar.x + 1
-                    r1 = x * R - 1
-                    r2 = x * R
-                    x1 = (round_random(c[0] + x * r1) for x in xs)
-                    y1 = (round_random(c[1] + y * r1) for y in ys)
-                    x2 = (round_random(c[0] + x * r2) for x in xs)
-                    y2 = (round_random(c[1] + y * r2) for y in ys)
-                    w = bar.x / (len(bars) - 1) * 2 + 1
-                    for t in zip(x1, y1, x2, y2):
-                        pygame.draw.line(sfx, colour, t[:2], t[2:], width=round_random(w))
-                spec.image = pyg2pil(sfx)
-                spec.angle += 1 / 720 * tau
-                spec.rotation += 0.25
-            sfx = spec.image.rotate(spec.rotation, resample=Image.NEAREST)
+            sfx = animate_disc()
 
         if specs == 1:
             if sfx.size != ssize2:
@@ -332,11 +332,17 @@ def spectrogram_render(bars):
             sfx = pil2pyg(sfx)
             for bar in reversed(highbars):
                 bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
-        async_wait()
-        try:
-            spectrobytes = sfx.tobytes()
-        except AttributeError:
-            spectrobytes = pygame.image.tostring(sfx, "RGB")
+
+        if not sfx:
+            sys.stdout.write("~s\n")
+            return sys.stdout.flush()
+        if type(sfx) is bytes:
+            spectrobytes = sfx
+        else:
+            try:
+                spectrobytes = sfx.tobytes()
+            except AttributeError:
+                spectrobytes = pygame.image.tostring(sfx, "RGB")
 
         write = specs == 3
         for bar in bars:
@@ -345,43 +351,65 @@ def spectrogram_render(bars):
             bar.update(dur=dur)
 
         if write:
-            try:
-                size = sfx.size
-            except AttributeError:
-                size = sfx.get_size()
+            if type(sfx) is bytes:
+                size = specsize
+            else:
+                try:
+                    size = sfx.size
+                except AttributeError:
+                    size = sfx.get_size()
             sys.stdout.buffer.write(b"~s" + "~".join(map(str, size)).encode("utf-8") + b"\n")
             sys.stdout.buffer.write(spectrobytes)
         else:
             sys.stdout.write("~s\n")
         sys.stdout.flush()
     except:
-        # with open("log.txt", "w") as f:
-        #     f.write(traceback.format_exc())
         print_exc()
 
-fut = None
 ssize2 = (0, 0)
 specs = 0
+D = 7
+specsize = (barcount * D - D,) * 2
+
+import glfw
+from glfw.GLFW import *
+from OpenGL.GL import *
+from OpenGL.GLU import *
+from OpenGL.GLUT import *
+
+glfw.init()
+glfw.window_hint(glfw.VISIBLE, False)
+globals()["window"] = glfw.create_window(*specsize, "render.py", None, None)
+glfw.make_context_current(window)
+glutInitDisplayMode(GL_RGB)
+glMatrixMode(GL_PROJECTION)
+glLoadIdentity()
+glOrtho(-1, 1, -1, 1, -1, 1)
+glEnable(GL_BLEND)
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+glPixelStorei(GL_PACK_ALIGNMENT, 1)
+gluPerspective(45, 1, 1/16, 16)
+glTranslatef(0, 0, -2)
+
 while True:
     try:
         line = sys.stdin.buffer.read(2)
         if line == b"~r":
             line = sys.stdin.buffer.readline().rstrip()
-            # print(line)
-            ssize2, specs, vertices, dur, pc_ = map(json.loads, line.split(b"~"))
-            if fut:
-                fut.result()
+            ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
             bi = bars2 if specs > 1 else bars
-            fut = submit(spectrogram_render, bi)
+            spectrogram_render(bi)
         elif line == b"~e":
-            b = sys.stdin.buffer.read(1)
-            while b[-1:] != b"\n":
-                b += sys.stdin.buffer.read(1)
+            b = sys.stdin.buffer.readline()
             amp = np.frombuffer(sys.stdin.buffer.read(int(b)), dtype=np.float32)
             bi = bars2 if len(amp) > len(bars) else bars
             for i, pwr in enumerate(amp):
                 bi[i].ensure(pwr / 2)
         elif not line:
             break
+        glfwPollEvents()
     except:
         print_exc()
+
+glfw.destroy_window(window)
+glfw.terminate()

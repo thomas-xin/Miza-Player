@@ -12,7 +12,7 @@ import sys
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, numpy, math, random, base64, hashlib, json, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools, io, zipfile
+import os, sys, numpy, math, random, base64, hashlib, orjson, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools, io, zipfile
 import concurrent.futures, scipy.special
 from math import *
 np = numpy
@@ -89,7 +89,10 @@ def supersample(a, size, hq=False):
             return supersample(a, size)
         interp = np.linspace(0, n - 1, size)
         return np.interp(interp, range(n), a)
-    dtype = a.dtype
+    try:
+        dtype = a.dtype
+    except AttributeError:
+        dtype = object
     x = ceil(n / size)
     interp = np.linspace(0, n - 1, x * size)
     a = np.interp(interp, range(n), a)
@@ -230,7 +233,7 @@ def sc_player(d):
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
         while True:
-            if self.closed or paused and not paused.done():
+            if self.closed or paused and not paused.done() or not fut and not alphakeys:
                 if len(self._data_) > 3200 * cc:
                     self._data_ = self._data_[-3200 * cc:]
                 return
@@ -770,7 +773,6 @@ def oscilloscope(buffer):
             if packet:
                 size = osize
                 OSCI = pygame.Surface(size)
-                async_wait()
                 if packet:
                     point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
                     for i in range(1, len(osci)):
@@ -778,7 +780,7 @@ def oscilloscope(buffer):
                             return
                         prev = point
                         point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
-                        hue = ((osci[i] + osci[i - 1]) / 4 + pc() / 3 - i / len(osci)) % 1
+                        hue = ((osci[i] + osci[i - 1]) / 4) % 1
                         col = tuple(map(lambda x: round(x * 255), colorsys.hsv_to_rgb(1 - hue, 1, 1)))
                         pygame.draw.line(
                             OSCI,
@@ -786,7 +788,6 @@ def oscilloscope(buffer):
                             point,
                             prev,
                         )
-                    async_wait()
                     if packet:
                         b = pygame.image.tostring(OSCI, "RGB")
                         while stderr_lock:
@@ -854,9 +855,9 @@ def spectrogram_render():
             vertices = settings.get("gradient-vertices", 4)
         elif specs == 3:
             vertices = settings.get("spiral-vertices", 6)
-        if vertices > 64:
-            vertices = 64
-        binfo = b"~r" + b"~".join(map(lambda a: json.dumps(a).encode("utf-8"), (ssize2, specs, vertices, dur, pc()))) + b"\n"
+        if vertices > 384:
+            vertices = 384
+        binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, dur, t))) + b"\n"
         rproc.stdin.write(binfo)
         rproc.stdin.flush()
         line = rproc.stdout.readline().rstrip()
@@ -891,11 +892,9 @@ def spectrogram_update():
         lastspec = t
         dft = np.fft.rfft(spec_buffer)
         np.multiply(spec_buffer, (1 / 3) ** dur, out=spec_buffer)
-        async_wait()
         arr = np.zeros(barcount * freqscale, dtype=np.complex64)
         np.add.at(arr, fftrans, dft)
         arr[0] = 0
-        async_wait()
         amp = np.abs(arr, dtype=np.float32)
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
@@ -1159,7 +1158,7 @@ sel_instrument = 0
 class Sample(collections.abc.Hashable):
 
     def __init__(self, data, opt):
-        self.data = np.frombuffer(zip2bytes(base64.b64decode(data)), dtype=np.float16).astype(np.float32)
+        self.data = np.frombuffer(zip2bytes(base64.b85decode(data)), dtype=np.float16).astype(np.float32)
         self.cache = {}
         self.opt = opt
 
@@ -1468,7 +1467,7 @@ while not sys.stdin.closed and failed < 8:
                 s = command[8:]
                 p, b, s = s.split(" ", 2)
                 bar = int(b)
-                notes = json.loads(s)
+                notes = orjson.loads(s)
                 samples = render_notes(b, notes)
                 out = samples.astype(np.float32).tobytes()
                 with open(f"cache/&p{p}b{b}.pcm", "wb") as f:
@@ -1481,7 +1480,7 @@ while not sys.stdin.closed and failed < 8:
                     continue
                 sid, opt, data = b.split(None, 2)
                 sid = int(sid)
-                s = Sample(data.encode("ascii"), json.loads(opt))
+                s = Sample(data.encode("ascii"), orjson.loads(opt))
                 wavecache[sid] = s
                 sel_instrument = sid
                 continue
@@ -1498,7 +1497,7 @@ while not sys.stdin.closed and failed < 8:
                 continue
             if command.startswith("~editor"):
                 s = command[8:]
-                editor = cdict(json.loads(s))
+                editor = cdict(orjson.loads(s))
                 editor.note_length = 60 / editor.tempo * SR
                 continue
             if command == "~clear":
@@ -1565,7 +1564,7 @@ while not sys.stdin.closed and failed < 8:
                 else:
                     nostart = False
                 if s.startswith("{"):
-                    sets = json.loads(s)
+                    sets = orjson.loads(s)
                     settings.update(sets)
                 else:
                     setting, value = s.split()
@@ -1602,6 +1601,7 @@ while not sys.stdin.closed and failed < 8:
             if fut:
                 stopped = True
                 if paused:
+                    channel._data_ = ()
                     paused.set_result(None)
                 try:
                     fut.result(timeout=5)

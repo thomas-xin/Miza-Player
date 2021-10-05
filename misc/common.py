@@ -381,11 +381,27 @@ def start_display():
         ICON_DISP = ""
         pygame.display.set_icon(ICON)
     pygame.display.set_caption("Miza Player")
-    DISP = pygame.display.set_mode(options.screensize, pygame.RESIZABLE | pygame.HWSURFACE, vsync=True)
+    # glfw.init()
+    # glfw.window_hint(glfw.VISIBLE, False)
+    flags = pygame.RESIZABLE | pygame.HWSURFACE #| pygame.DOUBLEBUF | pygame.OPENGL
+    DISP = pygame.display.set_mode(options.screensize, flags, vsync=True)
     screensize2 = list(options.screensize)
-    # displaysize = [user32.GetSystemMetrics(78), user32.GetSystemMetrics(79)]
-    # print(displaysize)
     pygame.display.set_allow_screensaver(True)
+#     glutInitDisplayMode(GL_RGB)
+#     glMatrixMode(GL_PROJECTION)
+#     glLoadIdentity()
+#     glOrtho(-1, 1, -1, 1, -1, 1)
+#     glEnable(GL_BLEND)
+#     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+#     glPixelStorei(GL_PACK_ALIGNMENT, 1)
+#     gluPerspective(45, 1, 1/16, 16)
+#     glTranslatef(0, 0, -2)
+
+# import glfw
+# from glfw.GLFW import *
+# from OpenGL.GL import *
+# from OpenGL.GLU import *
+# from OpenGL.GLUT import *
 
 if hasmisc:
     submit(import_audio_downloader)
@@ -687,7 +703,6 @@ deque = collections.deque
 suppress = contextlib.suppress
 d2r = pi / 180
 ts_us = lambda: time.time_ns() // 1000
-async_wait = lambda: time.sleep(0.003)
 SR = 48000
 
 commitf = "misc/commit.tmp"
@@ -807,7 +822,7 @@ def bytes2zip(data):
     b.seek(0)
     return b.read()
 
-shash = lambda s: as_str(base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
+shash = lambda s: as_str(base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).rstrip(b"="))
 
 def quote(s):
     if s.isascii():
@@ -1927,7 +1942,10 @@ def supersample(a, size, hq=False):
             return supersample(a, size)
         interp = np.linspace(0, n - 1, size)
         return np.interp(interp, range(n), a)
-    dtype = a.dtype
+    try:
+        dtype = a.dtype
+    except AttributeError:
+        dtype = object
     x = ceil(n / size)
     interp = np.linspace(0, n - 1, x * size)
     a = np.interp(interp, range(n), a)

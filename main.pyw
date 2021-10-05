@@ -195,7 +195,7 @@ def transfer_instrument(*instruments):
             if instrument.get("wave") is None:
                 instrument.wave = synth_gen(**instrument.synth)
             if instrument.get("encoded") is None:
-                instrument.encoded = base64.b64encode(bytes2zip(instrument.wave.tobytes()))
+                instrument.encoded = base64.b85encode(bytes2zip(instrument.wave.tobytes()))
             b = instrument.encoded
             opt = json.dumps(instrument.get("opt", default_instrument_opt), separators=(",", ":"))
             a = f"~wave {instrument.id} {opt} ".encode("ascii")
@@ -1006,7 +1006,6 @@ submit(setup_buttons)
 
 
 is_active = lambda: pc() - player.get("last", 0) <= max(player.get("lastframe", 0), 1 / 30) * 4
-shash = lambda s: as_str(base64.b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).replace(b"/", b"-").rstrip(b"="))
 e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else nan)
 
 def ensure_duration(e):
@@ -1207,13 +1206,28 @@ def prepare(entry, force=False, download=False):
                     random.shuffle(q2.view)
                 queue.fill(np.concatenate((q1, q2, q3)))
                 submit(render_lyrics, queue[0])
-    elif force and is_url(entry.get("url")):
+    elif (force > 1 or force and not stream) and is_url(entry.get("url")):
         ytdl = downloader.result()
         if force > 1:
             data = ytdl.extract(entry.url)
             stream = data[0].setdefault("stream", data[0].url)
         else:
             stream = ytdl.get_stream(entry, force=True, download=False)
+    elif not is_url(stream) and not os.path.exists(stream):
+        entry.stream = os.path.exists(entry.url) and entry.url
+        duration = entry.duration
+        if not duration:
+            info = get_duration_2(stream)
+            duration = info[0]
+            if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
+                fi = stream
+                fn = "cache/~" + shash(fi) + ".pcm"
+                if not os.path.exists(fn):
+                    fn = select_and_convert(fi)
+                duration = get_duration_2(fn)[0]
+                stream = entry.stream = fn
+        entry.duration = duration or entry.duration
+        return entry.stream
     else:
         stream = entry.stream
     stream = stream.strip()
@@ -3136,6 +3150,8 @@ def save_settings():
             e = dict(name=name, url=url)
             if entry.get("duration"):
                 e["duration"] = entry["duration"]
+            if entry.get("stream"):
+                e["stream"] = entry["stream"]
             entries.append(e)
         edi = player.editor.copy()
         for k in (
@@ -3162,7 +3178,7 @@ def save_settings():
             data["minimised"] = True
         if not pdata:
             fut.result()
-            globals()["pdata"] = base64.b64encode(b.read()).decode("ascii")
+            globals()["pdata"] = base64.b85encode(b.read()).decode("ascii")
         data["project"] = pdata
         with open("dump.json", "w", encoding="utf-8") as f:
             json.dump(data, f, separators=(",", ":"), default=json_default)
@@ -3220,8 +3236,12 @@ try:
         if data.get("minimised"):
             pygame.display.iconify()
         if data.get("project"):
-            b = base64.b64decode(data["project"].encode("ascii"))
-            lp = submit(load_project, io.BytesIO(b), switch=False)
+            try:
+                b = base64.b85decode(data["project"].encode("ascii"))
+            except:
+                pass
+            else:
+                lp = submit(load_project, io.BytesIO(b), switch=False)
         if data.get("toolbar-editor"):
             if not player.paused:
                 pause_toggle(True)
@@ -3235,7 +3255,7 @@ try:
             player.editor.change_mode = change_mode
             player.editor.selection.cancel = cancel_selection
         if data.get("pos") and not toolbar.editor:
-            player.fut = submit(start_player, data["pos"], force=True)
+            player.fut = submit(start_player, data["pos"])
     tick = 0
     while True:
         if not tick + 2 & 65535:
@@ -3409,7 +3429,6 @@ try:
                 except:
                     print_exc()
                 draw_menu()
-                async_wait()
             if not queue and not is_active() and not any(kheld):
                 player.pos = 0
                 player.end = inf
@@ -3419,7 +3438,6 @@ try:
                 # player.pop("spec", None)
             if not tick + 6 & 7 and toolbar.editor:
                 render_piano()
-                async_wait()
                 if modified:
                     modified.add(tuple(screensize))
                 else:
@@ -3697,6 +3715,10 @@ try:
                         player.rect,
                     )
                 modified.clear()
+            # if not tick & 7 and modified:
+            #     pygame.display.flip()
+            #     # glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            #     modified.clear()
         elif minimised:
             sidebar.particles.clear()
             progress.particles.clear()

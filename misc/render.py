@@ -530,7 +530,7 @@ def spectrogram_render(bars):
 
 ssize2 = (0, 0)
 specs = 0
-D = 10
+D = 9
 specsize = (barcount * D - D,) * 2
 
 import glfw

@@ -250,7 +250,7 @@ def schlafli(symbol):
     verts = np.array(verts, dtype=np.float16)
     centre = np.mean(verts, axis=0)
     verts -= centre
-    verts *= (0.9375 / sqrt(sum(x ** 2 for x in centre)))
+    verts *= 1 / sqrt(sum(x ** 2 for x in centre))
     if verts.shape[-1] > 3:
         outs = verts.T[:3].T
         for dim in verts.T[3:]:
@@ -362,16 +362,19 @@ def animate_ripple(changed=False):
     except KeyError:
         class Ripple_Spec:
             angle = 0
+            rx = 0
             ry = 0
             rz = 0
         spec = globals()["ripple-s"] = Ripple_Spec()
         glLoadIdentity()
     w, h = specsize
     depth = 3
-    glLineWidth(16 / depth)
+    glLineWidth(24 / depth)
+    rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
     ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
     rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-    glRotatef(1, 0, ry, rz)
+    glRotatef(1, rx, ry, rz)
+    spec.rx = (spec.rx + rx) % 360
     spec.ry = (spec.ry + ry) % 360
     spec.rz = (spec.rz + rz) % 360
     glEnableClientState(GL_VERTEX_ARRAY)
@@ -527,7 +530,7 @@ def spectrogram_render(bars):
 
 ssize2 = (0, 0)
 specs = 0
-D = 7
+D = 10
 specsize = (barcount * D - D,) * 2
 
 import glfw

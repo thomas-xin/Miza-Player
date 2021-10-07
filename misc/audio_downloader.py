@@ -773,10 +773,36 @@ class AudioDownloader:
         # resp = resp[resp.index(search) + len(search):]
         # self.keepvid_token = resp[:resp.index(b"';</script>")].decode("utf-8", "replace")
 
-    # Gets data from yt-download.org, keepv.id, or y2mate.guru, adjusts the format to ensure compatibility with results from youtube-dl. Used as backup.
+    # Gets data from yt-download.org, and adjusts the format to ensure compatibility with results from youtube-dl. Used as backup.
     def extract_backup(self, url):
         url = verify_url(url)
         if is_url(url) and not is_youtube_url(url):
+            with requests.head(url) as resp:
+                url = resp.url
+                name = url.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+                ctype = resp.headers.get("Content-Type")
+                if ctype.startswith("video") or ctype.startswith("audio"):
+                    return dict(
+                        id=name,
+                        title=name,
+                        direct=True,
+                        url=url,
+                        webpage_url=url,
+                        extractor="generic",
+                    )
+                elif ctype == "application/octet-stream":
+                    dur, bps = get_duration(url)
+                    d = dict(
+                        id=name,
+                        title=name,
+                        direct=True,
+                        url=url,
+                        webpage_url=url,
+                        extractor="generic",
+                    )
+                    if dur:
+                        d["duration"] = dur
+                    return d
             raise TypeError("Not a youtube link.")
         excs = deque()
         if ":" in url:

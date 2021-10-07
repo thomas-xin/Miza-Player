@@ -3043,17 +3043,22 @@ def draw_menu():
                 elif s == 2:
                     def change_vertices():
                         enter = easygui.get_string(
-                            "Change vertex count",
+                            "Change polytope",
                             "Miza Player",
                             str(options.control.get("gradient-vertices", 4)),
                         )
                         if enter:
-                            options.control["gradient-vertices"] = int(enter)
+                            enter = enter.strip("<>()[]{}").casefold().replace(",", " ").replace(":", " ")
+                            try:
+                                enter = poly_names[enter]
+                            except KeyError:
+                                enter = [eval(x, {}, {}) for x in enter.split()]
+                            options.control["gradient-vertices"] = enter
                             mixer.submit(f"~setting #gradient-vertices {enter}")
 
                     sidebar.menu = cdict(
                         buttons=(
-                            ("Change vertices", change_vertices),
+                            ("Change polytope", change_vertices),
                         ),
                     )
                 elif s == 3:
@@ -3064,12 +3069,15 @@ def draw_menu():
                             str(options.control.get("spiral-vertices", 6)),
                         )
                         if enter:
-                            options.control["spiral-vertices"] = int(enter)
+                            enter = int(enter)
+                            if enter > 384:
+                                enter = 384
+                            options.control["spiral-vertices"] = enter
                             mixer.submit(f"~setting #spiral-vertices {enter}")
 
                     sidebar.menu = cdict(
                         buttons=(
-                            ("Change vertices", change_vertices),
+                            ("Change vertex count", change_vertices),
                         ),
                     )
             else:
@@ -3451,7 +3459,7 @@ try:
                             specf = False
                             im = pyg2pil(surf)
                             if tuple(rect[2:]) != surf.get_size():
-                                if options.spectrogram == 3:
+                                if options.spectrogram > 1:
                                     srect = limit_size(*surf.get_size(), *rect[2:])
                                 else:
                                     srect = rect[2:]
@@ -3464,7 +3472,7 @@ try:
                                 player.specr_fut.set_result(im)
                             player.spec_used = True
                         else:
-                            if options.spectrogram == 3:
+                            if options.spectrogram > 1:
                                 srect = limit_size(*surf.get_size(), *rect[2:])
                             else:
                                 srect = rect[2:]
@@ -3472,7 +3480,7 @@ try:
                             prect += (np.array(rect[2:]) - srect) / 2
                             fut = player.get("specr_fut", None)
                             if fut:
-                                if options.spectrogram == 3:
+                                if options.spectrogram > 1:
                                     rects = deque()
                                     if srect[0] < rect[2]:
                                         rects.append(rect[:2] + (prect[0], rect[3]))
@@ -3615,7 +3623,7 @@ try:
                             font="Comic Sans MS",
                         )
                     if is_active() and player.get("note"):
-                        note = round(32.70319566257483 * 2 ** (player.note / 12), 1)
+                        note = round(32.70319566257483 * 2 ** (player.note / 12 - 1), 1)
                         n = round(player.note)
                         name = "C~D~EF~G~A~B"[n % 12]
                         if name == "~":

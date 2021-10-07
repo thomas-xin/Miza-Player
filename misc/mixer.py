@@ -855,8 +855,6 @@ def spectrogram_render():
             vertices = settings.get("gradient-vertices", 4)
         elif specs == 3:
             vertices = settings.get("spiral-vertices", 6)
-        if vertices > 384:
-            vertices = 384
         binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, dur, t))) + b"\n"
         rproc.stdin.write(binfo)
         rproc.stdin.flush()
@@ -1567,7 +1565,7 @@ while not sys.stdin.closed and failed < 8:
                     sets = orjson.loads(s)
                     settings.update(sets)
                 else:
-                    setting, value = s.split()
+                    setting, value = s.split(None, 1)
                     settings[setting] = eval(value, {}, {})
                     if setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus"):
                         continue

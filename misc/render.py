@@ -2,7 +2,7 @@ import sys
 write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame
 sys.stdout.write = write
-import time, numpy, math, random, orjson, collections, colorsys, traceback
+import time, numpy, math, random, orjson, collections, colorsys, traceback, subprocess, itertools
 from math import *
 from traceback import print_exc
 np = numpy
@@ -215,20 +215,160 @@ class Bar(Particle):
             y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
             sfx.blit(surf, (x, y))
 
-def animate_disc():
+def schlafli(symbol):
+    args = (sys.executable, "misc/schlafli.py")
+    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    proc.stdin.write(symbol.encode("utf-8") + b"\n")
+    proc.stdin.flush()
+    try:
+        proc.wait(timeout=2)
+    except:
+        proc.kill()
+        print_exc()
+        return ()
+    resp = proc.stdout.read().decode("utf-8", "replace").splitlines()
+    verts = deque()
+    edges = deque()
+    vert = True
+    for line in resp:
+        if ":" in line:
+            continue
+        if not line:
+            if vert:
+                vert = False
+                continue
+            else:
+                break
+        if vert:
+            v = list(map(float, line.split()))
+            if len(v) < 3:
+                v.append(0)
+            verts.append(v)
+        else:
+            e = list(map(float, line.split()))
+            edges.append(e)
+    verts = np.array(verts, dtype=np.float16)
+    centre = np.mean(verts, axis=0)
+    verts -= centre
+    verts *= (0.9375 / sqrt(sum(x ** 2 for x in centre)))
+    if verts.shape[-1] > 3:
+        outs = verts.T[:3].T
+        for dim in verts.T[3:]:
+            dim *= 0.25
+            dim += 1
+            outs *= np.tile(dim, (3, 1)).T
+        verts = outs
+    verts = tuple(itertools.chain(*((verts[int(i)], verts[int(j)]) for i, j in edges)))
+    out = np.array(verts, dtype=np.float16)
+
+    return out
+
+found_polytopes = {}
+
+def animate_polyhedron(changed=False):
     if not vertices:
         return
-    bars = bars2
-    spec = CIRCLE_SPEC
-    if not spec:
-        class Circle_Spec:
+    if type(vertices) is list:
+        s = " ".join(map(str, vertices))
+    else:
+        s = str(vertices)
+    try:
+        if changed:
+            raise KeyError
+        poly = found_polytopes[s]
+    except KeyError:
+        poly = found_polytopes[s] = schlafli(s)
+    # print(poly)
+    # return
+    bars = bars2[::-1]
+    try:
+        spec = globals()["poly-s"]
+    except KeyError:
+        class Poly_Spec:
+            rx = 0
+            ry = 0
+            rz = 0
+        spec = globals()["poly-s"] = Poly_Spec()
+        glLoadIdentity()
+    w, h = specsize
+    glLineWidth(2.5)
+    rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
+    ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+    rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+    glRotatef(1, rx, ry, rz)
+    spec.rx = (spec.rx + rx) % 360
+    spec.ry = (spec.ry + ry) % 360
+    spec.rz = (spec.rz + rz) % 360
+    glEnableClientState(GL_VERTEX_ARRAY)
+    glEnableClientState(GL_COLOR_ARRAY)
+    try:
+        radii = globals()["poly-r"]
+        # if radii.shape[1] != len(poly):
+        #     raise KeyError
+    except KeyError:
+        r = np.array([bar.x / barcount2 for bar in bars], dtype=np.float16)
+        # r = np.tile(r, (len(poly), 3)).reshape((len(bars), len(poly), 3))
+        radii = globals()["poly-r"] = r
+
+    try:
+        hsv = globals()["ripple-hsv"]
+    except KeyError:
+        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
+    try:
+        hue = globals()["ripple-h"]
+    except KeyError:
+        hh = [1 - bar.x / barcount / freqscale2 for bar in bars]
+        hue = globals()["ripple-h"] = np.array(hh, dtype=np.float16)
+    H = hue + (pc_ / 4 + sin(pc_ * tau / 12) / 6) % 1
+    hsv.T[0][:] = H % 1
+    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
+    sat = np.clip(alpha - 1, None, 1)
+    np.subtract(1, sat, out=sat)
+    hsv.T[1][:] = sat
+    np.clip(hsv, None, 1, out=hsv)
+    hsv.T[:2] *= 255
+    hsv = hsv.astype(np.uint8)
+    hsv.T[2][:] = 255
+    img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
+    colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
+    colours.T[:3] *= 1 / 255
+    mult = np.linspace(1, 0, len(alpha))
+    mult **= 2
+    alpha *= mult
+    colours.T[-1][:] = alpha
+    # colours[0] = 1
+    colours = np.tile(colours.astype(np.float32), (1, len(poly))).reshape((len(bars), len(poly), 4))
+    verts = np.stack([poly.astype(np.float32)] * len(bars))
+    for v, r in zip(verts, radii):
+        v *= r
+    glColorPointer(4, GL_FLOAT, 0, colours.ravel())
+    glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
+    glDrawArrays(GL_LINES, 0, len(colours) * len(poly))
+    glFlush()
+    glDisableClientState(GL_VERTEX_ARRAY)
+    glDisableClientState(GL_COLOR_ARRAY)
+    sfx = glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    return sfx
+
+def animate_ripple(changed=False):
+    if not vertices:
+        return
+    bars = bars2[::-1]
+    try:
+        if changed:
+            raise KeyError
+        spec = globals()["ripple-s"]
+    except KeyError:
+        class Ripple_Spec:
             angle = 0
             ry = 0
             rz = 0
-        globals()["CIRCLE_SPEC"] = spec = Circle_Spec()
+        spec = globals()["ripple-s"] = Ripple_Spec()
+        glLoadIdentity()
     w, h = specsize
     depth = 3
-    glLineWidth(5)
+    glLineWidth(16 / depth)
     ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
     rz = 0.8 - abs(spec.rz % 90 - 45) / 90
     glRotatef(1, 0, ry, rz)
@@ -236,52 +376,70 @@ def animate_disc():
     spec.rz = (spec.rz + rz) % 360
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnableClientState(GL_COLOR_ARRAY)
-    hsv = globals()["hsv"]
-    hsv.T[0][:] = [(pc_ / 3 + bar.x / barcount / freqscale2) % 1 for bar in reversed(bars)]
-    alpha = np.array([bar.height / barheight * 2 for bar in reversed(bars)], dtype=np.float16)
+    try:
+        radii = globals()["ripple-r"]
+    except KeyError:
+        r = np.array([bar.x / barcount2 for bar in bars], dtype=np.float16)
+        r.T[-1] = 1
+        radii = globals()["ripple-r"] = np.repeat(r, 3).reshape((barcount2, 3))
+
+    try:
+        hsv = globals()["ripple-hsv"]
+    except KeyError:
+        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
+    try:
+        hue = globals()["ripple-h"]
+    except KeyError:
+        hh = [1 - bar.x / barcount / freqscale2 for bar in bars]
+        hue = globals()["ripple-h"] = np.array(hh, dtype=np.float16)
+    H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
+    hsv.T[0][:] = H % 1
+    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
     sat = np.clip(alpha - 1, None, 1)
     np.subtract(1, sat, out=sat)
     hsv.T[1][:] = sat
     np.clip(hsv, None, 1, out=hsv)
-    hsv *= 255
+    hsv.T[:2] *= 255
     hsv = hsv.astype(np.uint8)
     hsv.T[2][:] = 255
     img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
     colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
-    colours *= 1 / 255
+    colours.T[:3] *= 1 / 255
     mult = np.linspace(1, 0, len(alpha))
     mult **= 2
     alpha *= mult
     colours.T[-1][:] = alpha
-    colours = np.repeat(colours, 2, axis=0)[1:-1]
+    colours = np.repeat(colours.astype(np.float32), 2, axis=0)[1:-1]
     colours = np.tile(colours, (vertices * depth, 1))
-    hi = hsv.T[0].astype(np.float32)
-    hi *= -tau / 255
+    hi = hue + pc_ / 3 % 1
+    hi *= -tau
     np.sin(hi, out=hi)
     hi *= 0.25
-    hi = np.repeat(hi, 2, axis=0)[1:-1]
+    hi = np.repeat(hi.astype(np.float32), 2, axis=0)[1:-1]
     hi = np.tile(hi, (vertices * depth, 1)).T
     maxlen = ceil(384 / vertices)
     if linearray.maxlen != maxlen:
         globals()["linearray"] = deque(maxlen=maxlen)
-    linearray.append((colours.astype(np.float32), deque(maxlen=depth * vertices)))
-    for i in range(depth):
+    vertarray = np.empty((depth * vertices, len(bars), 3), dtype=np.float16)
+    linearray.append([colours, None])
+    i = 0
+    for _ in range(depth):
         angle = spec.angle + tau - tau / vertices if vertices else spec.angle
         zs = np.linspace(spec.angle, angle, vertices)
         directions = ([cos(z), sin(z), 1] for z in zs)
         for d in directions:
-            vectors = np.repeat(radii * d, 2, axis=0)[1:-1]
-            linearray[-1][-1].append(vectors.astype(np.float32))
+            vertarray[i][:] = radii * d
+            i += 1
         spec.angle += 1 / 360 / depth * tau
+    linearray[-1][-1] = np.repeat(vertarray.astype(np.float32), 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
     r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
-    for i, t in enumerate(linearray):
-        c, m = t
+    for c, m in linearray:
         c.T[-1] *= r
         glColorPointer(4, GL_FLOAT, 0, c.ravel())
-        verts = np.array(m, dtype=np.float32)
+        verts = np.asanyarray(m, dtype=np.float32)
         verts.T[-1][:] = hi
         glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
-        glDrawArrays(GL_LINES, 0, verts.shape[0] * verts.shape[1])
+        glDrawArrays(GL_LINES, 0, len(c))
     glFlush()
     glDisableClientState(GL_VERTEX_ARRAY)
     glDisableClientState(GL_COLOR_ARRAY)
@@ -291,12 +449,8 @@ def animate_disc():
 
 bars = [Bar(i - 1, barcount) for i in range(barcount)]
 bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
-CIRCLE_SPEC = None
-radii = np.repeat(np.array([bar.x / barcount2 for bar in reversed(bars2)], dtype=np.float16), 3).reshape((barcount2, 3))
-radii.T[-1] = 1
-hsv = np.empty((len(bars2), 3), dtype=np.float16)
-tex = None
 linearray = deque()
+last = None
 # r = 23 / 24
 # s = 1 / 48
 # colourmatrix = (
@@ -306,19 +460,24 @@ linearray = deque()
 # )
 
 def spectrogram_render(bars):
-    global ssize2, specs, dur, tex
+    global ssize2, specs, dur, last
     try:
         if specs == 1:
             sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
             for bar in bars:
                 bar.render(sfx=sfx)
+            func = None
         elif specs == 2:
-            sfx = Image.new("RGB", (barcount * freqscale2 * 2 - 2,) * 2, (0,) * 3)
-            globals()["DRAW"] = ImageDraw.Draw(sfx)
-            for bar in bars:
-                bar.render2(sfx=sfx)
+            func = animate_polyhedron
         else:
-            sfx = animate_disc()
+            func = animate_ripple
+        if last != func:
+            last = func
+            changed = True
+        else:
+            changed = False
+        if func:
+            sfx = func(changed)
 
         if specs == 1:
             if sfx.size != ssize2:
@@ -385,8 +544,10 @@ glutInitDisplayMode(GL_RGB)
 glMatrixMode(GL_PROJECTION)
 glLoadIdentity()
 glOrtho(-1, 1, -1, 1, -1, 1)
+glDisable(GL_DEPTH_TEST)
 glEnable(GL_BLEND)
 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+glBlendEquation(GL_FUNC_ADD)
 glPixelStorei(GL_PACK_ALIGNMENT, 1)
 gluPerspective(45, 1, 1/16, 16)
 glTranslatef(0, 0, -2)

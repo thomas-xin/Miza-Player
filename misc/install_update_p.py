@@ -81,25 +81,30 @@ for mod in modlist:
                 inst += "==" + version
             install(inst)
 
+try:
+    pkg_resources.get_distribution("colorspace")
+except pkg_resources.DistributionNotFound:
+    installing.append(subprocess.Popen([python, "-m", "pip", "install", "git+https://github.com/retostauffer/python-colorspace", "--user"]))
+if os.name == "nt":
+    try:
+        if pkg_resources.get_distribution("pyopengl").version < "3.1.5":
+            raise ValueError
+    except:
+        installing.append(subprocess.Popen([sys.executable, "-m", "pipwin", "install", "pyopengl"]))
+    try:
+        if pkg_resources.get_distribution("pyopengl-accelerate").version < "3.1.5":
+            raise ValueError
+    except:
+        installing.append(subprocess.Popen([sys.executable, "-m", "pipwin", "install", "pyopengl-accelerate"]))
+    try:
+        if pkg_resources.get_distribution("glfw").version < "2.3.0":
+            raise ValueError
+    except:
+        installing.append(subprocess.Popen([sys.executable, "-m", "pipwin", "install", "glfw"]))
+
 # Run pip on any modules that need installing
 if installing:
     print("Installing missing or outdated modules, please wait...")
     subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "pip"])
     for i in installing:
         i.wait()
-if os.name == "nt":
-    try:
-        if pkg_resources.get_distribution("pyopengl").version < "3.1.5":
-            raise ValueError
-    except:
-        subprocess.run([sys.executable, "-m", "pipwin", "install", "pyopengl"])
-    try:
-        if pkg_resources.get_distribution("pyopengl-accelerate").version < "3.1.5":
-            raise ValueError
-    except:
-        subprocess.run([sys.executable, "-m", "pipwin", "install", "pyopengl-accelerate"])
-    try:
-        if pkg_resources.get_distribution("glfw").version < "2.3.0":
-            raise ValueError
-    except:
-        subprocess.run([sys.executable, "-m", "pipwin", "install", "glfw"])

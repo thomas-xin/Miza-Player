@@ -68,8 +68,7 @@ except FileNotFoundError:
 hasmisc = os.path.exists("misc")
 argp = [sys.executable]
 pyv = sys.version_info[1]
-if hasmisc and update_collections:
-    from install_update_p import *
+from install_update_p import *
 
 
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
@@ -1085,6 +1084,28 @@ def draw_arc(surf, colour, pos, radius, start_angle=0, stop_angle=0):
         gfxdraw.circle(surf, *pos, radius, colour)
     else:
         gfxdraw.arc(surf, *pos, radius, start_angle, stop_angle, colour)
+
+poly_names = dict(
+    triangle=3,
+    trigon=4,
+    square=4,
+    quadrilateral=4,
+    pentagon=5,
+    hexagon=6,
+    heptagon=7,
+    septagon=7,
+    octagon=8,
+    nonagon=9,
+    decagon=10,
+    undecagon=11,
+    dodecagon=12,
+    tridecagon=13,
+    tetrahedron=(3, 3),
+    cube=(4, 3),
+    octahedron=(3, 4),
+    dodecahedron=(5, 3),
+    icosahedron=(3, 5),
+)
 
 def custom_scale(source, size, dest=None, antialias=False):
     dsize = list(map(round, size))

@@ -81,10 +81,6 @@ for mod in modlist:
                 inst += "==" + version
             install(inst)
 
-try:
-    pkg_resources.get_distribution("colorspace")
-except pkg_resources.DistributionNotFound:
-    installing.append(subprocess.Popen([python, "-m", "pip", "install", "git+https://github.com/retostauffer/python-colorspace", "--user"]))
 if os.name == "nt":
     try:
         if pkg_resources.get_distribution("pyopengl").version < "3.1.5":

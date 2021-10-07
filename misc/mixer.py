@@ -849,12 +849,12 @@ def spectrogram_render():
         ssize2 = ssize
         specs = settings.spectrogram
         packet_advanced2 = False
-        if specs <= 1:
-            vertices = 0
-        elif specs == 2:
+        if specs == 3:
             vertices = settings.get("gradient-vertices", 4)
-        elif specs == 3:
+        elif specs == 4:
             vertices = settings.get("spiral-vertices", 6)
+        else:
+            vertices = 0
         binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, dur, t))) + b"\n"
         rproc.stdin.write(binfo)
         rproc.stdin.flush()
@@ -897,7 +897,7 @@ def spectrogram_update():
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
         if settings.spectrogram > 0:
-            if not settings.spectrogram > 1:
+            if not settings.spectrogram > 2:
                 amp = supersample(amp, barcount)
             else:
                 amp = supersample(amp, barcount * 2)

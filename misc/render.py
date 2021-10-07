@@ -215,6 +215,106 @@ class Bar(Particle):
             y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
             sfx.blit(surf, (x, y))
 
+
+def animate_prism(changed=False):
+    if not vertices:
+        return
+    bars = bars2
+    try:
+        if changed:
+            raise KeyError
+        spec = globals()["ripple-s"]
+    except KeyError:
+        class Ripple_Spec:
+            angle = 0
+            rx = 0
+            ry = 0
+            rz = 0
+        spec = globals()["ripple-s"] = Ripple_Spec()
+        glLoadIdentity()
+    w, h = specsize
+    depth = 3
+    glLineWidth(24 / depth)
+    rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
+    ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+    rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+    glRotatef(0.5, rx, ry, rz)
+    spec.rx = (spec.rx + rx) % 360
+    spec.ry = (spec.ry + ry) % 360
+    spec.rz = (spec.rz + rz) % 360
+    glEnableClientState(GL_VERTEX_ARRAY)
+    glEnableClientState(GL_COLOR_ARRAY)
+    try:
+        radii = globals()["ripple-r"]
+    except KeyError:
+        r = np.array([bar.x / barcount2 for bar in bars], dtype=np.float16)
+        r.T[-1] = 1
+        radii = globals()["ripple-r"] = np.repeat(r, 3).reshape((barcount2, 3))
+
+    try:
+        hsv = globals()["ripple-hsv"]
+    except KeyError:
+        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
+    try:
+        hue = globals()["ripple-h"]
+    except KeyError:
+        hh = [1 - bar.x / barcount / freqscale2 for bar in bars]
+        hue = globals()["ripple-h"] = np.array(hh, dtype=np.float16)
+    H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
+    hsv.T[0][:] = H % 1
+    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
+    sat = np.clip(alpha - 1, None, 1)
+    np.subtract(1, sat, out=sat)
+    hsv.T[1][:] = sat
+    np.clip(hsv, None, 1, out=hsv)
+    hsv.T[:2] *= 255
+    hsv = hsv.astype(np.uint8)
+    hsv.T[2][:] = 255
+    img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
+    colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
+    colours.T[:3] *= 1 / 255
+    mult = np.linspace(1, 0, len(alpha))
+    mult **= 2
+    alpha *= mult
+    colours.T[-1][:] = alpha
+    colours = np.repeat(colours.astype(np.float32), 2, axis=0)[1:-1]
+    colours = np.tile(colours, (vertices * depth, 1))
+    hi = hue + pc_ / 3 % 1
+    hi *= -tau
+    np.sin(hi, out=hi)
+    hi *= 0.25
+    hi = np.repeat(hi.astype(np.float32), 2, axis=0)[1:-1]
+    hi = np.tile(hi, (vertices * depth, 1)).T
+    maxlen = ceil(384 / vertices)
+    if linearray.maxlen != maxlen:
+        globals()["linearray"] = deque(maxlen=maxlen)
+    vertarray = np.empty((depth * vertices, len(bars), 3), dtype=np.float16)
+    linearray.append([colours, None])
+    i = 0
+    for _ in range(depth):
+        angle = spec.angle + tau - tau / vertices if vertices else spec.angle
+        zs = np.linspace(spec.angle, angle, vertices)
+        directions = ([cos(z), sin(z), 1] for z in zs)
+        for d in directions:
+            vertarray[i][:] = radii * d
+            i += 1
+        spec.angle += 1 / 360 / depth * tau
+    linearray[-1][-1] = np.repeat(vertarray.astype(np.float32), 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
+    r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
+    for c, m in linearray:
+        c.T[-1] *= r
+        glColorPointer(4, GL_FLOAT, 0, c.ravel())
+        verts = np.asanyarray(m, dtype=np.float32)
+        verts.T[-1][:] = hi
+        glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
+        glDrawArrays(GL_LINES, 0, len(c))
+    glFlush()
+    glDisableClientState(GL_VERTEX_ARRAY)
+    glDisableClientState(GL_COLOR_ARRAY)
+    sfx = glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE)
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    return sfx
+
 def schlafli(symbol):
     args = (sys.executable, "misc/schlafli.py")
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -281,6 +381,8 @@ def animate_polyhedron(changed=False):
     bars = bars2[::-1]
     try:
         spec = globals()["poly-s"]
+        if " " not in s and (spec.rx or spec.ry):
+            raise KeyError
     except KeyError:
         class Poly_Spec:
             rx = 0
@@ -290,13 +392,18 @@ def animate_polyhedron(changed=False):
         glLoadIdentity()
     w, h = specsize
     glLineWidth(2.5)
-    rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
-    ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
-    rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-    glRotatef(1, rx, ry, rz)
-    spec.rx = (spec.rx + rx) % 360
-    spec.ry = (spec.ry + ry) % 360
-    spec.rz = (spec.rz + rz) % 360
+    if " " not in s:
+        rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+        glRotatef(1, 0, 0, rz)
+        spec.rz = (spec.rz + rz) % 360
+    else:
+        rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
+        ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+        rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+        glRotatef(1, rx, ry, rz)
+        spec.rx = (spec.rx + rx) % 360
+        spec.ry = (spec.ry + ry) % 360
+        spec.rz = (spec.rz + rz) % 360
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnableClientState(GL_COLOR_ARRAY)
     try:
@@ -371,7 +478,7 @@ def animate_ripple(changed=False):
     rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
     ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
     rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-    glRotatef(1, rx, ry, rz)
+    glRotatef(0.5, rx, ry, rz)
     spec.rx = (spec.rx + rx) % 360
     spec.ry = (spec.ry + ry) % 360
     spec.rz = (spec.rz + rz) % 360
@@ -469,6 +576,8 @@ def spectrogram_render(bars):
                 bar.render(sfx=sfx)
             func = None
         elif specs == 2:
+            func = animate_prism
+        elif specs == 3:
             func = animate_polyhedron
         else:
             func = animate_ripple
@@ -559,7 +668,7 @@ while True:
         if line == b"~r":
             line = sys.stdin.buffer.readline().rstrip()
             ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
-            bi = bars2 if specs > 1 else bars
+            bi = bars2 if specs > 2 else bars
             spectrogram_render(bi)
         elif line == b"~e":
             b = sys.stdin.buffer.readline()

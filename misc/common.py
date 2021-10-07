@@ -228,7 +228,7 @@ control_default = cdict(
     ripples=1,
     autoupdate=0,
 )
-control_default["gradient-vertices"] = 4
+control_default["gradient-vertices"] = (4, 3)
 control_default["spiral-vertices"] = 6
 editor_default = cdict(
     mode="I",
@@ -1086,7 +1086,12 @@ def draw_arc(surf, colour, pos, radius, start_angle=0, stop_angle=0):
         gfxdraw.arc(surf, *pos, radius, start_angle, stop_angle, colour)
 
 poly_names = dict(
+    septagram=7/3,
+    star=2.5,
+    pentagram=2.5,
+    octagram=8/3,
     triangle=3,
+    heptagram=3.5,
     trigon=4,
     square=4,
     quadrilateral=4,
@@ -1098,13 +1103,34 @@ poly_names = dict(
     nonagon=9,
     decagon=10,
     undecagon=11,
+    hendecagon=11,
     dodecagon=12,
     tridecagon=13,
+    tetradecagon=14,
+    circle=144,
+    monogon=144,
+    sphere=144,
     tetrahedron=(3, 3),
     cube=(4, 3),
+    hexahedron=(4, 3),
     octahedron=(3, 4),
     dodecahedron=(5, 3),
     icosahedron=(3, 5),
+    stellated_dodecahedron=(2.5, 5),
+    stellated_icosahedron=(2.5, 3),
+    pentachoron=(3, 3, 3),
+    tesseract=(4, 3, 3),
+    octachoron=(4, 3, 3),
+    hexadecachoron=(3, 3, 4),
+    icositetrachoron=(3, 4, 3),
+    dodecacontachoron=(5, 3, 3),
+    hexacosichoron=(3, 3, 5),
+    stellated_dodecacontachoron=(2.5, 5, 2.5),
+    stellated_hexacosichoron=(2.5, 3, 3),
+    hexateron=(3, 3, 3, 3),
+    pentaract=(4, 3, 3, 3),
+    decateron=(4, 3, 3, 3),
+    triacontaditeron=(3, 3, 3, 4),
 )
 
 def custom_scale(source, size, dest=None, antialias=False):

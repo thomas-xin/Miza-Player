@@ -218,15 +218,13 @@ class Bar(Particle):
 def schlafli(symbol):
     args = (sys.executable, "misc/schlafli.py")
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    proc.stdin.write(symbol.encode("utf-8") + b"\n")
-    proc.stdin.flush()
     try:
-        proc.wait(timeout=2)
+        stdout, stderr = proc.communicate(symbol.encode("utf-8") + b"\n", timeout=5)
     except:
         proc.kill()
         print_exc()
-        return ()
-    resp = proc.stdout.read().decode("utf-8", "replace").splitlines()
+        raise RuntimeError(symbol)
+    resp = stdout.decode("utf-8", "replace").splitlines()
     verts = deque()
     edges = deque()
     vert = True

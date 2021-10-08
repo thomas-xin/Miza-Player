@@ -709,9 +709,14 @@ d2r = pi / 180
 ts_us = lambda: time.time_ns() // 1000
 SR = 48000
 
-commitf = "misc/commit.tmp"
+commitf = ".git/refs/heads/main"
+commitr = "misc/commit.tmp"
+if not os.path.exists(commitf):
+    commitf = commitr
+elif os.path.exists(commitr):
+    os.remove(commitr)
 
-def update_repo():
+def update_repo(force=False):
     print("Checking for updates...")
     try:
         with requests.get("https://github.com/thomas-xin/Miza-Player") as resp:
@@ -728,14 +733,19 @@ def update_repo():
         try:
             try:
                 with open(commitf, "r") as f:
-                    s = f.read()
+                    s = f.read().strip()
             except FileNotFoundError:
                 print("First run, treating as latest update...")
                 raise EOFError
             if commit != s:
                 print("Update found!")
+                flash_window()
                 if not options.control.autoupdate:
                     globals()["repo-update"] = fut = concurrent.futures.Future()
+                    if force:
+                        fut.set_result(True)
+                    else:
+                        return False
                 try:
                     if not os.path.exists(".git"):
                         raise FileNotFoundError
@@ -1004,7 +1014,9 @@ def load_surface(fn, greyscale=False, size=None, force=False):
         SURFS[tup] = out
     return out
 
+luma = lambda c: sqrt(0.299 * (c[0] / 255) ** 2 + 0.587 * (c[1] / 255) ** 2 + 0.114 * (c[2] / 255) ** 2) * (1 if len(c) < 4 else c[-1] / 255)
 verify_colour = lambda c: [max(0, min(255, abs(i))) for i in c]
+high_colour = lambda c, v=255: (255 - v if luma(c) > 0.5 else v,) * 3
 
 def adj_colour(colour, brightness=0, intensity=1, hue=0):
     if hue != 0:
@@ -1854,6 +1866,143 @@ def get_duration_2(filename):
                 bps *= 1e9
             return (int(head["content-length"]) << 3) / bps, cdc
         return dur, cdc
+
+def construct_options(full=True):
+    stats = cdict(audio)
+    pitchscale = 2 ** ((stats.pitch + stats.nightcore) / 12)
+    reverb = stats.reverb
+    volume = stats.volume
+    if reverb:
+        args = ["-i", "misc/SNB3,0all.wav"]
+    else:
+        args = []
+    options = deque()
+    if not isfinite(stats.compressor):
+        options.extend(("anoisesrc=a=.001953125:c=brown", "amerge"))
+    if pitchscale != 1 or stats.speed != 1:
+        speed = abs(stats.speed) / pitchscale
+        speed *= 2 ** (stats.nightcore / 12)
+        if round(speed, 9) != 1:
+            speed = max(0.005, speed)
+            if speed >= 64:
+                raise OverflowError
+            opts = ""
+            while speed > 3:
+                opts += "atempo=3,"
+                speed /= 3
+            while speed < 0.5:
+                opts += "atempo=0.5,"
+                speed /= 0.5
+            opts += "atempo=" + str(speed)
+            options.append(opts)
+    if pitchscale != 1:
+        if abs(pitchscale) >= 64:
+            raise OverflowError
+        if full:
+            options.append("aresample=48k")
+        options.append("asetrate=" + str(48000 * pitchscale))
+    if stats.chorus:
+        chorus = abs(stats.chorus)
+        ch = min(16, chorus)
+        A = B = C = D = ""
+        for i in range(ceil(ch)):
+            neg = ((i & 1) << 1) - 1
+            i = 1 + i >> 1
+            i *= stats.chorus / ceil(chorus)
+            if i:
+                A += "|"
+                B += "|"
+                C += "|"
+                D += "|"
+            delay = (8 + 5 * i * tau * neg) % 39 + 19
+            A += str(round(delay, 3))
+            decay = (0.36 + i * 0.47 * neg) % 0.65 + 1.7
+            B += str(round(decay, 3))
+            speed = (0.27 + i * 0.573 * neg) % 0.3 + 0.02
+            C += str(round(speed, 3))
+            depth = (0.55 + i * 0.25 * neg) % max(1, stats.chorus) + 0.15
+            D += str(round(depth, 3))
+        b = 0.5 / sqrt(ceil(ch + 1))
+        options.append(
+            "chorus=0.5:" + str(round(b, 3)) + ":"
+            + A + ":"
+            + B + ":"
+            + C + ":"
+            + D
+        )
+    if stats.compressor:
+        comp = min(8000, abs(stats.compressor * 10 + (1 if stats.compressor >= 0 else -1)))
+        while abs(comp) > 1:
+            c = min(20, comp)
+            try:
+                comp /= c
+            except ZeroDivisionError:
+                comp = 1
+            mult = str(round((c * math.sqrt(2)) ** 0.5, 4))
+            options.append(
+                "acompressor=mode=" + ("upward" if stats.compressor < 0 else "downward")
+                + ":ratio=" + str(c) + ":level_in=" + mult + ":threshold=0.0625:makeup=" + mult
+            )
+    if stats.bassboost:
+        opt = "firequalizer=gain_entry="
+        entries = []
+        high = 24000
+        low = 13.75
+        bars = 4
+        small = 0
+        for i in range(bars):
+            freq = low * (high / low) ** (i / bars)
+            bb = -(i / (bars - 1) - 0.5) * stats.bassboost * 64
+            dB = log(abs(bb) + 1, 2)
+            if bb < 0:
+                dB = -dB
+            if dB < small:
+                small = dB
+            entries.append(f"entry({round(freq, 5)},{round(dB, 5)})")
+        entries.insert(0, f"entry(0,{round(small, 5)})")
+        entries.append(f"entry(24000,{round(small, 5)})")
+        opt += repr(";".join(entries))
+        options.append(opt)
+    if reverb:
+        coeff = abs(reverb)
+        wet = min(3, coeff) / 3
+        if wet != 1:
+            options.append("asplit[2]")
+        volume *= 1.2
+        if reverb < 0:
+            volume = -volume
+        options.append("afir=dry=10:wet=10")
+        if wet != 1:
+            dry = 1 - wet
+            options.append("[2]amix=weights=" + str(round(dry, 6)) + " " + str(round(-wet, 6)))
+        d = [round(1 - i ** 1.6 / (i ** 1.6 + coeff), 4) for i in range(2, 18, 2)]
+        options.append(f"aecho=1:1:400|630:{d[0]}|{d[1]}")
+        if d[2] >= 0.05:
+            options.append(f"aecho=1:1:920|1450:{d[2]}|{d[3]}")
+            if d[4] >= 0.06:
+                options.append(f"aecho=1:1:1760|2190:{d[4]}|{d[5]}")
+                if d[6] >= 0.07:
+                    options.append(f"aecho=1:1:2520|3000:{d[6]}|{d[7]}")
+    if stats.pan != 1:
+        pan = min(10000, max(-10000, stats.pan))
+        while abs(abs(pan) - 1) > 0.001:
+            p = max(-10, min(10, pan))
+            try:
+                pan /= p
+            except ZeroDivisionError:
+                pan = 1
+            options.append("extrastereo=m=" + str(p) + ":c=0")
+            volume *= 1 / max(1, round(math.sqrt(abs(p)), 4))
+    if volume != 1:
+        options.append("volume=" + str(round(volume, 7)))
+    if options:
+        if stats.compressor:
+            options.append("alimiter")
+        elif volume > 1 or abs(stats.bassboost):
+            options.append("asoftclip=atan")
+        args.append(("-af", "-filter_complex")[bool(reverb)])
+        args.append(",".join(options))
+    return args
 
 
 # runs org2xm on a file, with an optional custom sample bank.

@@ -219,16 +219,18 @@ def get_device(name):
     DEVICE = sc.default_speaker()
     return DEVICE
 
-PG_USED = False
+PG_USED = None
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
     cc = d.channels
     try:
-        if not PG_USED:
+        if not PG_USED or PG_USED[0] == d.name and PG_USED[1] == cc:
             raise RuntimeError
         player = d.player(SR, cc, 1600)
     except RuntimeError:
-        globals()["PG_USED"] = True
+        if PG_USED:
+            pygame.mixer.Channel(0).stop()
+        globals()["PG_USED"] = (d.name, cc)
         player = pygame.mixer
         player.init(SR, 32, cc, 1600, devicename=d.name, allowedchanges=pygame.AUDIO_ALLOW_ANY_CHANGE)
         player.type = "pygame"
@@ -1140,7 +1142,7 @@ def play(pos):
                         fut.result(timeout=0.4)
                     except:
                         print_exc()
-                        print("SoundCard timed out.")
+                        print(f"{channel.name} timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
                         submit(channel.close)
                         globals()["channel"] = get_channel()
@@ -1328,7 +1330,7 @@ def piano_player():
                         fut.result(timeout=0.4)
                     except:
                         print_exc()
-                        print("SoundCard timed out.")
+                        print(f"{channel.name} timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
                         submit(channel.close)
                         globals()["channel"] = get_channel()

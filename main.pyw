@@ -1249,7 +1249,10 @@ def prepare(entry, force=False, download=False):
     return stream
 
 def start_player(pos=None, force=False):
-    entry = queue[0]
+    try:
+        entry = queue[0]
+    except IndexError:
+        return skip()
     duration = entry.duration or 300
     if pos is None:
         if audio.speed >= 0:
@@ -1659,7 +1662,7 @@ def enqueue(entry, start=True):
 ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 concat_buff = b"\x00" * (48000 * 2 * 2)
 
-def download(entries, fn):
+def download(entries, fn, settings=False):
     try:
         downloading.fn = fn
         downloading.target = sum(e.duration or 300 for e in entries)
@@ -1697,7 +1700,9 @@ def download(entries, fn):
                 downloading.target += len(entries)
             fn3 = f"cache/\x7f{ts}.pcm"
             cmd = ffmpeg_start + ("-nostdin", "-i", st)
-            if len(entries) > 1:
+            if settings:
+                cmd += tuple(construct_options())
+            if len(entries) > 1 and settings and control.silenceremove:
                 cmd += ("-af", "silenceremove=start_periods=1:start_duration=0.015625:start_threshold=-50dB:start_silence=0.015625:stop_periods=-9000:stop_threshold=-50dB:window=0.015625")
             cmd += ("-f", "s16le", "-ar", "48k", "-ac", "2", fn3)
             print(cmd)
@@ -1717,7 +1722,7 @@ def download(entries, fn):
                             if not b:
                                 break
                             saving.stdin.write(b)
-                submit(os.remove(p.fn))
+                os.remove(p.fn)
         saving.stdin.close()
         saving.wait()
         downloading.target = 0
@@ -2171,11 +2176,14 @@ def render_settings(dur, ignore=False):
     DISP2.set_colorkey(sc)
     in_sidebar = in_rect(mpos, sidebar.rect)
     offs2 = offs + sidebar_width
+    c = options.get("sidebar_colour", (64, 0, 96))
+    c = high_colour(c)
     for i, opt in enumerate(asettings):
         message_display(
             opt.capitalize(),
             12,
             (offs2 + 8, i * 32),
+            colour=c,
             surface=DISP2,
             align=0,
             cache=True,
@@ -2187,6 +2195,7 @@ def render_settings(dur, ignore=False):
             s,
             12,
             (offs2 + sidebar_width - 8, 16 + i * 32),
+            colour=c,
             surface=DISP2,
             align=2,
             cache=True,
@@ -2343,11 +2352,13 @@ def render_settings(dur, ignore=False):
                 radius=16,
                 fill_ratio=0.5,
             )
+            c = options.get("sidebar_colour", (64, 0, 96))
+            c = high_colour(c, 255 if hovered else 223)
             message_display(
                 name,
                 16,
                 (36, i * 32 + 4),
-                colour=(255,) * 3 if hovered else (223,) * 3,
+                colour=c,
                 align=0,
                 surface=surf,
                 font="Comic Sans MS",
@@ -2369,7 +2380,7 @@ def render_settings(dur, ignore=False):
                 if in_rect(mpos, r):
                     if mclick[0]:
                         submit(update_collections2)
-                        common.repo_fut = submit(update_repo)
+                        common.repo_fut = submit(update_repo, force=True)
                         if common.repo_fut.result():
                             easygui.show_message(
                                 "No new updates found.",
@@ -2378,6 +2389,11 @@ def render_settings(dur, ignore=False):
                     c = (112, 127, 64, 223)
                 else:
                     c = (96, 112, 80, 127)
+                fut = common.__dict__.get("repo-update")
+                if fut and not isinstance(fut, bool):
+                    c2 = verify_colour(x * sin(pc() * tau / 4) for x in c[:3])
+                    c2.append(c[-1])
+                    c = c2
                 bevel_rectangle(DISP, c, r, bevel=4)
                 message_display(
                     "Update",
@@ -2402,13 +2418,19 @@ def render_settings(dur, ignore=False):
     sidebar.more_angle = sidebar.more_angle * rat + sidebar.more * (1 - rat)
     lum = 223 if hovered else 191
     c = options.get("sidebar_colour", (64, 0, 96))
-    hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+    hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c)))
     light = 1 - (1 - hls[1]) / 4
     if hls[2]:
         sat = 1 - (1 - hls[2]) / 2
     else:
         sat = 0
-    col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
+    hls[1] = lum / 255 * light
+    hls[2] = sat
+    if not sidebar.get("more"):
+        fut = common.__dict__.get("repo-update")
+        if fut and not isinstance(fut, bool):
+            hls[1] = sin(pc() * tau / 4)
+    col = [round(i * 255) for i in colorsys.hls_to_rgb(*hls)]
     bevel_rectangle(
         DISP2,
         col,
@@ -2520,18 +2542,23 @@ def draw_menu():
                     crosshair |= 4
                 else:
                     lum = 175
-                lum += button.get("flash", 0)
-                if not i:
-                    lum -= 48
-                    lum += button.get("flash", 0)
                 c = options.get("sidebar_colour", (64, 0, 96))
-                hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+                hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c)))
                 light = 1 - (1 - hls[1]) / 4
                 if hls[2]:
                     sat = 1 - (1 - hls[2]) / 2
                 else:
                     sat = 0
-                col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
+                hls[1] = lum / 255 * light
+                hls[2] = sat
+                lum += button.get("flash", 0)
+                if not i and not sidebar.abspos:
+                    lum -= 48
+                    lum += button.get("flash", 0)
+                    fut = common.__dict__.get("repo-update")
+                    if fut and not isinstance(fut, bool):
+                        hls[1] = sin(pc() * tau / 4)
+                col = [round(i * 255) for i in colorsys.hls_to_rgb(*hls)]
                 bevel_rectangle(
                     DISP,
                     col,
@@ -3284,7 +3311,7 @@ try:
                 globals()["last_save"] = t
         if not tick % (status_freq + (status_freq & 1)):
             submit(send_status)
-        fut = common.__dict__.pop("repo-update", None)
+        fut = common.__dict__.get("repo-update")
         if fut:
             if fut is True:
                 if not options.control.autoupdate:
@@ -3301,12 +3328,13 @@ try:
                 if options.control.preserve:
                     restarting = True
                     raise StopIteration
-            else:
-                r = easygui.get_yes_or_no(
-                    "Would you like to update the application? (takes effect upon next usage)",
-                    "Miza Player ~ Update found!",
-                )
-                fut.set_result(r)
+                common.__dict__.pop("repo-update", None)
+            # elif not fut.done():
+            #     r = easygui.get_yes_or_no(
+            #         "Would you like to update the application? (takes effect upon next usage)",
+            #         "Miza Player ~ Update found!",
+            #     )
+            #     fut.set_result(r)
         foc = get_focused()
         unfocused = False
         if foc:

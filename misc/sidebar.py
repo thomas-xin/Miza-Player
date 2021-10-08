@@ -100,10 +100,13 @@ def render_sidebar(dur=0):
                 t = inf
             else:
                 t = sum(e.get("duration") or 300 for e in queue if e) - (player.pos or 0)
+            c = options.get("sidebar_colour", (64, 0, 96))
+            c = high_colour(c)
             message_display(
                 f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
                 13,
                 (6 + offs, 48),
+                colour=c,
                 surface=DISP2,
                 align=0,
                 font="Comic Sans MS",
@@ -153,7 +156,7 @@ def render_sidebar(dur=0):
                 filetypes=ftypes,
             )
             if fn:
-                submit(download, entries, fn)
+                submit(download, entries, fn, settings=True)
         Z = -sidebar.scroll.pos
         DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), SRCALPHA)
         DISP2.fill((0, 0, 0, 0))
@@ -383,7 +386,7 @@ def render_sidebar(dur=0):
                             filetypes=ftypes,
                         )
                         if fn:
-                            submit(download, entries, fn)
+                            submit(download, entries, fn, settings=True)
                     
                     def delete():
                         if queue:

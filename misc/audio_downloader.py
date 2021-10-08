@@ -1174,9 +1174,13 @@ class AudioDownloader:
                     except:
                         print_exc()
                 try:
-                    return list(map(cdict, requests.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
+                    entries = list(map(cdict, requests.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
+                    if not entries:
+                        raise IndexError
                 except:
                     print_exc()
+                else:
+                    return entries
         elif regexp("(play|open|api)\\.spotify\\.com").search(item):
             # Spotify playlist searches contain up to 100 items each
             if "playlist" in item:

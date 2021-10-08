@@ -406,7 +406,7 @@ def animate_polyhedron(changed=False):
             factor = i
         else:
             factor = 6.5 - i
-        z = angle * sin(spec.frame * factor ** 0.5)
+        z = angle * sin(spec.frame / factor ** 0.5)
         rotation = np.identity(dims)
         a, b = cos(z), sin(z)
         rotation[x][x] = a

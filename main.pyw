@@ -1702,8 +1702,8 @@ def download(entries, fn, settings=False):
             cmd = ffmpeg_start + ("-nostdin", "-i", st)
             if settings:
                 cmd += tuple(construct_options())
-            if len(entries) > 1 and settings and control.silenceremove:
-                cmd += ("-af", "silenceremove=start_periods=1:start_duration=0.015625:start_threshold=-50dB:start_silence=0.015625:stop_periods=-9000:stop_threshold=-50dB:window=0.015625")
+            if settings and control.silenceremove:
+                cmd += ("-af", "silenceremove=start_periods=1:start_duration=1:start_threshold=-50dB:start_silence=0.5:stop_periods=-9000:stop_threshold=-50dB:window=0.015625")
             cmd += ("-f", "s16le", "-ar", "48k", "-ac", "2", fn3)
             print(cmd)
             p = psutil.Popen(cmd)
@@ -3069,7 +3069,7 @@ def draw_menu():
                             ("Reset Lyrics", reset_lyrics),
                         ),
                     )
-                elif s == 2:
+                elif s == 3:
                     def change_vertices():
                         enter = easygui.get_string(
                             "Change polytope",
@@ -3090,7 +3090,7 @@ def draw_menu():
                             ("Change polytope", change_vertices),
                         ),
                     )
-                elif s == 3:
+                elif s == 4:
                     def change_vertices():
                         enter = easygui.get_string(
                             "Change vertex count",

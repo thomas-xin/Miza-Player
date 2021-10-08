@@ -219,7 +219,6 @@ class Bar(Particle):
 def animate_prism(changed=False):
     if not vertices:
         return
-    bars = bars2
     try:
         if changed:
             raise KeyError
@@ -349,12 +348,12 @@ def schlafli(symbol):
     centre = np.mean(verts, axis=0)
     verts -= centre
     verts *= 1 / sqrt(sum(x ** 2 for x in centre))
-    if verts.shape[-1] > 3:
-        outs = verts.T[:3].T
-        for dim in verts.T[3:]:
+    if verts.shape[-1] > 4:
+        outs = verts.T[:4].T
+        for dim in verts.T[4:]:
             dim *= 0.25
             dim += 1
-            outs *= np.tile(dim, (3, 1)).T
+            outs *= np.tile(dim, (4, 1)).T
         verts = outs
     verts = tuple(itertools.chain(*((verts[int(i)], verts[int(j)]) for i, j in edges)))
     out = np.array(verts, dtype=np.float16)
@@ -362,6 +361,11 @@ def schlafli(symbol):
     return out
 
 found_polytopes = {}
+perms = [
+    ((0, 1)),
+    ((0, 1), (0, 2), (1, 2)),
+    ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)),
+]
 
 def animate_polyhedron(changed=False):
     if not vertices:
@@ -379,31 +383,44 @@ def animate_polyhedron(changed=False):
     # print(poly)
     # return
     bars = bars2[::-1]
+    dimcount = 2 if " " not in s else poly.shape[-1]
     try:
         spec = globals()["poly-s"]
-        if " " not in s and (spec.rx or spec.ry):
+        if spec.dimcount != dimcount:
             raise KeyError
     except KeyError:
         class Poly_Spec:
-            rx = 0
-            ry = 0
-            rz = 0
+            pass
         spec = globals()["poly-s"] = Poly_Spec()
+        spec.dimcount = dimcount
+        spec.rotmat = np.identity(dimcount)
         glLoadIdentity()
     w, h = specsize
     glLineWidth(2.5)
-    if " " not in s:
-        rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-        glRotatef(1, 0, 0, rz)
-        spec.rz = (spec.rz + rz) % 360
-    else:
-        rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
-        ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
-        rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-        glRotatef(1, rx, ry, rz)
-        spec.rx = (spec.rx + rx) % 360
-        spec.ry = (spec.ry + ry) % 360
-        spec.rz = (spec.rz + rz) % 360
+    angle = tau / 512
+    i = 0
+    for x, y in perms[dimcount - 2]:
+        i += 1
+        if i <= 3:
+            factor = i
+        else:
+            factor = 7 - i
+        z = angle / factor ** 2
+        rotation = np.identity(dimcount)
+        a, b = cos(z), sin(z)
+        rotation[x][x] = a
+        rotation[x][y] = -b
+        rotation[y][x] = b
+        rotation[y][y] = a
+        spec.rotmat = spec.rotmat @ rotation
+    poly = poly @ spec.rotmat
+    if poly.shape[-1] > 3:
+        outs = poly.T[:3].T
+        for dim in poly.T[3:]:
+            dim /= 2
+            dim += 1
+            outs *= np.tile(dim, (3, 1)).T
+        poly = outs
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnableClientState(GL_COLOR_ARRAY)
     try:

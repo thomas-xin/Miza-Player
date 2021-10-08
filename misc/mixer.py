@@ -1142,7 +1142,7 @@ def play(pos):
                         fut.result(timeout=0.4)
                     except:
                         print_exc()
-                        print(f"{channel.name} timed out.")
+                        print(f"{channel.type} timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
                         submit(channel.close)
                         globals()["channel"] = get_channel()
@@ -1330,7 +1330,7 @@ def piano_player():
                         fut.result(timeout=0.4)
                     except:
                         print_exc()
-                        print(f"{channel.name} timed out.")
+                        print(f"{channel.type} timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
                         submit(channel.close)
                         globals()["channel"] = get_channel()

@@ -230,13 +230,18 @@ def sc_player(d):
     except RuntimeError:
         if PG_USED:
             pygame.mixer.Channel(0).stop()
+        else:
+            pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
         globals()["PG_USED"] = (d.name, cc)
         player = pygame.mixer
-        player.init(SR, 32, cc, 1600, devicename=d.name, allowedchanges=pygame.AUDIO_ALLOW_ANY_CHANGE)
         player.type = "pygame"
+        player.dtype = np.int16
+        player.peak = 32767
     else:
         player.__enter__()
         player.type = "soundcard"
+        player.dtype = np.float32
+        player.peak = 1
     player.closed = False
     player.playing = None
     player.fut = None
@@ -272,7 +277,10 @@ def sc_player(d):
             return
         if cc < 2:
             data = data[::2] + data[1::2]
-            data *= 0.5
+            if data.dtype is np.float32:
+                data *= 0.5
+            else:
+                data >>= 1
         player.wait()
         if player.type == "pygame":
             if cc >= 2:
@@ -940,7 +948,11 @@ def spectrogram():
     global spec_buffer, spec2_fut, packet_advanced3
     try:
         if packet and sample is not None:
-            buffer = sample.astype(np.float32)
+            if sample.dtype is not np.float32:
+                buffer = sample.astype(np.float32)
+                buffer *= 1 / channel.peak
+            else:
+                buffer = sample
             spec_buffer = np.append(spec_buffer[-res_scale + len(buffer):], buffer)
             if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
                 spec2_fut = submit(spectrogram_update)
@@ -970,7 +982,7 @@ def render():
                 else:
                     buffer = sbuffer
 
-                amp = sum(np.abs(buffer)) / len(buffer)
+                amp = np.sum(np.abs(buffer)) / len(buffer)
                 p_amp = sqrt(amp)
 
                 if is_strict_minimised():
@@ -1101,27 +1113,43 @@ def play(pos):
                 if settings.silenceremove and quiet >= 15 and s is None and np.mean(np.abs(sample)) < 1 / 512:
                     raise StopIteration
                 sfut = submit(synthesize)
-                sample = sample.astype(np.float32)
-                sample /= 32767
+                if channel.dtype is np.float32:
+                    sample = sample.astype(np.float32)
+                    sample *= 1 / 32767
                 if settings.volume != 1 or s is not None:
                     if settings.volume != 1:
-                        sample *= settings.volume
+                        if settings.volume > 1:
+                            sample = sample.astype(np.float32)
+                        np.multiply(sample, settings.volume, out=sample, casting="unsafe")
                     if s is not None:
-                        sample += s
-                if settings.silenceremove and np.mean(np.abs(sample)) < 1 / 512:
+                        if s.dtype is not channel.dtype:
+                            s *= channel.peak
+                            s = s.astype(channel.dtype)
+                        s += sample
+                        sample = s
+                if settings.silenceremove and np.mean(np.abs(sample)) < channel.peak / 512:
                     if quiet >= 15:
                         raise StopIteration
                     quiet += 1
                 else:
                     quiet = 0
-                np.clip(sample, -1, 1, out=sample)
+                if sample.dtype is np.float32:
+                    np.clip(sample, -channel.peak, channel.peak, out=sample)
+                if sample.dtype is not channel.dtype:
+                    sample = sample.astype(channel.dtype)
                 sbuffer = sample
+                if sbuffer.dtype is not np.float32:
+                    sbuffer = sbuffer.astype(np.float32)
+                    sbuffer *= 1 / channel.peak
                 lastpacket = packet
                 packet = sample.tobytes()
                 packet_advanced = True
                 packet_advanced2 = True
                 packet_advanced3 = True
                 if OUTPUT_FILE:
+                    if sample.dtype is not np.float32:
+                        sample = sample.astype(np.float32)
+                        sample *= 1 / 32767
                     submit(OUTPUT_FILE.write, packet)
                 if not point_fut or point_fut.done():
                     point_fut = submit(point, f"~{frame} {duration}")
@@ -1129,6 +1157,7 @@ def play(pos):
                     if spec_fut:
                         spec_fut.result()
                     spec_fut = submit(spectrogram)
+                globals()["lastplay"] = pc()
                 while waiting:
                     waiting.result()
                 while True:
@@ -1207,6 +1236,7 @@ class Sample(collections.abc.Hashable):
         return self.cache[period]
 
 
+lastplay = 0
 sfut = None
 
 def synthesize():
@@ -1294,7 +1324,7 @@ def piano_player():
             time.sleep(0.1)
         while True:
             channel.wait()
-            if len(channel._data_) > 1600 * channel.channels:
+            if pc() - lastplay < 0.5:
                 async_wait()
                 continue
             if sfut:
@@ -1303,9 +1333,14 @@ def piano_player():
                 s = synthesize()
             sfut = submit(synthesize)
             if s is not None and len(s):
-                sample = np.clip(s, -1, 1, out=s)
+                sbuffer = s
+                if channel.dtype is not np.float32:
+                    sample = s * 32768
+                    sample = np.clip(sample, -32768, 32767, out=sample).astype(np.int16)
+                else:
+                    sample = np.clip(s, -1, 1, out=s)
                 lastpacket = packet
-                packet = sample.tobytes()
+                packet = sbuffer.tobytes()
                 packet_advanced = True
                 packet_advanced2 = True
                 packet_advanced3 = True

@@ -391,7 +391,7 @@ def animate_polyhedron(changed=False):
             raise KeyError
     except KeyError:
         class Poly_Spec:
-            pass
+            frame = 0
         spec = globals()["poly-s"] = Poly_Spec()
         spec.dims = dims
         spec.rotmat = np.identity(dims)
@@ -406,14 +406,15 @@ def animate_polyhedron(changed=False):
             factor = i
         else:
             factor = 6.5 - i
-        z = angle / factor ** 0.5
+        z = angle * sin(spec.frame * factor ** 0.5)
         rotation = np.identity(dims)
         a, b = cos(z), sin(z)
         rotation[x][x] = a
         rotation[x][y] = -b
         rotation[y][x] = b
         rotation[y][y] = a
-        spec.rotmat = spec.rotmat @ rotation
+        spec.rotmat = rotation @ spec.rotmat
+    spec.frame += tau / 1920
     poly = poly @ spec.rotmat
     if poly.shape[-1] > 3:
         outs = poly.T[:3].T

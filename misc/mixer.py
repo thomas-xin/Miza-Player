@@ -298,7 +298,7 @@ def sc_player(d):
     def close():
         player.closed = True
         if player.type == "pygame":
-            return
+            return player.Channel(0).stop()
         try:
             player.__exit__(None, None, None)
         except:
@@ -308,6 +308,7 @@ def sc_player(d):
         if player.type == "pygame":
             while player.Channel(0).get_queue():
                 async_wait()
+            return
         if not len(player._data_):
             return
         verify()

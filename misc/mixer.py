@@ -219,15 +219,26 @@ def get_device(name):
     DEVICE = sc.default_speaker()
     return DEVICE
 
+PG_USED = False
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
     cc = d.channels
-    player = d.player(SR, cc, 1600)
+    try:
+        if not PG_USED:
+            raise RuntimeError
+        player = d.player(SR, cc, 1600)
+    except RuntimeError:
+        globals()["PG_USED"] = True
+        player = pygame.mixer
+        player.init(SR, 32, cc, 1600, devicename=d.name, allowedchanges=pygame.AUDIO_ALLOW_ANY_CHANGE)
+        player.type = "pygame"
+    else:
+        player.__enter__()
+        player.type = "soundcard"
     player.closed = False
     player.playing = None
     player.fut = None
     player._data_ = ()
-    player.__enter__()
     player.channels = cc
     # a monkey-patched play function that has a better buffer
     # (soundcard's normal one is insufficient for continuous playback)
@@ -261,6 +272,11 @@ def sc_player(d):
             data = data[::2] + data[1::2]
             data *= 0.5
         player.wait()
+        if player.type == "pygame":
+            if cc >= 2:
+                data = data.reshape((len(data) // cc, cc))
+            sound = pygame.sndarray.make_sound(data)
+            return player.Channel(0).queue(sound)
         if not len(player._data_):
             player._data_ = data
             return verify()
@@ -271,12 +287,17 @@ def sc_player(d):
     player.write = write        
     def close():
         player.closed = True
+        if player.type == "pygame":
+            return
         try:
             player.__exit__(None, None, None)
         except:
             print_exc()
     player.close = close
     def wait():
+        if player.type == "pygame":
+            while player.Channel(0).get_queue():
+                async_wait()
         if not len(player._data_):
             return
         verify()
@@ -793,7 +814,7 @@ def oscilloscope(buffer):
                         while stderr_lock:
                             stderr_lock.result()
                         stderr_lock = concurrent.futures.Future()
-                        bsend(b"o" + "~".join(map(str, size)).encode("utf-8") + b"\n", b)
+                        bsend(b"o" + "~".join(map(str, size)).encode("ascii") + b"\n", b)
                         lock, stderr_lock = stderr_lock, None
                         if lock:
                             lock.set_result(None)
@@ -902,7 +923,7 @@ def spectrogram_update():
             else:
                 amp = supersample(amp, barcount * 2)
             b = amp.tobytes()
-            a = f"~e{len(b)}\n".encode("utf-8")
+            a = f"~e{len(b)}\n".encode("ascii")
             rproc.stdin.write(a + b)
             rproc.stdin.flush()
         if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
@@ -1534,9 +1555,10 @@ while not sys.stdin.closed and failed < 8:
                 ssize = tuple(map(int, command[7:].split()))
                 continue
             if command.startswith("~download"):
-                st, fn2 = command[10:].split(" ", 1)
+                st, fn2 = command[10:].rsplit(" ", 1)
                 if not os.path.exists(fn2) or time.time() - os.path.getmtime(fn2) > 86400 * 7:
-                    submit(download, st, fn2)
+                    st2 = base64.b85decode(st.encode("ascii")).decode("utf-8", "replace")
+                    submit(download, st2, fn2)
                 continue
             if command.startswith("~output"):
                 OUTPUT_DEVICE = command[8:]
@@ -1583,7 +1605,7 @@ while not sys.stdin.closed and failed < 8:
                 s = sys.stdin.readline().rstrip().split(" ", 3)
                 pos, duration, cdc, sh = s
                 pos, duration = map(float, (pos, duration))
-                stream = command
+                stream = base64.b85decode(command.encode("ascii")).decode("utf-8", "replace")
             shuffling = False
             if proc:
                 proc_waiting = True

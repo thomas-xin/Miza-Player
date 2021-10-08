@@ -330,7 +330,12 @@ def start_mixer():
         mixer.kill()
     if "pygame" in globals() and getattr(pygame, "closed", None):
         return
-    mixer = psutil.Popen(argp + ["misc/mixer.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    mixer = psutil.Popen(
+        argp + ["misc/mixer.py"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     if "pygame" not in globals():
         import ctypes, struct, io
         user32 = ctypes.windll.user32
@@ -821,7 +826,7 @@ def bytes2zip(data):
     b.seek(0)
     return b.read()
 
-shash = lambda s: as_str(base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).rstrip(b"="))
+shash = lambda s: base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).rstrip(b"=").decode("ascii")
 
 def quote(s):
     if s.isascii():

@@ -627,7 +627,7 @@ def spectrogram_render(bars):
                     size = sfx.size
                 except AttributeError:
                     size = sfx.get_size()
-            sys.stdout.buffer.write(b"~s" + "~".join(map(str, size)).encode("utf-8") + b"\n")
+            sys.stdout.buffer.write(b"~s" + "~".join(map(str, size)).encode("ascii") + b"\n")
             sys.stdout.buffer.write(spectrobytes)
         else:
             sys.stdout.write("~s\n")

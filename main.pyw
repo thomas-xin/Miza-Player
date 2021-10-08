@@ -1243,7 +1243,8 @@ def prepare(entry, force=False, download=False):
             duration = get_duration_2(fn)[0]
             stream = entry.stream = fn
     elif stream and is_url(stream) and download:
-        mixer.submit(f"~download {stream} cache/~{shash(entry.url)}.pcm")
+        es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
+        mixer.submit(f"~download {es} cache/~{shash(entry.url)}.pcm")
     entry.duration = duration or entry.duration
     return stream
 
@@ -1322,7 +1323,8 @@ def start_player(pos=None, force=False):
     else:
         player.needs_shuffle = not is_url(stream)
     ensure_next(int(len(queue) > 1 and control.loop < 2))
-    s = f"{stream}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
+    es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
+    s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
     mixer.submit(s, force=False)
     player.pos = pos
     player.index = player.pos * 30
@@ -1407,7 +1409,7 @@ def restart_mixer():
 def play():
     try:
         while True:
-            b = as_str(mixer.stderr.readline().rstrip())
+            b = as_str(mixer.stderr.readline()).rstrip()
             if "~" not in b:
                 if b:
                     print(b)
@@ -1448,7 +1450,7 @@ def play():
                 player.pop("spec_used", None)
     except:
         if not mixer.is_running():
-            print(mixer.stderr.read().decode("utf-8", "replace"))
+            print(as_str(mixer.stderr.read()))
         print_exc()
 
 def reevaluate():
@@ -1558,7 +1560,7 @@ def pos():
         while True:
             s = None
             while not s and mixer.is_running():
-                s = mixer.stdout.readline().decode("utf-8", "replace").rstrip()
+                s = as_str(mixer.stdout.readline()).rstrip()
                 if s and s[0] != "~":
                     if s[0] in "'\"":
                         s = ast.literal_eval(s)
@@ -1886,7 +1888,7 @@ def update_menu():
     if toolbar.resizing or in_rect(mpos, toolbar.rect):
         hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
         hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.2)
-        c = tuple(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
+        c = verify_colour(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
     toolbar.updated = False#toolbar.colour != c
     toolbar.colour = c
     if any(mclick):
@@ -1932,7 +1934,7 @@ def update_menu():
     if sidebar.resizing or in_rect(mpos, sidebar.rect):
         hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
         hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.2)
-        c = tuple(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
+        c = verify_colour(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
     sidebar.updated = False#sidebar.colour != c
     sidebar.colour = c
     sidebar.relpos = (sidebar.get("relpos", 0) * (ratio - 1) + bool(sidebar.abspos)) / ratio

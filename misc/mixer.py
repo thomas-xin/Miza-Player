@@ -224,7 +224,7 @@ SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
     cc = d.channels
     try:
-        if not PG_USED or PG_USED[0] == d.name and PG_USED[1] == cc:
+        if not PG_USED:
             raise RuntimeError
         player = d.player(SR, cc, 1600)
     except RuntimeError:

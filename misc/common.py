@@ -778,11 +778,13 @@ def update_repo(force=False):
                                     except PermissionError:
                                         pass
                             updating.progress = len(nl)
-                    else:
+                    elif b is None:
                         subprocess.run(["git", "reset", "--hard", "HEAD"])
                         updating.progress = 0.5
                         subprocess.run(["git", "pull"])
                         updating.progress = 1
+                    else:
+                        raise ConnectionError(resp.status_code, resp.headers)
                     globals().pop("updating", None)
                     globals()["repo-update"] = True
                 if r is not None:
@@ -797,8 +799,9 @@ def update_repo(force=False):
                 print("No updates found.")
                 return True
         except EOFError:
-            with open(commitf, "w") as f:
-                f.write(commit)
+            if commitf == commitr:
+                with open(commitf, "w") as f:
+                    f.write(commit)
     except:
         print_exc()
 

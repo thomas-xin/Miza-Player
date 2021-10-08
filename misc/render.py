@@ -362,7 +362,7 @@ def schlafli(symbol):
 
 found_polytopes = {}
 perms = [
-    ((0, 1)),
+    ((0, 1),),
     ((0, 1), (0, 2), (1, 2)),
     ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)),
 ]
@@ -384,16 +384,17 @@ def animate_polyhedron(changed=False):
     # return
     bars = bars2[::-1]
     dimcount = 2 if " " not in s else poly.shape[-1]
+    dims = max(3, dimcount)
     try:
         spec = globals()["poly-s"]
-        if spec.dimcount != dimcount:
+        if spec.dims != dims:
             raise KeyError
     except KeyError:
         class Poly_Spec:
             pass
         spec = globals()["poly-s"] = Poly_Spec()
-        spec.dimcount = dimcount
-        spec.rotmat = np.identity(dimcount)
+        spec.dims = dims
+        spec.rotmat = np.identity(dims)
         glLoadIdentity()
     w, h = specsize
     glLineWidth(2.5)
@@ -406,7 +407,7 @@ def animate_polyhedron(changed=False):
         else:
             factor = 7 - i
         z = angle / factor ** 2
-        rotation = np.identity(dimcount)
+        rotation = np.identity(dims)
         a, b = cos(z), sin(z)
         rotation[x][x] = a
         rotation[x][y] = -b

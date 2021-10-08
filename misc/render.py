@@ -405,7 +405,7 @@ def animate_polyhedron(changed=False):
         if i <= 3:
             factor = i
         else:
-            factor = 7 - i
+            factor = 6.875 - i
         z = angle / factor ** 0.5
         rotation = np.identity(dims)
         a, b = cos(z), sin(z)

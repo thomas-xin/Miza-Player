@@ -788,6 +788,12 @@ def update_repo(force=False):
                 if r is not None:
                     raise EOFError
             else:
+                try:
+                    globals()["repo-update"].set_result(False)
+                except KeyError:
+                    pass
+                else:
+                    globals().pop("repo-update", None)
                 print("No updates found.")
                 return True
         except EOFError:

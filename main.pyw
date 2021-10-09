@@ -3463,6 +3463,41 @@ try:
                             if editor.held_update <= 0:
                                 editor.held_update = None
                     mixer.submit("~keys " + ",".join(map(str, notekeys)))
+            if not tick + 2 & 7 and not toolbar.editor:
+                if player.get("spec"):
+                    if options.get("spectrogram"):
+                        rect = player.rect
+                        surf = player.spec
+                        if options.spectrogram > 1:
+                            srect = limit_size(*surf.get_size(), *rect[2:])
+                        else:
+                            srect = rect[2:]
+                        if tuple(srect[2:]) != surf.get_size():
+                            specf = True
+                            player.specr_fut = pygame.transform.scale(surf, srect)
+                        else:
+                            player.specr_fut = surf
+                        prect = rect[:2]
+                        prect += (np.array(rect[2:]) - srect) / 2
+                        surf = player.get("specr_fut", None)
+                        if surf:
+                            if options.spectrogram > 1:
+                                rects = deque()
+                                if srect[0] < rect[2]:
+                                    rects.append(rect[:2] + (prect[0], rect[3]))
+                                    rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
+                                elif srect[1] < rect[3]:
+                                    rects.append(rect[:2] + (rect[2], prect[1]))
+                                    rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
+                                for rect in rects:
+                                    DISP.fill(0, rect)
+                            if player.get("spec_used", None):
+                                player.spec = surf
+                            DISP.blit(
+                                surf,
+                                prect,
+                            )
+                            modified.add(player.rect)
             if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
                 try:
                     update_menu()
@@ -3482,54 +3517,6 @@ try:
                     modified.add(tuple(screensize))
                 else:
                     modified.add(player.rect)
-            if not tick + 2 & 3 and not toolbar.editor:
-                if player.get("spec"):
-                    if options.get("spectrogram"):
-                        rect = player.rect
-                        surf = player.spec
-                        if not tick + 2 & 7:
-                            specf = False
-                            im = pyg2pil(surf)
-                            if tuple(rect[2:]) != surf.get_size():
-                                if options.spectrogram > 1:
-                                    srect = limit_size(*surf.get_size(), *rect[2:])
-                                else:
-                                    srect = rect[2:]
-                                if tuple(srect[2:]) != surf.get_size():
-                                    specf = True
-                                    player.specr_fut = submit(im.resize, srect, resample=Image.NEAREST)
-                                    # player.specr_fut = submit(pygame.transform.scale, surf, srect)
-                            if not specf:
-                                player.specr_fut = concurrent.futures.Future()
-                                player.specr_fut.set_result(im)
-                            player.spec_used = True
-                        else:
-                            if options.spectrogram > 1:
-                                srect = limit_size(*surf.get_size(), *rect[2:])
-                            else:
-                                srect = rect[2:]
-                            prect = rect[:2]
-                            prect += (np.array(rect[2:]) - srect) / 2
-                            fut = player.get("specr_fut", None)
-                            if fut:
-                                if options.spectrogram > 1:
-                                    rects = deque()
-                                    if srect[0] < rect[2]:
-                                        rects.append(rect[:2] + (prect[0], rect[3]))
-                                        rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
-                                    elif srect[1] < rect[3]:
-                                        rects.append(rect[:2] + (rect[2], prect[1]))
-                                        rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
-                                    for rect in rects:
-                                        DISP.fill(0, rect)
-                                surf = pil2pyg(fut.result())
-                                if player.get("spec_used", None):
-                                    player.spec = surf
-                                DISP.blit(
-                                    surf,
-                                    prect,
-                                )
-                            modified.add(player.rect)
             if not tick + 2 & 7 and not toolbar.editor:
                 if (queue or lyrics_entry) and not options.spectrogram:
                     size = max(16, min(32, (screensize[0] - sidebar_width) // 36))
@@ -3633,8 +3620,9 @@ try:
                         4,
                         filled=False,
                     )
-                    modified.add(player.rect)
-            if not toolbar.editor and (not tick + 6 & 7 or tuple(screensize) in modified):
+                    modified.clear()
+                    modified.add(tuple(screensize))
+            if not toolbar.editor and not tick + 6 & 7:
                 if options.get("insights"):
                     message_display(
                         f"FPS: {round(fps, 2)}",
@@ -3673,10 +3661,10 @@ try:
                         font="Comic Sans MS",
                         cache=True,
                     )
-                if modified:
+                modified.add(player.rect)
+                if len(modified) > 1:
+                    modified.clear()
                     modified.add(tuple(screensize))
-                else:
-                    modified.add(player.rect)
             if sidebar.menu and not tick & 3:
                 dur = last_ratio * 4
                 if sidebar.menu.get("scale", 0) < 1:
@@ -3745,16 +3733,18 @@ try:
                     )
                 modified.add(rect)
             if modified:
-                if tuple(screensize) in modified:
-                    pygame.display.flip()
-                else:
-                    pygame.display.update(tuple(modified))
-                if not tick + 6 & 7 and (tuple(screensize) in modified or player.rect in modified) and (not options.spectrogram or not player.get("spec")):
-                    DISP.fill(
-                        (0,) * 3,
-                        player.rect,
-                    )
-                modified.clear()
+                if not tick + 6 & 7:
+                    if tuple(screensize) in modified:
+                        pygame.display.flip()
+                    else:
+                        pygame.display.update(tuple(modified))
+                    if (tuple(screensize) in modified or player.rect in modified) and (not options.spectrogram or not player.get("spec")):
+                        rect = player.rect if tuple(screensize) in modified else player.rect[:3] + (96,)
+                        DISP.fill(
+                            (0,) * 3,
+                            rect,
+                        )
+                    modified.clear()
             # if not tick & 7 and modified:
             #     pygame.display.flip()
             #     # glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)

@@ -219,6 +219,7 @@ class Bar(Particle):
 def animate_prism(changed=False):
     if not vertices:
         return
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     try:
         if changed:
             raise KeyError
@@ -233,7 +234,7 @@ def animate_prism(changed=False):
         glLoadIdentity()
     w, h = specsize
     depth = 3
-    glLineWidth(24 / depth)
+    glLineWidth(specsize[0] / 8 / depth)
     rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
     ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
     rz = 0.8 - abs(spec.rz % 90 - 45) / 90
@@ -308,10 +309,12 @@ def animate_prism(changed=False):
         glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
         glDrawArrays(GL_LINES, 0, len(c))
     glFlush()
-    glDisableClientState(GL_VERTEX_ARRAY)
-    glDisableClientState(GL_COLOR_ARRAY)
-    sfx = glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE)
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    x = y = 0
+    if specsize[0] > ssize2[0]:
+        x = specsize[0] - ssize2[0] >> 1
+    elif specsize[1] > ssize2[1]:
+        y = specsize[1] - ssize2[1] >> 1
+    sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
     return sfx
 
 def schlafli(symbol):
@@ -370,6 +373,7 @@ perms = [
 def animate_polyhedron(changed=False):
     if not vertices:
         return
+    glClear(GL_COLOR_BUFFER_BIT)
     if type(vertices) is list:
         s = " ".join(map(str, vertices))
     else:
@@ -392,12 +396,12 @@ def animate_polyhedron(changed=False):
     except KeyError:
         class Poly_Spec:
             frame = 0
-        spec = globals()["poly-s"] = Poly_Spec()
+        spec = globals()["poly-s"] = Poly_Spec
         spec.dims = dims
         spec.rotmat = np.identity(dims)
         glLoadIdentity()
     w, h = specsize
-    glLineWidth(2.5)
+    glLineWidth(specsize[0] / 256)
     angle = tau / 512
     i = 0
     for x, y in perms[dimcount - 2]:
@@ -469,15 +473,18 @@ def animate_polyhedron(changed=False):
     glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
     glDrawArrays(GL_LINES, 0, len(colours) * len(poly))
     glFlush()
-    glDisableClientState(GL_VERTEX_ARRAY)
-    glDisableClientState(GL_COLOR_ARRAY)
-    sfx = glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE)
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    x = y = 0
+    if specsize[0] > ssize2[0]:
+        x = specsize[0] - ssize2[0] >> 1
+    elif specsize[1] > ssize2[1]:
+        y = specsize[1] - ssize2[1] >> 1
+    sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
     return sfx
 
 def animate_ripple(changed=False):
     if not vertices:
         return
+    glClear(GL_COLOR_BUFFER_BIT)
     bars = bars2[::-1]
     try:
         if changed:
@@ -489,11 +496,11 @@ def animate_ripple(changed=False):
             rx = 0
             ry = 0
             rz = 0
-        spec = globals()["ripple-s"] = Ripple_Spec()
+        spec = globals()["ripple-s"] = Ripple_Spec
         glLoadIdentity()
     w, h = specsize
     depth = 3
-    glLineWidth(24 / depth)
+    glLineWidth(specsize[0] / 48 / depth)
     rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
     ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
     rz = 0.8 - abs(spec.rz % 90 - 45) / 90
@@ -568,10 +575,12 @@ def animate_ripple(changed=False):
         glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
         glDrawArrays(GL_LINES, 0, len(c))
     glFlush()
-    glDisableClientState(GL_VERTEX_ARRAY)
-    glDisableClientState(GL_COLOR_ARRAY)
-    sfx = glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE)
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    x = y = 0
+    if specsize[0] > ssize2[0]:
+        x = specsize[0] - ssize2[0] >> 1
+    elif specsize[1] > ssize2[1]:
+        y = specsize[1] - ssize2[1] >> 1
+    sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
     return sfx
 
 bars = [Bar(i - 1, barcount) for i in range(barcount)]
@@ -640,7 +649,7 @@ def spectrogram_render(bars):
 
         if write:
             if type(sfx) is bytes:
-                size = specsize
+                size = ssize2
             else:
                 try:
                     size = sfx.size
@@ -657,7 +666,7 @@ def spectrogram_render(bars):
 ssize2 = (0, 0)
 specs = 0
 D = 9
-specsize = (barcount * D - D,) * 2
+specsize = (1, 1)#(barcount * D - D,) * 2
 
 import glfw
 from glfw.GLFW import *
@@ -665,21 +674,24 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 
+def setup_window(size):
+    glfw.window_hint(glfw.VISIBLE, False)
+    window = glfw.create_window(*size, "render", None, None)
+    glfw.make_context_current(window)
+    glutInitDisplayMode(GL_RGB)
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    glDisable(GL_DEPTH_TEST)
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    glBlendEquation(GL_FUNC_ADD)
+    glPixelStorei(GL_PACK_ALIGNMENT, 1)
+    gluPerspective(45, 1, 1/16, 3)
+    glTranslatef(0, 0, -2)
+    return window
+
 glfw.init()
-glfw.window_hint(glfw.VISIBLE, False)
-globals()["window"] = glfw.create_window(*specsize, "render.py", None, None)
-glfw.make_context_current(window)
-glutInitDisplayMode(GL_RGB)
-glMatrixMode(GL_PROJECTION)
-glLoadIdentity()
-glOrtho(-1, 1, -1, 1, -1, 1)
-glDisable(GL_DEPTH_TEST)
-glEnable(GL_BLEND)
-glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-glBlendEquation(GL_FUNC_ADD)
-glPixelStorei(GL_PACK_ALIGNMENT, 1)
-gluPerspective(45, 1, 1/16, 16)
-glTranslatef(0, 0, -2)
+window = setup_window(specsize)
 
 while True:
     try:
@@ -687,6 +699,11 @@ while True:
         if line == b"~r":
             line = sys.stdin.buffer.readline().rstrip()
             ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
+            ssize3 = (max(ssize2),) * 2
+            if ssize3 != specsize:
+                specsize = ssize3
+                glfw.destroy_window(window)
+                window = setup_window(specsize)
             bi = bars2 if specs > 2 else bars
             spectrogram_render(bi)
         elif line == b"~e":

@@ -385,23 +385,14 @@ def start_display():
         ICON_DISP = ""
         pygame.display.set_icon(ICON)
     pygame.display.set_caption("Miza Player")
+    # import glfw
     # glfw.init()
-    # glfw.window_hint(glfw.VISIBLE, False)
+    # glutInitDisplayMode(GL_RGB)
     flags = pygame.RESIZABLE | pygame.HWSURFACE #| pygame.DOUBLEBUF | pygame.OPENGL
     DISP = pygame.display.set_mode(options.screensize, flags, vsync=True)
     screensize2 = list(options.screensize)
     pygame.display.set_allow_screensaver(True)
-#     glutInitDisplayMode(GL_RGB)
-#     glMatrixMode(GL_PROJECTION)
-#     glLoadIdentity()
-#     glOrtho(-1, 1, -1, 1, -1, 1)
-#     glEnable(GL_BLEND)
-#     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-#     glPixelStorei(GL_PACK_ALIGNMENT, 1)
-#     gluPerspective(45, 1, 1/16, 16)
-#     glTranslatef(0, 0, -2)
 
-# import glfw
 # from glfw.GLFW import *
 # from OpenGL.GL import *
 # from OpenGL.GLU import *
@@ -991,6 +982,107 @@ def pil2pyg(im):
     b = im.tobytes()
     return pygame.image.frombuffer(b, im.size, mode)
 
+def glw2pyg(wind, mode="RGB"):
+    glfw.make_context_current(wind)
+    mode = mode.upper()
+    mode = GL_RGB if "A" not in mode else GL_RGBA
+    glFlush()
+    size = WSIZES[wind]
+    b = glReadPixels(0, 0, *size, mode, GL_UNSIGNED_BYTE)
+    return pygame.image.frombuffer(b, size, mode)
+
+# TVERTS = {}
+TSIZES = {}
+TEXTURES = {}
+def Texture(surf):
+    try:
+        tex = TEXTURES[id(surf)]
+        if not isinstance(tex, int):
+            raise
+    except:
+        texs = set()
+        while len(TEXTURES) >= 256:
+            tex = TEXTURES.pop(next(iter(TEXTURES)))
+            texs.add(tex)
+            TSIZES.pop(tex, None)
+            # TVERTS.pop(tex, None)
+        glDeleteTextures(list(texs))
+        tex = TEXTURES[id(surf)] = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, tex)
+        size = surf.get_size()
+        TSIZES[tex] = size
+        # TVERTS[tex] = np.array(())
+        mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
+        gl_mode = GL_RGBA if mode == "RGBA" else GL_RGB
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            gl_mode,
+            *size,
+            0,
+            gl_mode,
+            GL_UNSIGNED_BYTE,
+            pygame.image.tostring(surf, mode),
+        )
+    else:
+        glBindTexture(GL_TEXTURE_2D, tex)
+    return tex
+
+WSIZES = {}
+WINDOWS = {}
+def Window(size, mode="RGB", clear=True):
+    size = tuple(size)
+    try:
+        wind = WINDOWS[size]
+    except KeyError:
+        glfw.window_hint(glfw.VISIBLE, False)
+        while len(WINDOWS) >= 8:
+            wind = WINDOWS.pop(next(iter(WINDOWS)))
+            WSIZES.pop(wind, None)
+            glfw.destroy_window(wind)
+        wind = WINDOWS[size] = glfw.create_window(size, "common", None, None)
+        WSIZES[wind] = size
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        glOrtho(-1, 1, -1, 1, -1, 1)
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_BLEND)
+        glPixelStorei(GL_PACK_ALIGNMENT, 1)
+        clear = False
+    glfw.make_context_current(wind)
+    if "A" in mode.upper():
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glBlendEquation(GL_FUNC_ADD)
+    else:
+        glDisable(GL_BLEND)
+    if clear:
+        glClear(GL_COLOR_BUFFER_BIT)
+
+TVERTS = np.array((
+    (0, 0),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+), dtype=np.float32)
+
+def window_blit(wind, tex, pos):
+    glfw.make_context_current(wind)
+    glOrtho(0, *WSIZES[wind], 0, 0, 1)
+    glEnable(GL_TEXTURE_2D)
+    glTexCoordPointer(2, GL_FLOAT, 0, TVERTS.ravel())
+    end = (pos[0] + TSIZES[tex][0], pos[1] + TSIZES[tex][1])
+    verts = np.array((
+        pos,
+        (end[0], pos[1]),
+        (end[0], end[1]),
+        (pos[0], end[1]),
+    ), dtype=np.float32)
+    glVertexPointer(2, GL_FLOAT, 0, verts.ravel())
+    glEnableClientState(GL_TEX_COORD_ARRAY)
+    glEnableClientState(GL_VERTEX_ARRAY)
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+
 SURFS = {}
 def load_surface(fn, greyscale=False, size=None, force=False):
     if type(fn) is str:
@@ -1243,7 +1335,7 @@ def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
             else:
                 dest.fill(colour, rect)
 
-def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True):
+def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True, copy=True):
     rect = list(map(round, rect))
     if len(colour) > 3:
         colour, alpha = colour[:-1], colour[-1]
@@ -1297,7 +1389,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
         if dest:
             dest.blit(surf, rect[:2], special_flags=BLEND_ALPHA_SDL2)
             return rect
-        return surf.convert()
+        return surf.convert() if copy else surf
     ctr = max(colour)
     contrast = min(round(ctr) + 2 >> 2 << 2, 255)
     data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
@@ -1334,7 +1426,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
         colour = (0,) * 3
     return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
 
-def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True):
+def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True, copy=True):
     rect = list(map(round, rect))
     if len(colour) > 3:
         colour, alpha = colour[:-1], colour[-1]
@@ -1392,7 +1484,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
         if dest:
             dest.blit(surf, rect[:2], special_flags=BLEND_ALPHA_SDL2)
             return rect
-        return surf.convert()
+        return surf.convert() if copy else surf
     ctr = max(colour)
     contrast = min(round(ctr) + 2 >> 2 << 2, 255)
     data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)

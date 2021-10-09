@@ -1119,9 +1119,13 @@ def play(pos):
                     sample *= 1 / 32767
                 if settings.volume != 1 or s is not None:
                     if settings.volume != 1:
-                        if settings.volume > 1:
-                            sample = sample.astype(np.float32)
-                        np.multiply(sample, settings.volume, out=sample, casting="unsafe")
+                        if sample.dtype is not np.float32:
+                            if settings.volume > 1:
+                                sample = sample.astype(np.float32)
+                        if sample.dtype is not np.float32:
+                            sample = sample * settings.volume
+                        else:
+                            np.multiply(sample, settings.volume, out=sample, casting="unsafe")
                     if s is not None:
                         if s.dtype is not channel.dtype:
                             s *= channel.peak

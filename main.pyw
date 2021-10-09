@@ -3074,7 +3074,7 @@ def draw_menu():
                         enter = easygui.get_string(
                             "Change polytope",
                             "Miza Player",
-                            str(options.control.get("gradient-vertices", 4)),
+                            str(options.control.get("gradient-vertices")),
                         )
                         if enter:
                             enter = enter.strip("<>()[]{}").casefold().replace(",", " ").replace(":", " ")
@@ -3095,10 +3095,10 @@ def draw_menu():
                         enter = easygui.get_string(
                             "Change vertex count",
                             "Miza Player",
-                            str(options.control.get("spiral-vertices", 6)),
+                            str(options.control.get("spiral-vertices")),
                         )
                         if enter:
-                            enter = int(enter)
+                            enter = int(float(enter))
                             if enter > 384:
                                 enter = 384
                             options.control["spiral-vertices"] = enter

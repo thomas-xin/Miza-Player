@@ -228,8 +228,8 @@ control_default = cdict(
     ripples=1,
     autoupdate=0,
 )
-control_default["gradient-vertices"] = (4, 3)
-control_default["spiral-vertices"] = 6
+control_default["gradient-vertices"] = (4, 3, 3)
+control_default["spiral-vertices"] = 24
 editor_default = cdict(
     mode="I",
     freeform=False,

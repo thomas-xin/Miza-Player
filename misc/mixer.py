@@ -251,7 +251,7 @@ def sc_player(d):
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
         while True:
-            if self.closed or paused and not paused.done() or not fut and not alphakeys:
+            if self.closed or paused and not paused.done() or not fut and not alphakeys or cleared:
                 if len(self._data_) > 3200 * cc:
                     self._data_ = self._data_[-3200 * cc:]
                 return
@@ -1498,6 +1498,7 @@ fut = None
 sf = None
 reading = None
 stopped = False
+cleared = False
 proc_waiting = False
 point_fut = None
 proc = None
@@ -1555,6 +1556,7 @@ while not sys.stdin.closed and failed < 8:
             if command.startswith("~keys"):
                 s = command[6:]
                 alphakeys = set(map(int, s.split(","))) if s else set()
+                cleared = False
                 continue
             if command.startswith("~editor"):
                 s = command[8:]
@@ -1574,6 +1576,7 @@ while not sys.stdin.closed and failed < 8:
                     submit(remove, file)
                 fn = file = proc = None
                 synth_samples = np.zeros(0, dtype=np.float32)
+                cleared = True
                 continue
             if command.startswith("~state"):
                 i = int(command[6:])
@@ -1693,6 +1696,7 @@ while not sys.stdin.closed and failed < 8:
                 file = None
             if not stream:
                 continue
+            cleared = False
             if not is_url(stream) and stream.endswith(".pcm") and not ext and settings.speed >= 0:
                 f = open(stream, "rb")
                 proc = cdict(

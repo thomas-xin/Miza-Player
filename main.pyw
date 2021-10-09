@@ -1365,7 +1365,7 @@ def skip():
             globals()["last_save"] = t
         if queue:
             return enqueue(queue[0])
-        mixer.clear()
+    mixer.clear()
     player.last = 0
     player.pos = 0
     player.end = inf

@@ -1447,7 +1447,7 @@ def play():
                             restart_mixer()
                         continue
                     b += mixer.stderr.read(req - len(b))
-                osci = pygame.image.frombuffer(b, osize, "RGB")
+                osci = pygame.image.frombuffer(b, osize, "RGB").convert()
                 osci.set_colorkey((0,) * 3)
                 player.osci = osci
             else:
@@ -1462,7 +1462,7 @@ def play():
                             restart_mixer()
                         continue
                     b += mixer.stderr.read(req - len(b))
-                spec = pygame.image.frombuffer(b, ssize, "RGB")
+                spec = pygame.image.frombuffer(b, ssize, "RGB").convert()
                 player.spec = spec
                 player.pop("spec_used", None)
     except:
@@ -2109,7 +2109,7 @@ def load_bubble(bubble_path):
                 surf = globals()["h-cache"][diameter]
             except KeyError:
                 im = globals()["h-img"].resize((diameter,) * 2, resample=Image.BILINEAR)
-                surf = pil2pyg(im)
+                surf = pil2pyg(im, convert=True)
                 im.close()
                 globals()["h-cache"][diameter] = surf
             globals()["h-timer"] = pc()
@@ -2139,7 +2139,7 @@ def load_spinner(spinner_path):
                 im = globals()["s-img"].resize((diameter,) * 2, resample=Image.BICUBIC)
                 if "RGB" not in im.mode:
                     im = im.convert("RGBA")
-                surf = pil2pyg(im)
+                surf = pil2pyg(im, convert=True)
                 im.close()
                 globals()["s-cache"][diameter] = surf
             blit_complex(
@@ -3560,7 +3560,7 @@ try:
                             srect = limit_size(*surf.get_size(), *rect[2:])
                         else:
                             srect = rect[2:]
-                        if 0 and tuple(srect[2:]) != surf.get_size():
+                        if tuple(srect) != surf.get_size():
                             specf = True
                             s2 = HWSurface.any(srect, FLAGS)
                             player.specr_fut = pygame.transform.scale(surf, srect, s2)

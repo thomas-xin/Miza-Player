@@ -1012,11 +1012,9 @@ def ensure_duration(e):
     e.duration = e.get("duration")
     return e
 
-lyrics_surf = None
 lyrics_cache = {}
 lyrics_renders = {}
 def render_lyrics(entry):
-    global lyrics_surf
     try:
         name = entry.name
         try:
@@ -1041,9 +1039,25 @@ def render_lyrics(entry):
             if render[1].get_size() != rect:
                 raise KeyError
         except KeyError:
-            if not lyrics_surf or lyrics_surf.get_size() != rect:
+            render = None
+            while len(lyrics_renders) > 6:
+                n = next(iter(lyrics_renders))
+                lyrics_cache.pop(n, None)
+                render = lyrics_renders.pop(n, None)
+                if render:
+                    ref = sys.getrefcount(render)
+                    if ref > 2 or render[1].get_size() != rect:
+                        # print(f"Deleting surface {render[1]} ({ref})...")
+                        render = None
+                    # else:
+                    #     print(f"Reusing surface {render[1]} ({ref})...")
+            if not render:
                 lyrics_surf = pygame.Surface(rect, FLAGS)
-            render = [lyrics[0], lyrics_surf]
+                render = [None, lyrics_surf]
+            else:
+                render[1].fill((0, 0, 0))
+            render[0] = lyrics[0]
+            lyrics_renders[name] = render
             mx = 0
             x = 0
             y = 0
@@ -1253,6 +1267,7 @@ def start_player(pos=None, force=False):
         entry = queue[0]
     except IndexError:
         return skip()
+    ensure_next(int(len(queue) > 1 and control.loop < 2))
     duration = entry.duration or 300
     if pos is None:
         if audio.speed >= 0:
@@ -1325,7 +1340,6 @@ def start_player(pos=None, force=False):
         player.needs_shuffle = False
     else:
         player.needs_shuffle = not is_url(stream)
-    ensure_next(int(len(queue) > 1 and control.loop < 2))
     es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
     s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
     mixer.submit(s, force=False)

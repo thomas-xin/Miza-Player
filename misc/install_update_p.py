@@ -89,18 +89,20 @@ if installing:
         i.wait()
 
 if os.name == "nt":
-    try:
-        if pkg_resources.get_distribution("pyopengl").version < "3.1.5":
-            raise ValueError
-    except:
-        subprocess.run([sys.executable, "-m", "pipwin", "install", "pyopengl"])
-    try:
-        if pkg_resources.get_distribution("pyopengl-accelerate").version < "3.1.5":
-            raise ValueError
-    except:
-        subprocess.run([sys.executable, "-m", "pipwin", "install", "pyopengl-accelerate"])
-    try:
-        if pkg_resources.get_distribution("glfw").version < "2.3.0":
-            raise ValueError
-    except:
-        subprocess.run([sys.executable, "-m", "pipwin", "install", "glfw"])
+    for k, v in (
+        ("pyopengl", "3.1.5"),
+        ("pyopengl-accelerate", "3.1.5"),
+        ("glfw", "2.3.0"),
+    ):
+        try:
+            if pkg_resources.get_distribution(k).version < v:
+                raise ValueError
+        except:
+            subprocess.run([sys.executable, "-m", "pipwin", "install", k])
+            try:
+                if pkg_resources.get_distribution(k).version < v:
+                    raise ValueError
+            except:
+                subprocess.run([sys.executable, "-m", "pipwin", "refresh"])
+                subprocess.run([sys.executable, "-m", "pip", "-y", "uninstall", k])
+                subprocess.run([sys.executable, "-m", "pipwin", "install", k])

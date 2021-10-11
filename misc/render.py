@@ -390,6 +390,8 @@ def animate_polyhedron(changed=False):
     dimcount = 2 if " " not in s else poly.shape[-1]
     dims = max(3, dimcount)
     try:
+        if changed and dimcount == 2:
+            raise KeyError
         spec = globals()["poly-s"]
         if spec.dims != dims:
             raise KeyError

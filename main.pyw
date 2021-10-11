@@ -2085,6 +2085,11 @@ def load_bubble(bubble_path):
             if im.mode == "RGBA":
                 A = im.getchannel("A")
             im2 = ImageOps.grayscale(im)
+            if any(x > 256 for x in im.size):
+                size = limit_size(*im.size, 256, 256)
+                im2 = im2.resize(size, Image.LANCZOS)
+                if im.mode == "RGBA":
+                    A = A.resize(size, Image.LANCZOS)
             if im2.mode == "L":
                 im2 = im2.point(lambda x: (x / 255) ** 0.8 * 255)
             if "RGB" not in im2.mode:
@@ -2103,7 +2108,7 @@ def load_bubble(bubble_path):
             try:
                 surf = globals()["h-cache"][diameter]
             except KeyError:
-                im = globals()["h-img"].resize((diameter,) * 2, resample=Image.BICUBIC)
+                im = globals()["h-img"].resize((diameter,) * 2, resample=Image.BILINEAR)
                 surf = pil2pyg(im)
                 im.close()
                 globals()["h-cache"][diameter] = surf

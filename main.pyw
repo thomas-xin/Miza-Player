@@ -2076,19 +2076,22 @@ def load_bubble(bubble_path):
                 im2.putalpha(A)
             globals()["h-img"] = im2
         globals()["h-cache"] = {}
+        globals()["h-timer"] = 0
 
         def bubble_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
+            alpha = round_random(alpha / 3) * 3
             diameter = round_random(radius * 2)
             if not diameter > 0:
                 return
             try:
                 surf = globals()["h-cache"][diameter]
             except KeyError:
-                im = globals()["h-img"].resize((diameter,) * 2, resample=Image.NEAREST)
+                im = globals()["h-img"].resize((diameter,) * 2, resample=Image.BICUBIC)
                 surf = pil2pyg(im)
                 im.close()
                 globals()["h-cache"][diameter] = surf
-            blit_complex(
+            globals()["h-timer"] = pc()
+            return blit_complex(
                 dest,
                 surf,
                 [round_random(x - y / 2) for x, y in zip(pos, surf.get_size())],
@@ -2672,6 +2675,7 @@ def draw_menu():
         modified.add(toolbar.rect)
         if toolbar.ripples:
             DISP2 = HWSurface.any(toolbar.rect[2:], FLAGS | SRCALPHA)
+            DISP2.fill((0, 0, 0, 0))
             ripple_f = globals().get("h-ripple", concentric_circle)
             for ripple in toolbar.ripples:
                 ripple_f(
@@ -2686,6 +2690,8 @@ def draw_menu():
                 as_pyg(DISP2),
                 toolbar.rect[:2],
             )
+        elif not sidebar.ripples and pc() - globals()["h-timer"] >= 8:
+            globals()["h-cache"].clear()
         pos = progress.pos
         length = progress.length
         width = progress.width

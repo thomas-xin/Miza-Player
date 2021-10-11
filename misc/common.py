@@ -387,19 +387,19 @@ def start_display():
         ICON_DISP = ""
         pygame.display.set_icon(ICON)
     pygame.display.set_caption("Miza Player")
-    import glfw
-    globals()["glfw"] = glfw
-    glfw.init()
-    glutInitDisplayMode(GL_RGB)
+    # import glfw
+    # globals()["glfw"] = glfw
+    # glfw.init()
+    # glutInitDisplayMode(GL_RGB)
     globals()["FLAGS"] = pygame.RESIZABLE# | pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.OPENGL
     DISP = pygame.display.set_mode(options.screensize, FLAGS, vsync=True)
     screensize2 = list(options.screensize)
     pygame.display.set_allow_screensaver(True)
 
-from glfw.GLFW import *
-from OpenGL.GL import *
-from OpenGL.GLU import *
-from OpenGL.GLUT import *
+# from glfw.GLFW import *
+# from OpenGL.GL import *
+# from OpenGL.GLU import *
+# from OpenGL.GLUT import *
 # import pyglet
 # from pyglet.gl import *
 
@@ -1004,7 +1004,7 @@ class HWSurface:
 
     cache = weakref.WeakKeyDictionary()
     anys = {}
-    anyids = []
+    anyque = []
     v1 = np.empty(8, dtype=np.float32)
     v2 = np.empty(8, dtype=np.float32)
 
@@ -1034,16 +1034,17 @@ class HWSurface:
         t = (size, m)
         try:
             self = cls.anys[t]
-            if t != cls.anyids[-1]:
-                cls.anyids.remove(t)
-                cls.anyids.append(t)
         except KeyError:
-            if len(cls.anyids) >= 8:
-                cls.anys.pop(cls.anyids.pop(0))
-            cls.anyids.append(t)
+            if len(cls.anyque) >= 12:
+                cls.anys.pop(cls.anyque.pop(0))
+            cls.anyque.append(t)
             self = cls.anys[t] = pygame.Surface(size, flags)#cls(size, flags, colour)
             colour = None
-            print("Windows:", len(cls.anys))
+            # print("Windows:", len(cls.anys))
+        else:
+            if t != cls.anyque[-1]:
+                cls.anyque.remove(t)
+                cls.anyque.append(t)
         if colour is not None:
             self.fill(colour)
         return self
@@ -1345,7 +1346,7 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
         s2 = dest.get_size()
         if pos[0] >= s2[0] or pos[1] >= s2[1] or pos[0] <= -s1[0] or pos[1] <= -s1[1]:
             return
-    alpha = round(min(alpha, 255))
+    alpha = round_random(min(alpha, 255))
     if alpha <= 0:
         return
     s = source
@@ -1365,7 +1366,7 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
                 try:
                     cblit_cache[source].append((s, colour, alpha))
                 except KeyError:
-                    cblit_cache[source] = deque([(s, colour, alpha)], maxlen=8)
+                    cblit_cache[source] = deque([(s, colour, alpha)], maxlen=12)
                 if alpha != 255:
                     s.fill(tuple(colour) + (alpha,), special_flags=BLEND_RGBA_MULT)
                 elif any(i != 255 for i in colour):
@@ -1389,7 +1390,7 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
     return s
 
 def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
-    alpha = max(0, min(255, round(alpha)))
+    alpha = max(0, min(255, round_random(alpha)))
     width = round(abs(width))
     if width > 0:
         if angle != 0 or alpha != 255:
@@ -1606,7 +1607,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
         if cache:
             rb_surf[data] = s
     if ctr > 0:
-        colour = tuple(round(i * 255 / ctr) for i in colour)
+        colour = tuple(round_random(i * 255 / ctr) for i in colour)
     else:
         colour = (0,) * 3
     return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)

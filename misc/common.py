@@ -1340,22 +1340,24 @@ def custom_scale(source, size, dest=None, antialias=False):
 
 cblit_cache = weakref.WeakKeyDictionary()
 
-def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True):
+def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True, cache=True):
     pos = position
     s1 = source.get_size()
     if dest:
         s2 = dest.get_size()
         if pos[0] >= s2[0] or pos[1] >= s2[1] or pos[0] <= -s1[0] or pos[1] <= -s1[1]:
             return
-    alpha = round_random(min(alpha, 255))
+    alpha = round_random(min(alpha / 3, 85)) * 3
     if alpha <= 0:
         return
     s = source
     if alpha != 255 or any(i != 255 for i in colour) or dest is None:
         if copy:
             try:
+                if not cache:
+                    raise KeyError
                 for s, c, a in cblit_cache[source]:
-                    if c == colour and a == alpha:
+                    if a == alpha and c == colour:
                         break
                 else:
                     raise KeyError
@@ -1367,7 +1369,8 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
                 try:
                     cblit_cache[source].append((s, colour, alpha))
                 except KeyError:
-                    cblit_cache[source] = deque([(s, colour, alpha)], maxlen=12)
+                    L = min(1024, max(12, 1048576 // s.get_width() // s.get_height()))
+                    cblit_cache[source] = deque([(s, colour, alpha)], maxlen=L)
                 if alpha != 255:
                     s.fill(tuple(colour) + (alpha,), special_flags=BLEND_RGBA_MULT)
                 elif any(i != 255 for i in colour):
@@ -1634,6 +1637,8 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
         else:
             pos = [centre[0] - width, centre[1] - height]
             return blit_complex(dest, newS, pos, alpha, rotation, copy=True)
+    # newS = HWSurface.any((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
+    # newS.fill((0, 0, 0, 0))
     try:
         newS = pygame.Surface((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
     except:
@@ -1693,7 +1698,7 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
     if cache:
         reg_polygon_cache[h] = newS
         # print(len(reg_polygon_cache), h)
-    return blit_complex(dest, newS, pos, alpha, rotation, copy=cache)
+    return blit_complex(dest, newS, pos, alpha, rotation, copy=cache, cache=False)
 
 def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=255, gradient=False, filled=False, cache=True):
     reverse = fill_ratio < 0

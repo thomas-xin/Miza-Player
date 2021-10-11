@@ -2154,7 +2154,14 @@ def spinnies():
             progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
             progress.angle = -t * pi
             pops = set()
-            for i, p in sorted(enumerate(i for i in progress.particles if i), key=lambda t: t[1].life):
+            def get_life(t):
+                try:
+                    return t[1].life
+                except (TypeError, AttributeError, IndexError):
+                    return inf
+            for i, p in sorted(enumerate(progress.particles), key=get_life):
+                if not p:
+                    break
                 p.life -= dur * 2.5
                 if p.life <= 6:
                     p.angle += dur

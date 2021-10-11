@@ -683,6 +683,7 @@ def setup_window(size):
     glLoadIdentity()
     glDisable(GL_DEPTH_TEST)
     glEnable(GL_BLEND)
+    glEnable(GL_LINE_SMOOTH)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glBlendEquation(GL_FUNC_ADD)
     glPixelStorei(GL_PACK_ALIGNMENT, 1)

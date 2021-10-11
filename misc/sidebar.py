@@ -77,7 +77,7 @@ def render_sidebar(dur=0):
     offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
     sc = sidebar.colour or (64, 0, 96)
     if sidebar.ripples or offs > -sidebar_width + 4:
-        DISP2 = pygame.Surface((sidebar.rect[2], sidebar.rect[3] + 4), SRCALPHA)
+        DISP2 = HWSurface.any((sidebar.rect[2], sidebar.rect[3] + 4), FLAGS | SRCALPHA)
         bevel_rectangle(
             DISP2,
             sc,
@@ -110,6 +110,7 @@ def render_sidebar(dur=0):
                 surface=DISP2,
                 align=0,
                 font="Comic Sans MS",
+                cache=True,
             )
         if queue and sidebar.scroll.get("colour"):
             rounded_bev_rect(
@@ -125,7 +126,7 @@ def render_sidebar(dur=0):
                 4,
             )
         DISP.blit(
-            DISP2,
+            as_pyg(DISP2),
             sidebar.rect[:2],
         )
     else:
@@ -152,15 +153,14 @@ def render_sidebar(dur=0):
             fn = easygui.filesavebox(
                 "Save As",
                 "Miza Player",
-                name + ".ogg",
+                name.translate(safe_filenames) + ".ogg",
                 filetypes=ftypes,
             )
             if fn:
                 submit(download, entries, fn, settings=True)
         Z = -sidebar.scroll.pos
-        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), SRCALPHA)
+        DISP2 = HWSurface.any((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), FLAGS | SRCALPHA)
         DISP2.fill((0, 0, 0, 0))
-        # DISP2.set_colorkey(sc)
         if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_v]:
             submit(enqueue_auto, *pyperclip.paste().split())
         if in_rect(mpos, sidebar.rect) and mc2[0] or not mheld[0]:
@@ -382,7 +382,7 @@ def render_sidebar(dur=0):
                         fn = easygui.filesavebox(
                             "Save As",
                             "Miza Player",
-                            name + ".ogg",
+                            name.translate(safe_filenames) + ".ogg",
                             filetypes=ftypes,
                         )
                         if fn:
@@ -490,7 +490,6 @@ def render_sidebar(dur=0):
             if skipping:
                 mixer.clear()
                 submit(start)
-        async_wait()
         if not sidebar.get("dragging"):
             for i, entry in enumerate(queue[base:base + maxitems], base):
                 if not entry.get("selected"):
@@ -625,7 +624,7 @@ def render_sidebar(dur=0):
                 sidebar.pop("last_selected", None)
                 lq2 = nan
         DISP.blit(
-            DISP2,
+            as_pyg(DISP2),
             (screensize[0] - sidebar_width + 4, 52 + 16),
         )
     if offs <= -4:

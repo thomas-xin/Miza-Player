@@ -276,11 +276,12 @@ def sc_player(d):
         if player.closed:
             return
         if cc < 2:
-            data = data[::2] + data[1::2]
             if data.dtype is np.float32:
+                data = data[::2] + data[1::2]
                 data *= 0.5
             else:
                 data >>= 1
+                data = data[::2] + data[1::2]
         player.wait()
         if player.type == "pygame":
             if cc >= 2:

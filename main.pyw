@@ -717,7 +717,7 @@ def setup_buttons():
                     fn = easygui.filesavebox(
                         "Save As",
                         "Miza Player",
-                        fn,
+                        fn.translate(safe_filenames),
                         filetypes=ftypes,
                     )
                     if fn:
@@ -1042,8 +1042,8 @@ def render_lyrics(entry):
                 raise KeyError
         except KeyError:
             if not lyrics_surf or lyrics_surf.get_size() != rect:
-                lyrics_surf = pygame.Surface(rect)
-            render = [lyrics[0], lyrics_surf.convert()]
+                lyrics_surf = pygame.Surface(rect, FLAGS)
+            render = [lyrics[0], lyrics_surf]
             mx = 0
             x = 0
             y = 0
@@ -1487,15 +1487,33 @@ def get_device(name):
     except IndexError:
         return sc.default_speaker()
 
+PG_USED = None
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
     cc = d.channels
-    player = d.player(SR, cc, 1600)
+    try:
+        if not PG_USED:
+            raise RuntimeError
+        player = d.player(SR, cc, 1600)
+    except RuntimeError:
+        if PG_USED:
+            pygame.mixer.Channel(0).stop()
+        else:
+            pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
+        globals()["PG_USED"] = (d.name, cc)
+        player = pygame.mixer
+        player.type = "pygame"
+        player.dtype = np.int16
+        player.peak = 32767
+    else:
+        player.__enter__()
+        player.type = "soundcard"
+        player.dtype = np.float32
+        player.peak = 1
     player.closed = False
     player.playing = None
     player.fut = None
     player._data_ = ()
-    player.__enter__()
     player.channels = cc
     # a monkey-patched play function that has a better buffer
     # (soundcard's normal one is insufficient for continuous playback)
@@ -1524,34 +1542,50 @@ def sc_player(d):
         if player.closed:
             return
         if cc < 2:
-            data = data[::2] + data[1::2]
-            data *= 0.5
+            if data.dtype is np.float32:
+                data = data[::2] + data[1::2]
+                data *= 0.5
+            else:
+                data >>= 1
+                data = data[::2] + data[1::2]
         player.wait()
+        if player.type == "pygame":
+            if cc >= 2:
+                data = data.reshape((len(data) // cc, cc))
+            sound = pygame.sndarray.make_sound(data)
+            return player.Channel(0).queue(sound)
         if not len(player._data_):
             player._data_ = data
-            if not player.playing or player.playing.done():
-                player.playing = submit(play, player)
-            return
+            return verify()
         player.fut = concurrent.futures.Future()
         player._data_ = np.concatenate((player._data_, data))
         player.fut.set_result(None)
-        if not player.playing or player.playing.done():
-            player.playing = submit(play, player)
+        return verify()
     player.write = write        
     def close():
         player.closed = True
+        if player.type == "pygame":
+            return player.Channel(0).stop()
         try:
             player.__exit__(None, None, None)
         except:
             print_exc()
     player.close = close
     def wait():
+        if player.type == "pygame":
+            while player.Channel(0).get_queue():
+                async_wait()
+            return
         if not len(player._data_):
             return
+        verify()
         while len(player._data_) > 3200 * cc:
             async_wait()
         while player.fut and not player.fut.done():
             player.fut.result()
+    def verify():
+        if not player.playing or player.playing.done():
+            player.playing = submit(play, player)
     player.wait = wait
     return player
 
@@ -2171,7 +2205,8 @@ def render_settings(dur, ignore=False):
     global crosshair, hovertext
     offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
     sc = sidebar.colour or (64, 0, 96)
-    DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
+    DISP2 = HWSurface.any((sidebar.rect2[2], sidebar.rect2[3] - 52), FLAGS | SRCALPHA)
+    # DISP2.fill((0, 0, 0, 0))
     DISP2.fill(sc)
     DISP2.set_colorkey(sc)
     in_sidebar = in_rect(mpos, sidebar.rect)
@@ -2316,7 +2351,8 @@ def render_settings(dur, ignore=False):
             ("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
         )
         mrect = (offs2 + 8, 376, min(192, sidebar_width - 16), 192)
-        surf = pygame.Surface(mrect[2:], SRCALPHA)
+        surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))
         for i, t in enumerate(more):
             s, name, description = t
             apos = (screensize[0] - sidebar_width + offs2 + 24, 427 + i * 32 + 16)
@@ -2462,7 +2498,7 @@ def render_settings(dur, ignore=False):
         cache=True,
     )
     DISP.blit(
-        DISP2,
+        as_pyg(DISP2),
         (screensize[0] - sidebar_width, 52),
     )
 
@@ -2635,7 +2671,7 @@ def draw_menu():
         )
         modified.add(toolbar.rect)
         if toolbar.ripples:
-            DISP2 = pygame.Surface(toolbar.rect[2:], SRCALPHA)
+            DISP2 = HWSurface.any(toolbar.rect[2:], FLAGS | SRCALPHA)
             ripple_f = globals().get("h-ripple", concentric_circle)
             for ripple in toolbar.ripples:
                 ripple_f(
@@ -2647,7 +2683,7 @@ def draw_menu():
                     alpha=max(0, ripple.alpha / 255) ** 0.75 * 255,
                 )
             DISP.blit(
-                DISP2,
+                as_pyg(DISP2),
                 toolbar.rect[:2],
             )
         pos = progress.pos

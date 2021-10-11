@@ -37,7 +37,7 @@ samplerate>=0.1.0
 scipy>=1.7.1
 soundcard>=0.4.1
 youtube-dl>=2021.6.6
-""".split("\n")
+""".split("\n")#pyglet>=1.5.21
 
 if os.name == "nt":
     modlist.append("pipwin>=0.5.1")

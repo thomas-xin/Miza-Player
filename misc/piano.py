@@ -470,7 +470,7 @@ def editor_toolbar():
             ("autoswap", "Auto swap", "Switch back to editing after making a selection."),
         )
         mrect = (toolbar.pause.radius << 2, screensize[1] - toolbar_height + 12, 192, min(toolbar_height, 160))
-        surf = pygame.Surface(mrect[2:], SRCALPHA)
+        surf = HWSurface.any(mrect[2:], FLAGS | SRCALPHA)
         for i, t in enumerate(selset):
             s, name, description = t
             apos = (mrect[0] + 16, screensize[1] - toolbar_height + i * 32 + 32)
@@ -525,7 +525,7 @@ def editor_toolbar():
             im.putalpha(A)
             surf = pil2pyg(im)
         DISP.blit(
-            surf,
+            as_pyg(surf),
             mrect[:2],
         )
 
@@ -615,7 +615,7 @@ def editor_toolbar():
             fn = easygui.filesavebox(
                 "Save As",
                 "Miza Player",
-                project_name + ".mpp",
+                project_name.translate(safe_filenames) + ".mpp",
                 filetypes=(".mpp",),
             )
         else:

@@ -87,15 +87,15 @@ def import_audio_downloader():
         lyrics_scraper.set_exception(ex)
 
 
-def astype(obj, t):
+def astype(obj, t, *args, **kwargs):
     try:
         if not isinstance(obj, t):
             if callable(t):
-                return t(obj)
+                return t(obj, *args, **kwargs)
             return t
     except TypeError:
         if callable(t):
-            return t(obj)
+            return t(obj, *args, **kwargs)
         return t
     return obj
 
@@ -112,6 +112,8 @@ def json_default(obj):
     if callable(obj):
         return
     raise TypeError(obj)
+
+safe_filenames = {ord(c): "\x7f" for c in r'\/:*?"<>|'}
 
 
 if update_collections:
@@ -385,18 +387,21 @@ def start_display():
         ICON_DISP = ""
         pygame.display.set_icon(ICON)
     pygame.display.set_caption("Miza Player")
-    # import glfw
-    # glfw.init()
-    # glutInitDisplayMode(GL_RGB)
-    flags = pygame.RESIZABLE | pygame.HWSURFACE #| pygame.DOUBLEBUF | pygame.OPENGL
-    DISP = pygame.display.set_mode(options.screensize, flags, vsync=True)
+    import glfw
+    globals()["glfw"] = glfw
+    glfw.init()
+    glutInitDisplayMode(GL_RGB)
+    globals()["FLAGS"] = pygame.RESIZABLE# | pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.OPENGL
+    DISP = pygame.display.set_mode(options.screensize, FLAGS, vsync=True)
     screensize2 = list(options.screensize)
     pygame.display.set_allow_screensaver(True)
 
-# from glfw.GLFW import *
-# from OpenGL.GL import *
-# from OpenGL.GLU import *
-# from OpenGL.GLUT import *
+from glfw.GLFW import *
+from OpenGL.GL import *
+from OpenGL.GLU import *
+from OpenGL.GLUT import *
+# import pyglet
+# from pyglet.gl import *
 
 if hasmisc:
     submit(import_audio_downloader)
@@ -982,106 +987,167 @@ def pil2pyg(im):
     b = im.tobytes()
     return pygame.image.frombuffer(b, im.size, mode)
 
-def glw2pyg(wind, mode="RGB"):
-    glfw.make_context_current(wind)
-    mode = mode.upper()
-    mode = GL_RGB if "A" not in mode else GL_RGBA
-    glFlush()
-    size = WSIZES[wind]
-    b = glReadPixels(0, 0, *size, mode, GL_UNSIGNED_BYTE)
-    return pygame.image.frombuffer(b, size, mode)
+def as_pyg(hws):
+    if isinstance(hws, pygame.Surface):
+        return hws
+    if isinstance(hws, Image.Image):
+        return pil2pyg(hws)
+    # return pygame.image.frombuffer(hws.get_data(), im.size, im.mode)
+    glfw.make_context_current(hws.wind)
+    mi = GL_RGB if "A" not in hws.mode else GL_RGBA
+    b = glReadPixels(0, 0, *hws.size, mi, GL_UNSIGNED_BYTE)
+    return pygame.image.frombuffer(b, hws.size, hws.mode)
 
-# TVERTS = {}
-TSIZES = {}
-TEXTURES = {}
-def Texture(surf):
-    try:
-        tex = TEXTURES[id(surf)]
-        if not isinstance(tex, int):
-            raise
-    except:
-        texs = set()
-        while len(TEXTURES) >= 256:
-            tex = TEXTURES.pop(next(iter(TEXTURES)))
-            texs.add(tex)
-            TSIZES.pop(tex, None)
-            # TVERTS.pop(tex, None)
-        glDeleteTextures(list(texs))
-        tex = TEXTURES[id(surf)] = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, tex)
-        size = surf.get_size()
-        TSIZES[tex] = size
-        # TVERTS[tex] = np.array(())
-        mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
-        gl_mode = GL_RGBA if mode == "RGBA" else GL_RGB
-        glTexImage2D(
-            GL_TEXTURE_2D,
-            0,
-            gl_mode,
-            *size,
-            0,
-            gl_mode,
-            GL_UNSIGNED_BYTE,
-            pygame.image.tostring(surf, mode),
-        )
-    else:
-        glBindTexture(GL_TEXTURE_2D, tex)
-    return tex
+import weakref
 
-WSIZES = {}
-WINDOWS = {}
-def Window(size, mode="RGB", clear=True):
-    size = tuple(size)
-    try:
-        wind = WINDOWS[size]
-    except KeyError:
-        glfw.window_hint(glfw.VISIBLE, False)
-        while len(WINDOWS) >= 8:
-            wind = WINDOWS.pop(next(iter(WINDOWS)))
-            WSIZES.pop(wind, None)
-            glfw.destroy_window(wind)
-        wind = WINDOWS[size] = glfw.create_window(size, "common", None, None)
-        WSIZES[wind] = size
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        glOrtho(-1, 1, -1, 1, -1, 1)
-        glDisable(GL_DEPTH_TEST)
-        glDisable(GL_BLEND)
-        glPixelStorei(GL_PACK_ALIGNMENT, 1)
-        clear = False
-    glfw.make_context_current(wind)
-    if "A" in mode.upper():
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glBlendEquation(GL_FUNC_ADD)
-    else:
-        glDisable(GL_BLEND)
-    if clear:
+class HWSurface:
+
+    cache = weakref.WeakKeyDictionary()
+    anys = {}
+    anyids = []
+    v1 = np.empty(8, dtype=np.float32)
+    v2 = np.empty(8, dtype=np.float32)
+
+    def __init__(self, size, flags=0, colour=None, visible=False):
+        self.c = 4 if flags & pygame.SRCALPHA else 3
+        self.mode = "RGBA" if self.c > 3 else "RGB"
+        self.width, self.height = size
+        self.size = astype(size, tuple)
+        self.rect = (0, 0) + self.size
+        if visible:
+            glfw.window_hint(glfw.VISIBLE, True)
+        else:
+            glfw.window_hint(glfw.VISIBLE, False)
+        self.visible = visible
+        self.wind = glfw.create_window(*size, "common", None, None)
+        if colour:
+            self.fill(colour)
+
+    get_size = lambda self: self.size
+    get_width = lambda self: self.width
+    get_height = lambda self: self.height
+
+    @classmethod
+    def any(cls, size, flags=0, colour=None):
+        size = tuple(size)
+        m = 4 if flags & pygame.SRCALPHA else 3
+        t = (size, m)
+        try:
+            self = cls.anys[t]
+            if t != cls.anyids[-1]:
+                cls.anyids.remove(t)
+                cls.anyids.append(t)
+        except KeyError:
+            if len(cls.anyids) >= 8:
+                cls.anys.pop(cls.anyids.pop(0))
+            cls.anyids.append(t)
+            self = cls.anys[t] = pygame.Surface(size, flags)#cls(size, flags, colour)
+            colour = None
+            print("Windows:", len(cls.anys))
+        if colour is not None:
+            self.fill(colour)
+        return self
+
+    def fill(self, colour=(0,) * 4):
+        glfw.make_context_current(self.wind)
+        glClearColor(*colour)
         glClear(GL_COLOR_BUFFER_BIT)
 
-TVERTS = np.array((
-    (0, 0),
-    (1, 0),
-    (1, 1),
-    (0, 1),
-), dtype=np.float32)
+    def blit(self, source, dest=None, area=None, special_flags=0):
+        glfw.make_context_current(self.wind)
+        glEnable(GL_TEXTURE_2D)
+        try:
+            size = source.size
+        except AttributeError:
+            size = source.get_size()
+            mode = "RGBA" if source.get_flags() & pygame.SRCALPHA else "RGB"
+        else:
+            mode = source.mode
+        try:
+            tex = self.cache[source]
+        except KeyError:
+            if isinstance(source, self.__class__):
+                glfw.make_context_current(source.wind)
+                mi = GL_RGB if "A" not in mode else GL_RGBA
+                data = glReadPixels(0, 0, *size, mi, GL_UNSIGNED_BYTE)
+            elif isinstance(source, pygame.Surface):
+                data = pygame.image.tostring(source, mode, True)
+            else:
+                data = source.tobytes()
+            m = len(mode)
+            tex = self.cache[source] = glGenTextures(1)
+            weakref.finalize(source, glDeleteTextures, (tex,))
+            glBindTexture(GL_TEXTURE_2D, tex)
+            mi = GL_RGBA if m > 3 else GL_RGB
+            glTexImage2D(
+                GL_TEXTURE_2D,
+                0,
+                mi,
+                *size,
+                0,
+                mi,
+                GL_UNSIGNED_BYTE,
+                data,
+            )
+            print("Textures:", len(self.cache))
+        glBindTexture(GL_TEXTURE_2D, tex)
+        glOrtho(0, *self.size, 0, 0, 1)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        if len(mode) > 3:
+            glEnable(GL_BLEND)
+        else:
+            glDisable(GL_BLEND)
 
-def window_blit(wind, tex, pos):
-    glfw.make_context_current(wind)
-    glOrtho(0, *WSIZES[wind], 0, 0, 1)
-    glEnable(GL_TEXTURE_2D)
-    glTexCoordPointer(2, GL_FLOAT, 0, TVERTS.ravel())
-    end = (pos[0] + TSIZES[tex][0], pos[1] + TSIZES[tex][1])
-    verts = np.array((
-        pos,
-        (end[0], pos[1]),
-        (end[0], end[1]),
-        (pos[0], end[1]),
-    ), dtype=np.float32)
-    glVertexPointer(2, GL_FLOAT, 0, verts.ravel())
-    glEnableClientState(GL_TEX_COORD_ARRAY)
-    glEnableClientState(GL_VERTEX_ARRAY)
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+        if area is None:
+            area = [0, 0]
+            area.extend(size)
+        area = astype(area, list)
+        if len(area) < 4:
+            area = [0, 0] + area
+        if dest is None:
+            dest = [0, 0, *self.size]
+        dest = astype(dest, list)
+        if dest[0] < 0:
+            area[0], dest[0] = -dest[0], 0
+        if dest[1] < 0:
+            area[1], dest[1] = -dest[1], 0
+        if len(dest) < 4:
+            dest.extend(area[2:])
+        sx1, sy1, sx2, sy2 = area
+        dx1, dy1, dx2, dy2 = dest
+        sx2 += sx1
+        sy2 += sy1
+        dx2 += dx1
+        dy2 += dy1
+        if dx2 > self.width:
+            dx2 = sx2 = self.width
+        if dy2 > self.height:
+            dy2 = sy2 = self.height
+        if sx2 > size[0]:
+            sx2 = dx2 = size[0]
+        if sy2 > size[1]:
+            sy2 = dy2 = size[1]
+        self.v1[:] = (
+            sx1, sy1,
+            sx1, sy2,
+            sx2, sy1,
+            sx2, sy2,
+        )
+        self.v1[::2] /= size[0]
+        self.v1[1::2] /= size[1]
+        glTexCoordPointer(2, GL_FLOAT, 0, self.v1)
+        self.v2[:] = (
+            dx1, dy1,
+            dx1, dy2,
+            dx2, dy1,
+            dx2, dy2,
+        )
+        glVertexPointer(2, GL_FLOAT, 0, self.v2)
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+        return dest
 
 SURFS = {}
 def load_surface(fn, greyscale=False, size=None, force=False):
@@ -1270,6 +1336,8 @@ def custom_scale(source, size, dest=None, antialias=False):
         return scalef(source, dsize, dest)
     return scalef(source, dsize)
 
+cblit_cache = weakref.WeakKeyDictionary()
+
 def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True):
     pos = position
     s1 = source.get_size()
@@ -1284,10 +1352,25 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
     if alpha != 255 or any(i != 255 for i in colour) or dest is None:
         if copy:
             try:
-                s = source.convert_alpha()
-            except:
-                s = source.copy()
-        if alpha != 255:
+                for s, c, a in cblit_cache[source]:
+                    if c == colour and a == alpha:
+                        break
+                else:
+                    raise KeyError
+            except KeyError:
+                try:
+                    s = source.convert_alpha()
+                except:
+                    s = source.copy()
+                try:
+                    cblit_cache[source].append((s, colour, alpha))
+                except KeyError:
+                    cblit_cache[source] = deque([(s, colour, alpha)], maxlen=8)
+                if alpha != 255:
+                    s.fill(tuple(colour) + (alpha,), special_flags=BLEND_RGBA_MULT)
+                elif any(i != 255 for i in colour):
+                    s.fill(tuple(colour), special_flags=BLEND_RGB_MULT)
+        elif alpha != 255:
             s.fill(tuple(colour) + (alpha,), special_flags=BLEND_RGBA_MULT)
         elif any(i != 255 for i in colour):
             s.fill(tuple(colour), special_flags=BLEND_RGB_MULT)
@@ -1311,7 +1394,7 @@ def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
     if width > 0:
         if angle != 0 or alpha != 255:
             ssize = [i + width for i in rect[2:]]
-            s = pygame.Surface(ssize)
+            s = pygame.Surface(ssize, FLAGS)
             srec = [i + width // 2 for i in rect[2:]]
             pygame.draw.rect(s, colour, srec, width)
             blit_complex(dest, s, rect[:2], alpha, angle)
@@ -1355,7 +1438,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
         try:
             surf = br_surf[data]
         except KeyError:
-            surf = pygame.Surface(rect[2:]).convert()
+            surf = pygame.Surface(rect[2:], FLAGS)
             if not filled:
                 surf.fill((1, 2, 3))
                 surf.set_colorkey((1, 2, 3))
@@ -1396,7 +1479,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
     s = br_surf.get(data)
     if s is None:
         colour2 = (contrast,) * 3
-        s = pygame.Surface(rect[2:], SRCALPHA | HWSURFACE)
+        s = pygame.Surface(rect[2:], FLAGS)
         s.fill((1, 2, 3))
         s.set_colorkey((1, 2, 3))
         for c in range(bevel):
@@ -1446,7 +1529,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
         try:
             surf = rb_surf[data]
         except KeyError:
-            surf = pygame.Surface(rect[2:]).convert()
+            surf = pygame.Surface(rect[2:], FLAGS)
             surf.fill((1, 2, 3))
             surf.set_colorkey((1, 2, 3))
             r = rect
@@ -1491,7 +1574,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
     s = rb_surf.get(data)
     if s is None:
         colour2 = (contrast,) * 3
-        s = pygame.Surface(rect[2:], SRCALPHA | HWSURFACE)
+        s = pygame.Surface(rect[2:], FLAGS)
         s.fill((1, 2, 3))
         s.set_colorkey((1, 2, 3))
         for c in range(bevel):
@@ -1550,7 +1633,7 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
             pos = [centre[0] - width, centre[1] - height]
             return blit_complex(dest, newS, pos, alpha, rotation, copy=True)
     try:
-        newS = pygame.Surface((width << 1, height << 1), SRCALPHA | HWSURFACE)
+        newS = pygame.Surface((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
     except:
         print_exc()
         return
@@ -1636,7 +1719,7 @@ def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=25
                 width2 = round(width2)
                 size = [radius2 * 2] * 2
                 size2 = [round(radius2 * 4), round(radius2 * 4) + 1]
-                s2 = pygame.Surface(size2, SRCALPHA | HWSURFACE)
+                s2 = pygame.Surface(size2, FLAGS)
                 circles = round(radius2 * 2 * fill_ratio / width2)
                 col = colour2
                 r = radius2 * 2

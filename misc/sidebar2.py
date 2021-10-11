@@ -67,7 +67,7 @@ def render_sidebar_2(dur=0):
     offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
     sc = sidebar.colour or (64, 0, 96)
     if sidebar.ripples or offs > -sidebar_width + 4:
-        DISP2 = pygame.Surface((sidebar.rect[2], sidebar.rect[3] + 4), SRCALPHA)
+        DISP2 = HWSurface.any((sidebar.rect[2], sidebar.rect[3] + 4), FLAGS | SRCALPHA)
         bevel_rectangle(
             DISP2,
             sc,
@@ -109,7 +109,7 @@ def render_sidebar_2(dur=0):
                 4,
             )
         DISP.blit(
-            DISP2,
+            as_pyg(DISP2),
             sidebar.rect[:2],
         )
     else:
@@ -122,9 +122,8 @@ def render_sidebar_2(dur=0):
     if offs > 4 - sidebar_width:
         queue = sidebar.instruments
         Z = -sidebar.scroll.pos
-        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), SRCALPHA)
+        DISP2 = HWSurface.any((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), FLAGS | SRCALPHA)
         DISP2.fill((0, 0, 0, 0))
-        # DISP2.set_colorkey(sc)
         if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
             submit(enqueue_auto, *pyperclip.paste().splitlines())
         in_sidebar = in_rect(mpos, sidebar.rect)
@@ -443,14 +442,15 @@ def render_sidebar_2(dur=0):
                 sidebar.pop("last_selected", None)
                 lq2 = nan
         DISP.blit(
-            DISP2,
+            as_pyg(DISP2),
             (screensize[0] - sidebar_width + 4, 52 + 16),
         )
     if offs <= -4 and sidebar.abspos == 1:
         render_settings(dur, ignore=True)
     if offs <= -4 and sidebar.abspos == 2:
         instrument = project.instruments[project.instrument_layout[sidebar.editing]]
-        DISP2 = pygame.Surface((sidebar.rect2[2], sidebar.rect2[3] - 52))
+        DISP2 = HWSurface.any((sidebar.rect2[2], sidebar.rect2[3] - 52), FLAGS | SRCALPHA)
+        # DISP2.fill((0, 0, 0, 0))
         DISP2.fill(sc)
         DISP2.set_colorkey(sc)
         in_sidebar = in_rect(mpos, sidebar.rect)
@@ -560,6 +560,6 @@ def render_sidebar_2(dur=0):
                     filled=False,
                 )
         DISP.blit(
-            DISP2,
+            as_pyg(DISP2),
             (screensize[0] - sidebar_width, 52),
         )

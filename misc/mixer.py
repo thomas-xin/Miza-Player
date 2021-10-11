@@ -231,7 +231,7 @@ def sc_player(d):
         if PG_USED:
             pygame.mixer.Channel(0).stop()
         else:
-            pygame.mixer.init(SR, -16, cc, 1024, devicename=d.name)
+            pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
         globals()["PG_USED"] = (d.name, cc)
         player = pygame.mixer
         player.type = "pygame"

@@ -391,8 +391,8 @@ def start_display():
     # globals()["glfw"] = glfw
     # glfw.init()
     # glutInitDisplayMode(GL_RGB)
-    globals()["FLAGS"] = pygame.RESIZABLE# | pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.OPENGL
-    DISP = pygame.display.set_mode(options.screensize, FLAGS, vsync=True)
+    globals()["FLAGS"] = 0# | pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.OPENGL
+    DISP = pygame.display.set_mode(options.screensize, FLAGS | pygame.RESIZABLE, vsync=True)
     screensize2 = list(options.screensize)
     pygame.display.set_allow_screensaver(True)
 
@@ -982,10 +982,20 @@ def pyg2pil(surf):
     b = pygame.image.tostring(surf, mode)
     return Image.frombuffer(mode, surf.get_size(), b)
 
-def pil2pyg(im):
+def pil2pyg(im, convert=None):
     mode = im.mode
     b = im.tobytes()
-    return pygame.image.frombuffer(b, im.size, mode)
+    surf = pygame.image.frombuffer(b, im.size, mode)
+    if convert:
+        if "A" in mode:
+            return surf.convert_alpha()
+        return surf.convert()
+    elif convert is not None:
+        s2 = HWSurface.any(im.size, pygame.SRCALPHA if "A" in mode else 0)
+        s2.fill((0, 0, 0, 0))
+        s2.blit(surf, (0, 0))
+        return s2
+    return surf
 
 def as_pyg(hws):
     if isinstance(hws, pygame.Surface):
@@ -1005,8 +1015,8 @@ class HWSurface:
     cache = weakref.WeakKeyDictionary()
     anys = {}
     anyque = []
-    v1 = np.empty(8, dtype=np.float32)
-    v2 = np.empty(8, dtype=np.float32)
+    # v1 = np.empty(8, dtype=np.float32)
+    # v2 = np.empty(8, dtype=np.float32)
 
     def __init__(self, size, flags=0, colour=None, visible=False):
         self.c = 4 if flags & pygame.SRCALPHA else 3
@@ -1029,16 +1039,21 @@ class HWSurface:
 
     @classmethod
     def any(cls, size, flags=0, colour=None):
-        size = tuple(size)
+        size = astype(size, tuple)
         m = 4 if flags & pygame.SRCALPHA else 3
-        t = (size, m)
+        t = (size, flags)
         try:
             self = cls.anys[t]
         except KeyError:
-            if len(cls.anyque) >= 12:
+            if len(cls.anyque) >= 16:
                 cls.anys.pop(cls.anyque.pop(0))
             cls.anyque.append(t)
-            self = cls.anys[t] = pygame.Surface(size, flags)#cls(size, flags, colour)
+            self = pygame.Surface(size, flags)
+            # if m > 3:
+            #     self = self.convert_alpha()
+            # else:
+            #     self = self.convert()
+            cls.anys[t] = self#cls(size, flags, colour)
             colour = None
             # print("Windows:", len(cls.anys))
         else:
@@ -1210,10 +1225,11 @@ def quadratic_gradient(size=gsize, t=None, curve=None):
     if not quadratics[x]:
         hue = qhue.point(lambda i: i + x & 255)
         img = Image.merge("HSV", (hue, qsat, qval)).convert("RGB")
-        quadratics[x] = pil2pyg(img)
+        quadratics[x] = pil2pyg(img, convert=True)
     surf = quadratics[x]
     if surf.get_size() != size:
-        surf = pygame.transform.scale(surf, size)
+        s2 = HWSurface.any(size, surf.get_flags())
+        surf = pygame.transform.scale(surf, size, s2)
         if curve:
             h = size[1]
             m = h + 1 >> 1
@@ -1247,10 +1263,11 @@ def radial_gradient(size=(rgw,) * 2, t=None):
     if not radials[x]:
         hue = rhue.point(lambda i: i + x & 255)
         img = Image.merge("HSV", (hue, rsat, rval)).convert("RGB")
-        radials[x] = pil2pyg(img)
+        radials[x] = pil2pyg(img, convert=True)
     surf = radials[x]
     if surf.get_size() != size:
-        surf = pygame.transform.scale(surf, size)
+        s2 = HWSurface.any(size, surf.get_flags())
+        surf = pygame.transform.scale(surf, size, s2)
     return surf
 
 draw_line = pygame.draw.line
@@ -1726,7 +1743,7 @@ def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=25
                 width2 = round(width2)
                 size = [radius2 * 2] * 2
                 size2 = [round(radius2 * 4), round(radius2 * 4) + 1]
-                s2 = pygame.Surface(size2, FLAGS)
+                s2 = pygame.Surface(size2, FLAGS | pygame.SRCALPHA)
                 circles = round(radius2 * 2 * fill_ratio / width2)
                 col = colour2
                 r = radius2 * 2

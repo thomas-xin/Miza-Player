@@ -2074,6 +2074,9 @@ exec(compile(b, "piano.py", "exec"))
 no_lyrics_path = options.get("no_lyrics_path", "misc/Default/no_lyrics.png")
 no_lyrics_fut = submit(load_surface, no_lyrics_path)
 
+globals()["h-cache"] = {}
+globals()["h-timer"] = 0
+
 def load_bubble(bubble_path):
     try:
         with Image.open(bubble_path) as im:
@@ -2089,7 +2092,7 @@ def load_bubble(bubble_path):
             if im.mode == "RGBA":
                 im2.putalpha(A)
             globals()["h-img"] = im2
-        globals()["h-cache"] = {}
+        globals()["h-cache"].clear()
         globals()["h-timer"] = 0
 
         def bubble_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
@@ -2145,8 +2148,9 @@ def load_spinner(spinner_path):
     except:
         print_exc()
 
-bubble_path = options.get("bubble_path", "misc/Default/bubble.png")
-submit(load_bubble, bubble_path)
+bubble_path = options.get("bubble_path")
+if bubble_path:
+    submit(load_bubble, bubble_path)
 
 spinner_path = "misc/Default/bubble.png"
 submit(load_spinner, spinner_path)
@@ -2223,6 +2227,12 @@ def change_bubble():
     if bubble_path:
         options.bubble_path = bubble_path
         submit(load_bubble, bubble_path)
+
+def reset_bubble():
+    options.pop("bubble_path", None)
+    globals().pop("h-ripple", None)
+    globals()["h-cache"] = {}
+    globals()["h-timer"] = 0
 
 
 def render_settings(dur, ignore=False):
@@ -2433,7 +2443,7 @@ def render_settings(dur, ignore=False):
             a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Image.NEAREST)
             A = ImageChops.multiply(a, a2)
             im.putalpha(A)
-            surf = pil2pyg(im)
+            surf = pil2pyg(im, convert=False)
         else:
             if sidebar_width >= 192:
                 r = (screensize[0] - 68 + offs + sidebar_width, 589, 64, 32)
@@ -2568,8 +2578,9 @@ def draw_menu():
 
             sidebar.menu = cdict(
                 buttons=(
-                    ("Set Colour", set_colour),
-                    ("Change Image", change_bubble),
+                    ("Set colour", set_colour),
+                    ("Change ripples", change_bubble),
+                    ("Reset ripples", reset_bubble),
                 ),
             )
             if not toolbar.get("editor") and not sidebar.abspos:
@@ -2680,7 +2691,8 @@ def draw_menu():
             sidebar.menu = cdict(
                 buttons=(
                     ("Set Colour", set_colour),
-                    ("Change Image", change_bubble),
+                    ("Change ripples", change_bubble),
+                    ("Reset ripples", reset_bubble),
                 ),
             )
     highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
@@ -2966,7 +2978,8 @@ def draw_menu():
         if options.get("oscilloscope") and is_active() and player.get("osci"):
             surf = player.osci
             if tuple(osci_rect[2:]) != surf.get_size():
-                player.osci = surf = pygame.transform.scale(surf, osci_rect[2:])
+                s2 = HWSurface.any(osci_rect[2:], s2.get_flags())
+                player.osci = surf = pygame.transform.scale(surf, osci_rect[2:], s2)
             DISP.blit(
                 surf,
                 osci_rect[:2],
@@ -3095,7 +3108,7 @@ def draw_menu():
                 pass
             else:
                 player.flash_i = 32
-                options.insights = (options.get("insights", 0) + 1) % 2
+                options.insights = (options.get("insights", 0) + 1) & 1
         elif in_rect(mpos, player.rect):
             if mclick[1]:
                 s = options.get("spectrogram")
@@ -3110,6 +3123,7 @@ def draw_menu():
                         if no_lyrics_path:
                             options.no_lyrics_path = no_lyrics_path
                             globals()["no_lyrics_fut"] = submit(load_surface, no_lyrics_path, force=True)
+                            globals().pop("no_lyrics", None)
 
                     def search_lyrics():
                         query = easygui.get_string(
@@ -3537,9 +3551,10 @@ try:
                             srect = limit_size(*surf.get_size(), *rect[2:])
                         else:
                             srect = rect[2:]
-                        if tuple(srect[2:]) != surf.get_size():
+                        if 0 and tuple(srect[2:]) != surf.get_size():
                             specf = True
-                            player.specr_fut = pygame.transform.scale(surf, srect)
+                            s2 = HWSurface.any(srect, FLAGS)
+                            player.specr_fut = pygame.transform.scale(surf, srect, s2)
                         else:
                             player.specr_fut = surf
                         prect = rect[:2]
@@ -3629,7 +3644,8 @@ try:
                             no_lyrics_size = limit_size(*no_lyrics_source.get_size(), *player.rect[2:])
                             no_lyrics = globals().get("no_lyrics")
                             if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
-                                no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size)
+                                no_lyrics = HWSurface.any(no_lyrics_size, FLAGS)
+                                no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size, no_lyrics)
                             DISP.blit(
                                 no_lyrics,
                                 (player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
@@ -3688,7 +3704,7 @@ try:
                     modified.clear()
                     modified.add(tuple(screensize))
             if not toolbar.editor and not tick + 6 & 7:
-                if options.get("insights"):
+                if options.get("insights", True):
                     message_display(
                         f"FPS: {round(fps, 2)}",
                         14,

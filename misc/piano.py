@@ -523,7 +523,7 @@ def editor_toolbar():
             a2 = Image.fromarray(arr, "L")
             A = ImageChops.multiply(a, a2)
             im.putalpha(A)
-            surf = pil2pyg(im)
+            surf = pil2pyg(im, convert=False)
         DISP.blit(
             as_pyg(surf),
             mrect[:2],
@@ -568,7 +568,7 @@ def editor_toolbar():
             a2 = Image.fromarray(arr, "L")
             A = ImageChops.multiply(a, a2)
             im.putalpha(A)
-            surf = pil2pyg(im)
+            surf = pil2pyg(im, convert=False)
         DISP.blit(
             surf,
             mrect[:2],

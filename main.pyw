@@ -3154,7 +3154,11 @@ def draw_menu():
                 elif s == 3:
                     def change_vertices():
                         v = options.control.get("gradient-vertices")
-                        v = poly_inv.get(tuple(v), v)
+                        try:
+                            v = astype(v, tuple)
+                        except:
+                            pass
+                        v = poly_inv.get(v, v)
                         enter = easygui.get_string(
                             "Change polytope",
                             "Miza Player",

@@ -534,7 +534,7 @@ def animate_polyhedron(changed=False):
     alpha *= mult
     colours.T[-1][:] = alpha
     maxb = max(bar.height for bar in bars)
-    ratio = min(32, max(4, 12288 / (len(poly) + 2 >> 1)))
+    ratio = min(32, max(4, 24576 / (len(poly) + 2 >> 1)))
     barm = sorted(((bar.height, i) for i, bar in enumerate(bars) if bar.height > maxb / ratio), reverse=True)
     bari = [i for _, i in barm[:round(ratio * 2)]]
     # print(ratio, len(bari))

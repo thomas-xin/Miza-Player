@@ -536,7 +536,7 @@ def animate_polyhedron(changed=False):
     maxb = max(bar.height for bar in bars)
     ratio = min(32, max(4, 24576 / (len(poly) + 2 >> 1)))
     barm = sorted(((bar.height, i) for i, bar in enumerate(bars) if bar.height > maxb / ratio), reverse=True)
-    bari = [i for _, i in barm[:round(ratio * 2)]]
+    bari = sorted((i for _, i in barm[:round(ratio * 2)]), reverse=True)
     # print(ratio, len(bari))
     if bari:
         radiii = radii[bari]

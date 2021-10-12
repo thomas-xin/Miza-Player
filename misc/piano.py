@@ -231,7 +231,7 @@ def render_project(fn):
         "-b:a",
         "192k",
         fn,
-    ), stdin=subprocess.PIPE)
+    ), stdin=subprocess.PIPE, bufsize=1048576)
     if editor.pattern in FRESH_PATTERNS:
         for i in measure_range(pattern, 0, pattern_end(pattern)):
             fn = f"cache/&p{editor.pattern}b{i}.pcm"

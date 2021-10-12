@@ -37,7 +37,7 @@ def is_minimised():
         return
     return time.time() - globals()["unfocus-time"] > 3
 
-rproc = psutil.Popen((sys.executable, "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+rproc = psutil.Popen((sys.executable, "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
 
 pt = None
 pt2 = None
@@ -575,7 +575,7 @@ def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
                     shuffling = False
                     p = proc
                     print(p.args)
-                    proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                    proc = psutil.Popen(p.args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=65536)
                     try:
                         proc.kill2 = p.kill2
                     except AttributeError:
@@ -930,7 +930,7 @@ def spectrogram_update():
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
         if settings.spectrogram > 0:
-            if not settings.spectrogram > 2:
+            if not settings.spectrogram > 3:
                 amp = supersample(amp, barcount)
             else:
                 amp = supersample(amp, barcount * 2)
@@ -1634,7 +1634,9 @@ while not sys.stdin.closed and failed < 8:
                     settings.update(sets)
                 else:
                     setting, value = s.split(None, 1)
-                    settings[setting] = eval(value, {}, {})
+                    if not os.path.exists(value):
+                        value = eval(value, {}, {})
+                    settings[setting] = value
                     if setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus"):
                         continue
                 if nostart or not stream:
@@ -1745,7 +1747,7 @@ while not sys.stdin.closed and failed < 8:
                     cmd.extend(ext)
                     cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", "-"))
                     print(cmd)
-                    proc = psutil.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                    proc = psutil.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=65536)
                     reading = submit(reader, f, pos=0, pcm=True)
             else:
                 f = None
@@ -1802,7 +1804,7 @@ while not sys.stdin.closed and failed < 8:
                     )
                 else:
                     print(cmd)
-                    proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE)
+                    proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, bufsize=65536)
                 if fn and not pos:
                     proc.kill = lambda: None
                 elif f:

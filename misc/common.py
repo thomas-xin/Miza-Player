@@ -337,6 +337,7 @@ def start_mixer():
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        bufsize=1048576,
     )
     if "pygame" not in globals():
         import ctypes, struct, io
@@ -1299,8 +1300,8 @@ poly_names = dict(
     square=4,
     pentagon=5,
     hexagon=6,
-    heptagon=7,
     septagon=7,
+    heptagon=7,
     octagon=8,
     nonagon=9,
     decagon=10,
@@ -1310,7 +1311,6 @@ poly_names = dict(
     tridecagon=13,
     tetradecagon=14,
     monogon=144,
-    sphere=144,
     circle=144,
     tetrahedron=(3, 3),
     hexahedron=(4, 3),
@@ -1333,6 +1333,9 @@ poly_names = dict(
     decateron=(4, 3, 3, 3),
     pentaract=(4, 3, 3, 3),
     triacontaditeron=(3, 3, 3, 4),
+    heart="misc/default/heart.obj",
+    pikachu="misc/default/pikachu.obj",
+    sphere="misc/default/sphere.obj",
 )
 poly_inv = {v: k for k, v in poly_names.items()}
 

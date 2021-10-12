@@ -1723,7 +1723,7 @@ def download(entries, fn, settings=False):
             cmd += ("-b:a", "192k")
         cmd += ("-ar", "48k", "-ac", "2", fn)
         print(cmd)
-        saving = psutil.Popen(cmd, stdin=subprocess.PIPE)
+        saving = psutil.Popen(cmd, stdin=subprocess.PIPE, bufsize=192000)
         ots = ts = time.time_ns() // 1000
         procs = deque()
         for entry in entries:
@@ -3154,10 +3154,13 @@ def draw_menu():
                 elif s == 3:
                     def change_vertices():
                         v = options.control.get("gradient-vertices")
-                        try:
-                            v = astype(v, tuple)
-                        except:
-                            pass
+                        if not isinstance(v, str):
+                            try:
+                                v = astype(v, tuple)
+                            except:
+                                pass
+                        elif len(v) == 1:
+                            v = v[0]
                         v = poly_inv.get(v, v)
                         enter = easygui.get_string(
                             "Change polytope",
@@ -3169,13 +3172,31 @@ def draw_menu():
                             try:
                                 enter = poly_names[enter]
                             except KeyError:
-                                enter = [eval(x, {}, {}) for x in enter.split()]
+                                if not os.path.exists(enter):
+                                    enter = [eval(x, {}, {}) for x in enter.split()]
+                            options.control["gradient-vertices"] = enter
+                            mixer.submit(f"~setting #gradient-vertices {enter}")
+
+                    def change_model():
+                        ftypes = [[f"*.{f}" for f in "obj gz".split()]]
+                        default = options.control.get("gradient-vertices")
+                        if not isinstance(default, str) or not os.path.exists(default):
+                            default = None
+                        default = default or "misc/default"
+                        enter = easygui.fileopenbox(
+                            "Open a 3D model file here!",
+                            "Miza Player",
+                            default=default,
+                            filetypes=ftypes,
+                        )
+                        if enter and os.path.exists(enter):
                             options.control["gradient-vertices"] = enter
                             mixer.submit(f"~setting #gradient-vertices {enter}")
 
                     sidebar.menu = cdict(
                         buttons=(
                             ("Change polytope", change_vertices),
+                            ("Load 3D model", change_model),
                         ),
                     )
                 elif s == 4:

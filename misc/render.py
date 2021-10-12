@@ -468,7 +468,9 @@ def animate_polyhedron(changed=False):
         spec.rotmat = np.identity(dims)
         glLoadIdentity()
     w, h = specsize
-    glLineWidth(specsize[0] / max(192, len(poly)))
+    thickness = specsize[0] / 144 / max(1, len(poly) ** (1 / 3))
+    glLineWidth(max(1, thickness))
+    alpha_mult = min(1, thickness)
     angle = tau / 512
     i = 0
     for x, y in perms[dimcount - 2]:
@@ -527,7 +529,7 @@ def animate_polyhedron(changed=False):
     img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
     colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
     colours.T[:3] *= 1 / 255
-    mult = np.linspace(1, 0, len(alpha))
+    mult = np.linspace(sqrt(alpha_mult), 0, len(alpha))
     mult **= 2
     alpha *= mult
     colours.T[-1][:] = alpha

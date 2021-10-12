@@ -3182,7 +3182,7 @@ def draw_menu():
                         default = options.control.get("gradient-vertices")
                         if not isinstance(default, str) or not os.path.exists(default):
                             default = None
-                        default = default or "misc/default"
+                        default = default or "misc/default/sphere.obj"
                         enter = easygui.fileopenbox(
                             "Open a 3D model file here!",
                             "Miza Player",

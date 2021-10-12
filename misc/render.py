@@ -529,25 +529,32 @@ def animate_polyhedron(changed=False):
     img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
     colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
     colours.T[:3] *= 1 / 255
-    mult = np.linspace(sqrt(alpha_mult), 0, len(alpha))
-    mult **= 2
+    mult = np.linspace(alpha_mult, 0, len(alpha))
+    # mult **= 2
     alpha *= mult
     colours.T[-1][:] = alpha
-    # colours[0] = 1
-    colours = np.tile(colours.astype(np.float32), (1, len(poly))).reshape((len(bars), len(poly), 4))
-    verts = np.stack([poly.astype(np.float32)] * len(bars))
-    for v, r in zip(verts, radii):
-        v *= r
-    glColorPointer(4, GL_FLOAT, 0, colours.ravel())
-    glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
-    glDrawArrays(GL_LINES, 0, len(colours) * len(poly))
-    glFlush()
-    x = y = 0
-    if specsize[0] > ssize2[0]:
-        x = specsize[0] - ssize2[0] >> 1
-    elif specsize[1] > ssize2[1]:
-        y = specsize[1] - ssize2[1] >> 1
-    sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
+    maxb = max(bar.height for bar in bars)
+    barm = sorted(((bar.height, i) for i, bar in enumerate(bars) if bar.height > maxb / 32), reverse=True)
+    bari = [i for _, i in barm[:64]]
+    print(len(bari))
+    if bari:
+        radiii = radii[bari]
+        colours = np.tile(colours[bari].astype(np.float32), (1, len(poly))).reshape((len(bari), len(poly), 4))
+        verts = np.stack([poly.astype(np.float32)] * len(bari))
+        for v, r in zip(verts, radiii):
+            v *= r
+        glColorPointer(4, GL_FLOAT, 0, colours.ravel())
+        glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
+        glDrawArrays(GL_LINES, 0, len(colours) * len(poly))
+        glFlush()
+        x = y = 0
+        if specsize[0] > ssize2[0]:
+            x = specsize[0] - ssize2[0] >> 1
+        elif specsize[1] > ssize2[1]:
+            y = specsize[1] - ssize2[1] >> 1
+        sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
+    else:
+        sfx = b"\x00" * int(np.prod(ssize2) * 3)
     return sfx
 
 def animate_ripple(changed=False):
@@ -609,7 +616,7 @@ def animate_ripple(changed=False):
     colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
     colours.T[:3] *= 1 / 255
     mult = np.linspace(1, 0, len(alpha))
-    mult **= 2
+    # mult **= 2
     alpha *= mult
     colours.T[-1][:] = alpha
     colours = np.repeat(colours.astype(np.float32), 2, axis=0)[1:-1]

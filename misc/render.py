@@ -468,7 +468,7 @@ def animate_polyhedron(changed=False):
         spec.rotmat = np.identity(dims)
         glLoadIdentity()
     w, h = specsize
-    thickness = specsize[0] / 144 / max(1, len(poly) ** (1 / 3))
+    thickness = specsize[0] / 96 / max(1, (len(poly) + 2 >> 1) ** 0.5)
     glLineWidth(max(1, thickness))
     alpha_mult = min(1, thickness)
     angle = tau / 512

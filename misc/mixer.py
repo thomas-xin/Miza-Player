@@ -276,7 +276,7 @@ def sc_player(d):
         if player.closed:
             return
         if cc < 2:
-            if data.dtype is np.float32:
+            if data.dtype == np.float32:
                 data = data[::2] + data[1::2]
                 data *= 0.5
             else:
@@ -950,7 +950,7 @@ def spectrogram():
     global spec_buffer, spec2_fut, packet_advanced3
     try:
         if packet and sample is not None:
-            if sample.dtype is not np.float32:
+            if sample.dtype != np.float32:
                 buffer = sample.astype(np.float32)
                 buffer *= 1 / channel.peak
             else:
@@ -1115,20 +1115,18 @@ def play(pos):
                 if settings.silenceremove and quiet >= 15 and s is None and np.mean(np.abs(sample)) < 1 / 512:
                     raise StopIteration
                 sfut = submit(synthesize)
-                if channel.dtype is np.float32:
+                if channel.dtype == np.float32:
                     sample = sample.astype(np.float32)
                     sample *= 1 / 32767
                 if settings.volume != 1 or s is not None:
                     if settings.volume != 1:
-                        if sample.dtype is not np.float32:
-                            if settings.volume > 1:
-                                sample = sample.astype(np.float32)
+                        sample = np.asanyarray(sample, dtype=np.float32)
                         try:
                             np.multiply(sample, settings.volume, out=sample, casting="unsafe")
                         except:
                             sample = sample * settings.volume
                     if s is not None:
-                        if s.dtype is not channel.dtype:
+                        if s.dtype != channel.dtype:
                             s *= channel.peak
                             s = s.astype(channel.dtype)
                         s += sample
@@ -1139,12 +1137,12 @@ def play(pos):
                     quiet += 1
                 else:
                     quiet = 0
-                if sample.dtype is np.float32:
+                if sample.dtype == np.float32:
                     np.clip(sample, -channel.peak, channel.peak, out=sample)
-                if sample.dtype is not channel.dtype:
-                    sample = sample.astype(channel.dtype)
+                    print(settings.volume, channel.dtype, sample.dtype, channel.peak, sample)
+                sample = np.asanyarray(sample, channel.dtype)
                 sbuffer = sample
-                if sbuffer.dtype is not np.float32:
+                if sbuffer.dtype != np.float32:
                     sbuffer = sbuffer.astype(np.float32)
                     sbuffer *= 1 / channel.peak
                 lastpacket = packet
@@ -1153,7 +1151,7 @@ def play(pos):
                 packet_advanced2 = True
                 packet_advanced3 = True
                 if OUTPUT_FILE:
-                    if sample.dtype is not np.float32:
+                    if sample.dtype != np.float32:
                         sample = sample.astype(np.float32)
                         sample *= 1 / 32767
                     submit(OUTPUT_FILE.write, packet)
@@ -1340,7 +1338,7 @@ def piano_player():
             sfut = submit(synthesize)
             if s is not None and len(s):
                 sbuffer = s
-                if channel.dtype is not np.float32:
+                if channel.dtype != np.float32:
                     sample = s * 32768
                     sample = np.clip(sample, -32768, 32767, out=sample).astype(np.int16)
                 else:

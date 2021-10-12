@@ -1556,7 +1556,7 @@ def sc_player(d):
         if player.closed:
             return
         if cc < 2:
-            if data.dtype is np.float32:
+            if data.dtype == np.float32:
                 data = data[::2] + data[1::2]
                 data *= 0.5
             else:

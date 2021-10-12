@@ -506,14 +506,14 @@ def animate_polyhedron(changed=False):
         radii = globals()["poly-r"] = r
 
     try:
-        hsv = globals()["ripple-hsv"]
+        hsv = globals()["poly-hsv"]
     except KeyError:
-        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
+        hsv = globals()["poly-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
     try:
-        hue = globals()["ripple-h"]
+        hue = globals()["poly-h"]
     except KeyError:
         hh = [1 - bar.x / barcount / freqscale2 for bar in bars]
-        hue = globals()["ripple-h"] = np.array(hh, dtype=np.float16)
+        hue = globals()["poly-h"] = np.array(hh, dtype=np.float16)
     H = hue + (pc_ / 4 + sin(pc_ * tau / 12) / 6) % 1
     hsv.T[0][:] = H % 1
     alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)

@@ -239,21 +239,11 @@ def animate_prism(changed=False):
     except KeyError:
         class Ripple_Spec:
             angle = 0
-            rx = 0
-            ry = 0
-            rz = 0
         spec = globals()["ripple-s"] = Ripple_Spec()
         glLoadIdentity()
+        glRotatef(45, 1, 1, 1)
     w, h = specsize
-    depth = 3
-    glLineWidth(specsize[0] / 8 / depth)
-    rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
-    ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
-    rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-    glRotatef(0.5, rx, ry, rz)
-    spec.rx = (spec.rx + rx) % 360
-    spec.ry = (spec.ry + ry) % 360
-    spec.rz = (spec.rz + rz) % 360
+    glRotatef(0.5, 0, 1, 0)
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnableClientState(GL_COLOR_ARRAY)
     try:
@@ -286,7 +276,6 @@ def animate_prism(changed=False):
     colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
     colours.T[:3] *= 1 / 255
     mult = np.linspace(1, 0, len(alpha))
-    mult **= 2
     alpha *= mult
     colours.T[-1][:] = alpha
     colours = np.repeat(colours.astype(np.float32), 2, axis=0)[1:-1]
@@ -328,6 +317,8 @@ def animate_prism(changed=False):
         y = specsize[1] - ssize2[1] >> 1
     sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
     return sfx
+
+MAX_DIMS = 8
 
 def schlafli(symbol):
     args = (sys.executable, "misc/schlafli.py")
@@ -373,15 +364,15 @@ def normalise_verts(verts):
     centre = np.mean(verts, axis=0)
     verts -= centre
     verts *= 1 / sqrt(sum(x ** 2 for x in centre))
-    if verts.shape[-1] > 4:
-        outs = verts.T[:4].T
-        for dim in verts.T[4:]:
+    if verts.shape[-1] > MAX_DIMS:
+        outs = verts.T[:MAX_DIMS].T
+        for dim in verts.T[MAX_DIMS:]:
             dim *= 0.25
             dim += 1
-            outs *= np.tile(dim, (4, 1)).T
+            outs *= np.tile(dim, (MAX_DIMS, 1)).T
         verts = outs
     dims = verts.shape[-1]
-    if dims == 3:
+    if dims <= 3:
         if np.all(verts.T[2] == 0):
             dims = 2
     return verts, dims
@@ -417,11 +408,19 @@ def load_model(fn):
 
 
 found_polytopes = {}
-perms = [
-    ((0, 1),),
-    ((0, 1), (0, 2), (1, 2)),
-    ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)),
-]
+perms = {}
+def get_dimension(dim):
+    try:
+        return perms[dim]
+    except KeyError:
+        pass
+    perm = []
+    for i in range(dim):
+        for j in range(i + 1, dim):
+            perm.append((i, j))
+    if perm:
+        perms[dim] = perm
+    return perm
 default_poly = schlafli("144")
 
 def animate_polyhedron(changed=False):
@@ -468,17 +467,18 @@ def animate_polyhedron(changed=False):
         spec.rotmat = np.identity(dims)
         glLoadIdentity()
     w, h = specsize
-    thickness = specsize[0] / 96 / max(1, (len(poly) + 2 >> 1) ** 0.5)
+    thickness = specsize[0] / 64 / max(1, (len(poly) + 2 >> 1) ** 0.5)
     glLineWidth(max(1, thickness))
     alpha_mult = min(1, thickness)
     angle = tau / 512
     i = 0
-    for x, y in perms[dimcount - 2]:
+    perms = get_dimension(dimcount)
+    for x, y in perms:
         i += 1
         if i <= 3:
             factor = i
         else:
-            factor = 6.5 - i
+            factor = (len(perms) - 0.5 - i) % dimcount + 0.5
         z = angle * sin(spec.frame / factor ** 0.5)
         rotation = np.identity(dims)
         a, b = cos(z), sin(z)
@@ -534,7 +534,7 @@ def animate_polyhedron(changed=False):
     alpha *= mult
     colours.T[-1][:] = alpha
     maxb = sqrt(max(bar.height for bar in bars))
-    ratio = min(48, max(8, 24576 / (len(poly) + 2 >> 1)))
+    ratio = min(48, max(8, 36864 / (len(poly) + 2 >> 1)))
     barm = sorted(((bar.height, i) for i, bar in enumerate(bars) if sqrt(bar.height) > maxb / ratio), reverse=True)
     bari = sorted((i for _, i in barm[:round(ratio * 2)]), reverse=True)
     # print(ratio, len(bari))
@@ -782,7 +782,7 @@ while True:
                 specsize = ssize3
                 glfw.destroy_window(window)
                 window = setup_window(specsize)
-            bi = bars2 if specs > 3 else bars
+            bi = bars2 if specs in (2, 4) else bars
             spectrogram_render(bi)
         elif line == b"~e":
             b = sys.stdin.buffer.readline()

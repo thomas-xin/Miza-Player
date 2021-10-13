@@ -930,10 +930,10 @@ def spectrogram_update():
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
         if settings.spectrogram > 0:
-            if not settings.spectrogram > 3:
-                amp = supersample(amp, barcount)
-            else:
+            if settings.spectrogram in (2, 4):
                 amp = supersample(amp, barcount * 2)
+            else:
+                amp = supersample(amp, barcount)
             b = amp.tobytes()
             a = f"~e{len(b)}\n".encode("ascii")
             rproc.stdin.write(a + b)

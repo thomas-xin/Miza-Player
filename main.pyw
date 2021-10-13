@@ -3168,9 +3168,9 @@ def draw_menu():
                                 v = astype(v, tuple)
                             except:
                                 pass
-                        elif len(v) == 1:
+                        if len(v) == 1:
                             v = v[0]
-                        v = poly_inv.get(v, v)
+                        # v = poly_inv.get(v, v)
                         enter = easygui.get_string(
                             "Change polytope",
                             "Miza Player",

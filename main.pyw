@@ -724,7 +724,7 @@ def setup_buttons():
                     if sidebar.get("filming"):
                         args += f" -i {sidebar.filming}"
                         globals()["video-render"].result()
-                    args += f" -f f32le -ar 48k -ac 2 -i {sidebar.recording} -b:a 224k"
+                    args += f" -f f32le -ar 48k -ac 2 -i {sidebar.recording} -b:a 256k"
                     if sidebar.get("filming"):
                         args += " -c:v copy"
                     args += f" {fn}"

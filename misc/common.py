@@ -2376,8 +2376,9 @@ def supersample(a, size, hq=False):
         dtype = a.dtype
     except AttributeError:
         dtype = object
+    ftype = np.float64 if dtype is object or issubclass(dtype.type, np.integer) else dtype
     x = ceil(n / size)
-    interp = np.linspace(0, n - 1, x * size)
+    interp = np.linspace(0, n - 1, x * size, dtype=ftype)
     a = np.interp(interp, range(n), a)
     return np.mean(a.reshape(-1, x), 1, dtype=dtype)
 

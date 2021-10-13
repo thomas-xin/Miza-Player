@@ -93,8 +93,9 @@ def supersample(a, size, hq=False):
         dtype = a.dtype
     except AttributeError:
         dtype = object
+    ftype = np.float64 if dtype is object or issubclass(dtype.type, np.integer) else dtype
     x = ceil(n / size)
-    interp = np.linspace(0, n - 1, x * size)
+    interp = np.linspace(0, n - 1, x * size, dtype=ftype)
     a = np.interp(interp, range(n), a)
     return np.mean(a.reshape(-1, x), 1, dtype=dtype)
 
@@ -858,7 +859,7 @@ freqmul = 1 / (1 - log(minfreq, maxfreq))
 res_scale = 84000
 dfts = res_scale // 2 + 1
 fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
-fftrans = np.zeros(dfts, dtype=int)
+fftrans = np.zeros(dfts, dtype=np.uint16)
 freqscale = 7
 
 bins = barcount * freqscale - 1
@@ -889,7 +890,7 @@ def spectrogram_render():
             vertices = settings.get("spiral-vertices", 6)
         else:
             vertices = 0
-        t2 = pos if OUTPUT_VIDEO else t
+        t2 = frame * 30 if OUTPUT_VIDEO else t
         d2 = 1 / 30 if OUTPUT_VIDEO else dur
         binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2))) + b"\n"
         rproc.stdin.write(binfo)
@@ -925,12 +926,12 @@ def spectrogram_update():
         t = pc()
         dur = max(0.001, min(0.125, t - lastspec))
         lastspec = t
-        dft = np.fft.rfft(spec_buffer)
+        dft = np.fft.rfft(spec_buffer).astype(np.complex64)
         np.multiply(spec_buffer, (1 / 3) ** dur, out=spec_buffer)
-        arr = np.zeros(barcount * freqscale, dtype=np.complex64)
+        arr = np.zeros(barcount * freqscale, dtype=dft.dtype)
         np.add.at(arr, fftrans, dft)
         arr[0] = 0
-        amp = np.abs(arr, dtype=np.float32)
+        amp = np.abs(arr, dtype=np.float32).astype(np.float16)
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
         if settings.spectrogram > 0:
@@ -938,6 +939,8 @@ def spectrogram_update():
                 amp = supersample(amp, barcount * 2)
             else:
                 amp = supersample(amp, barcount)
+            if amp.type != np.float16:
+                amp = amp.astype(np.float16)
             b = amp.tobytes()
             a = f"~e{len(b)}\n".encode("ascii")
             rproc.stdin.write(a + b)
@@ -958,10 +961,10 @@ def spectrogram():
     try:
         if packet and sample is not None:
             if sample.dtype != np.float32:
-                buffer = sample.astype(np.float32)
+                buffer = sample.astype(np.float16)
                 buffer *= 1 / channel.peak
             else:
-                buffer = sample
+                buffer = sample.astype(np.float16)
             spec_buffer = np.append(spec_buffer[-res_scale + len(buffer):], buffer)
             if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
                 spec2_fut = submit(spectrogram_update)
@@ -1191,7 +1194,7 @@ def play(pos):
                         w.set_result(None)
                     else:
                         break
-                if OUTPUT_VIDEO and settings.spectrogram > 0:
+                if OUTPUT_VIDEO and settings.spectrogram > 0 and ssize[0] and ssize[1] and not is_minimised():
                     t = pc()
                     while not video_write and pc() - t < 1:
                         async_wait()
@@ -1650,10 +1653,10 @@ while not sys.stdin.closed and failed < 8:
                         "-hwaccel", "auto", "-an",
                         "-f", "rawvideo", "-pix_fmt", "rgb24",
                         "-video_size", "x".join(map(str, ssize)),
-                        "-i", "-", "-r", "30", "-b:v", "5M", "-c:v", "h264", v
+                        "-i", "-", "-r", "30", "-b:v", "8M", "-c:v", "h264", v
                     )
                     print(args)
-                    OUTPUT_VIDEO = psutil.Popen(args, stdin=subprocess.PIPE, bufsize=np.prod(ssize) * 3)
+                    OUTPUT_VIDEO = psutil.Popen(args, stdin=subprocess.PIPE, bufsize=int(np.prod(ssize) * 3))
                 OUTPUT_FILE = open(s, "ab")
             else:
                 if OUTPUT_VIDEO:

@@ -779,7 +779,7 @@ while True:
             spectrogram_render(bi)
         elif line == b"~e":
             b = sys.stdin.buffer.readline()
-            amp = np.frombuffer(sys.stdin.buffer.read(int(b)), dtype=np.float32)
+            amp = np.frombuffer(sys.stdin.buffer.read(int(b)), dtype=np.float16)
             bi = bars2 if len(amp) > len(bars) else bars
             for i, pwr in enumerate(amp):
                 bi[i].ensure(pwr / 2)

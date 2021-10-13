@@ -569,13 +569,14 @@ def animate_ripple(changed=False):
     w, h = specsize
     depth = 3
     glLineWidth(specsize[0] / 48 / depth)
-    rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
-    ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
-    rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-    glRotatef(0.5, rx, ry, rz)
-    spec.rx = (spec.rx + rx) % 360
-    spec.ry = (spec.ry + ry) % 360
-    spec.rz = (spec.rz + rz) % 360
+    # rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
+    # ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+    # rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+    # glPushMatrix()
+    # glRotatef(0.5, rx, ry, rz)
+    # spec.rx = (spec.rx + rx) % 360
+    # spec.ry = (spec.ry + ry) % 360
+    # spec.rz = (spec.rz + rz) % 360
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnableClientState(GL_COLOR_ARRAY)
     try:
@@ -642,6 +643,7 @@ def animate_ripple(changed=False):
         verts.T[-1][:] = hi
         glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
         glDrawArrays(GL_LINES, 0, len(c))
+    # glPopMatrix()
     glFlush()
     x = y = 0
     if specsize[0] > ssize2[0]:

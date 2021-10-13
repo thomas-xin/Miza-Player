@@ -2686,6 +2686,9 @@ def draw_menu():
         if offs > -sidebar_width + 4:
             pops = set()
             for i, entry in enumerate(sidebar.particles):
+                if not entry:
+                    pops.add(i)
+                    continue
                 if entry.get("life") is None:
                     entry.life = 1
                 else:
@@ -3069,6 +3072,8 @@ def draw_menu():
                     fill_ratio=0.5,
                 )
             for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
+                if not p:
+                    continue
                 col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
                 a = round_random(min(255, (p.life - 2.5) * 12))
                 for j in shuffle(range(3)):

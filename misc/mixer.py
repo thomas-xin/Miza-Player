@@ -1139,7 +1139,7 @@ def play(pos):
                     quiet = 0
                 if sample.dtype == np.float32:
                     np.clip(sample, -channel.peak, channel.peak, out=sample)
-                    print(settings.volume, channel.dtype, sample.dtype, channel.peak, sample)
+                    # print(settings.volume, channel.dtype, sample.dtype, channel.peak, sample)
                 sample = np.asanyarray(sample, channel.dtype)
                 sbuffer = sample
                 if sbuffer.dtype != np.float32:

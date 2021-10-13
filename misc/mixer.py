@@ -939,10 +939,10 @@ def spectrogram_update():
                 amp = supersample(amp, barcount * 2)
             else:
                 amp = supersample(amp, barcount)
-            if amp.type != np.float16:
+            if amp.dtype != np.float16:
                 amp = amp.astype(np.float16)
-            b = amp.tobytes()
-            a = f"~e{len(b)}\n".encode("ascii")
+            b = amp.data
+            a = f"~e{b.nbytes}\n".encode("ascii")
             rproc.stdin.write(a + b)
             rproc.stdin.flush()
         if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):

@@ -318,8 +318,6 @@ def animate_prism(changed=False):
     sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
     return sfx
 
-MAX_DIMS = 8
-
 def schlafli(symbol):
     args = (sys.executable, "misc/schlafli.py")
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -364,13 +362,6 @@ def normalise_verts(verts):
     centre = np.mean(verts, axis=0)
     verts -= centre
     verts *= 1 / sqrt(sum(x ** 2 for x in centre))
-    if verts.shape[-1] > MAX_DIMS:
-        outs = verts.T[:MAX_DIMS].T
-        for dim in verts.T[MAX_DIMS:]:
-            dim *= 0.25
-            dim += 1
-            outs *= np.tile(dim, (MAX_DIMS, 1)).T
-        verts = outs
     dims = verts.shape[-1]
     if dims <= 3:
         if np.all(verts.T[2] == 0):

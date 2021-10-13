@@ -922,9 +922,6 @@ def spectrogram_render():
 def spectrogram_update():
     global lastspec, spec_update_fut, spec2_fut, packet_advanced2, packet_advanced3
     try:
-        if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
-            spec_update_fut = submit(spectrogram_render)
-            packet_advanced2 = False
         t = pc()
         dur = max(0.001, min(0.125, t - lastspec))
         lastspec = t
@@ -945,6 +942,9 @@ def spectrogram_update():
             a = f"~e{len(b)}\n".encode("ascii")
             rproc.stdin.write(a + b)
             rproc.stdin.flush()
+        if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
+            spec_update_fut = submit(spectrogram_render)
+            packet_advanced2 = False
         if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
             spec2_fut = submit(spectrogram_update)
             packet_advanced3 = False

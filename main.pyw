@@ -1826,7 +1826,7 @@ def update_menu():
     else:
         for i, entry in enumerate(queue[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base):
             entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
-    if kspam[K_SPACE]:
+    if kclick[K_SPACE]:
         pause_toggle()
         if player.paused:
             c = (255, 0, 0)
@@ -1894,18 +1894,20 @@ def update_menu():
             else:
                 submit(seek_rel, -5)
     reset = False
-    if sidebar.menu and sidebar.menu.get("scale", 0) >= 1:
-        sidebar.menu.selected = -1
-        if in_rect(mpos, sidebar.menu.rect):
-            i = (mpos2[1] - sidebar.menu.rect[1]) // 20
+    menu = sidebar.menu
+    if menu and menu.get("scale", 0) >= 1:
+        menu.selected = -1
+        if in_rect(mpos, menu.rect):
+            i = (mpos2[1] - menu.rect[1]) // 20
             if mclick[0]:
-                button = sidebar.menu.buttons[i]
+                button = menu.buttons[i]
+                sidebar.menu = None
                 button[1](*button[2:])
                 reset = True
                 mclick[0] = False
-            sidebar.menu.selected = i
+            menu.selected = i
             globals()["mpos"] = (nan, nan)
-    if any(mclick) or reset:
+    if any(mclick):
         sidebar.menu = None
     if in_rect(mpos, toolbar.rect[:3] + (5,)):
         if mclick[0]:
@@ -3152,7 +3154,14 @@ def draw_menu():
                         ),
                     )
                 elif s == 3:
-                    def change_vertices():
+                    def _change_polytope(v):
+                        options.control["gradient-vertices"] = v
+                        mixer.submit(f"~setting #gradient-vertices {v}")
+                    def change_polytope():
+                        sidebar.menu = cdict(
+                            buttons=((k, _change_polytope, v) for v, k in poly_inv.items()),
+                        )
+                    def change_schlafli():
                         v = options.control.get("gradient-vertices")
                         if not isinstance(v, str):
                             try:
@@ -3176,7 +3185,6 @@ def draw_menu():
                                     enter = [eval(x, {}, {}) for x in enter.split()]
                             options.control["gradient-vertices"] = enter
                             mixer.submit(f"~setting #gradient-vertices {enter}")
-
                     def change_model():
                         ftypes = [[f"*.{f}" for f in "obj gz".split()]]
                         default = options.control.get("gradient-vertices")
@@ -3195,7 +3203,8 @@ def draw_menu():
 
                     sidebar.menu = cdict(
                         buttons=(
-                            ("Change polytope", change_vertices),
+                            ("Select polytope", change_polytope),
+                            ("Enter schlafli symbol", change_schlafli),
                             ("Load 3D model", change_model),
                         ),
                     )
@@ -3779,6 +3788,7 @@ try:
             if sidebar.menu and not tick & 3:
                 dur = last_ratio * 4
                 if sidebar.menu.get("scale", 0) < 1:
+                    sidebar.menu.buttons = astype(sidebar.menu.buttons, list)
                     sidebar.menu.scale = min(1, sidebar.menu.get("scale", 0) + dur * 3 / sqrt(len(sidebar.menu.buttons)))
                     if not sidebar.menu.get("size"):
                         sidebar.menu.lines = lines = alist()
@@ -3799,14 +3809,27 @@ try:
                             lines.append(surf)
                         sidebar.menu.size = tuple(size)
                         sidebar.menu.selected = sidebar.menu.get("selected", -1)
-                    sidebar.menu.rect = tuple(sidebar.menu.get("rect") or (mpos2[0] + 1, mpos2[1] + 1))[:2] + (sidebar.menu.size[0], round(sidebar.menu.size[1] * sidebar.menu.scale))
+                    if sidebar.menu.get("rect"):
+                        r = astype(sidebar.menu.rect, list)[:2]
+                    else:
+                        r = [mpos2[0] + 1, mpos2[1] + 1]
+                        sidebar.menu.pos = tuple(r[:2])
+                    r.extend((sidebar.menu.size[0], round(sidebar.menu.size[1] * sidebar.menu.scale)))
+                    if r[0] + r[2] > screensize[0]:
+                        r[0] = screensize[0] - r[2]
+                    if r[1] + r[3] > screensize[1]:
+                        r[1] = screensize[1] - r[3]
+                    sidebar.menu.rect = r
                 try:
-                    c = DISP.get_at(sidebar.menu.rect[:2])
+                    c = DISP.get_at(sidebar.menu.pos)
                 except IndexError:
                     c = (0,) * 3
+                if sidebar.menu.get("colour"):
+                    rat = min(1, delay)
+                    c = [x * (1 - rat) + y * rat for x, y in zip(sidebar.menu.colour, c)]
                 c = colorsys.rgb_to_hsv(*(i / 255 for i in c[:3]))
                 sidebar.menu.colour = tuple(round(i * 255) for i in colorsys.hls_to_rgb(c[0], 0.875, 1))
-                rect = sidebar.menu.rect
+                rect = sidebar.menu.rect = astype(sidebar.menu.rect, tuple)
                 if sidebar.menu.selected:
                     alpha = round(223 * sidebar.menu.scale)
                 else:

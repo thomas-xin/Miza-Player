@@ -1333,10 +1333,8 @@ poly_names = dict(
     decateron=(4, 3, 3, 3),
     pentaract=(4, 3, 3, 3),
     triacontaditeron=(3, 3, 3, 4),
-    heart="misc/default/heart.obj",
-    pikachu="misc/default/pikachu.obj",
-    sphere="misc/default/sphere.obj",
 )
+poly_names.update((fn.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower(), os.path.abspath("misc/default/" + fn)) for fn in os.listdir("misc/default") if fn.endswith(".obj"))
 poly_inv = {v: k for k, v in poly_names.items()}
 
 def custom_scale(source, size, dest=None, antialias=False):

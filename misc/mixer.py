@@ -1520,307 +1520,307 @@ waiting = None
 while not sys.stdin.closed and failed < 8:
     try:
         command = sys.stdin.readline()
-        if command:
-            command = command.rstrip().rstrip("\x00")
-            failed = 0
-            pos = frame / 30
-            if command.startswith("~render"):
-                s = command[8:]
-                p, b, s = s.split(" ", 2)
-                bar = int(b)
-                notes = orjson.loads(s)
-                samples = render_notes(b, notes)
-                out = samples.astype(np.float32).tobytes()
-                with open(f"cache/&p{p}b{b}.pcm", "wb") as f:
-                    f.write(out)
+        if not command:
+            failed += 1
+            continue
+        failed = 0
+        command = command.rstrip().rstrip("\x00")
+        pos = frame / 30
+        if command.startswith("~render"):
+            s = command[8:]
+            p, b, s = s.split(" ", 2)
+            bar = int(b)
+            notes = orjson.loads(s)
+            samples = render_notes(b, notes)
+            out = samples.astype(np.float32).tobytes()
+            with open(f"cache/&p{p}b{b}.pcm", "wb") as f:
+                f.write(out)
+            continue
+        if command.startswith("~wave"):
+            b = command[6:]
+            if b == "clear":
+                wavecache.clear()
                 continue
-            if command.startswith("~wave"):
-                b = command[6:]
-                if b == "clear":
-                    wavecache.clear()
-                    continue
-                sid, opt, data = b.split(None, 2)
-                sid = int(sid)
-                s = Sample(data.encode("ascii"), orjson.loads(opt))
-                wavecache[sid] = s
-                sel_instrument = sid
-                continue
-            if command.startswith("~select"):
-                s = int(command[8:])
-                if s in wavecache:
-                    sel_instrument = s
-                else:
-                    point(f"~t {s}")
-                continue
-            if command.startswith("~keys"):
-                s = command[6:]
-                alphakeys = set(map(int, s.split(","))) if s else set()
-                cleared = False
-                continue
-            if command.startswith("~editor"):
-                s = command[8:]
-                editor = cdict(orjson.loads(s))
-                editor.note_length = 60 / editor.tempo * SR
-                continue
-            if command == "~clear":
-                if proc:
-                    temp, proc = proc, None
-                    try:
-                        temp.kill()
-                    except:
-                        pass
-                if fn and file:
-                    temp, file = file, None
-                    temp.close()
-                    submit(remove, file)
-                fn = file = proc = None
-                synth_samples = np.zeros(0, dtype=np.float32)
-                cleared = True
-                continue
-            if command.startswith("~state"):
-                i = int(command[6:])
-                if i and not paused:
-                    paused = concurrent.futures.Future()
-                elif not i and paused:
-                    paused.set_result(None)
-                    paused = None
-                packet_advanced = paused
-                if paused:
-                    pt2 = time.perf_counter() - pt
-                else:
-                    if pt2:
-                        pt = time.perf_counter() - pt2
-                    pt2 = None
-                continue
-            if command.startswith("~osize"):
-                osize = tuple(map(int, command[7:].split()))
-                continue
-            if command.startswith("~ssize"):
-                ssize = tuple(map(int, command[7:].split()))
-                continue
-            if command.startswith("~download"):
-                st, fn2 = command[10:].rsplit(" ", 1)
-                if not os.path.exists(fn2) or time.time() - os.path.getmtime(fn2) > 86400 * 7:
-                    st2 = base64.b85decode(st.encode("ascii")).decode("utf-8", "replace")
-                    submit(download, st2, fn2)
-                continue
-            if command.startswith("~output"):
-                OUTPUT_DEVICE = command[8:]
-                waiting = concurrent.futures.Future()
-                submit(channel.close)
-                channel = get_channel()
-                waiting, w = None, waiting
-                w.set_result(None)
-                continue
-            if command.startswith("~record"):
-                s = command[8:]
-                if s:
-                    OUTPUT_FILE = open(s, "ab")
-                else:
-                    OUTPUT_FILE.close()
-                    OUTPUT_FILE = None
-                continue
-            if command.startswith("~setting"):
-                s = command[9:]
-                if s.startswith("#"):
-                    s = s[1:]
-                    nostart = True
-                else:
-                    nostart = False
-                if s.startswith("{"):
-                    sets = orjson.loads(s)
-                    settings.update(sets)
-                else:
-                    setting, value = s.split(None, 1)
-                    if not os.path.exists(value):
-                        value = eval(value, {}, {})
-                    settings[setting] = value
-                    if setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus"):
-                        continue
-                if nostart or not stream:
-                    continue
-            elif command.startswith("~drop"):
-                drop += float(command[5:]) * 30
-                if drop <= 60 * 30:
-                    continue
-                pos = (frame + drop) / 30
-                drop = 0
-            elif command == "~quit":
-                break
-            elif command != "~replay":
-                s = sys.stdin.readline().rstrip().split(" ", 3)
-                pos, duration, cdc, sh = s
-                pos, duration = map(float, (pos, duration))
-                stream = base64.b85decode(command.encode("ascii")).decode("utf-8", "replace")
-            shuffling = False
+            sid, opt, data = b.split(None, 2)
+            sid = int(sid)
+            s = Sample(data.encode("ascii"), orjson.loads(opt))
+            wavecache[sid] = s
+            sel_instrument = sid
+            continue
+        if command.startswith("~select"):
+            s = int(command[8:])
+            if s in wavecache:
+                sel_instrument = s
+            else:
+                point(f"~t {s}")
+            continue
+        if command.startswith("~keys"):
+            s = command[6:]
+            alphakeys = set(map(int, s.split(","))) if s else set()
+            cleared = False
+            continue
+        if command.startswith("~editor"):
+            s = command[8:]
+            editor = cdict(orjson.loads(s))
+            editor.note_length = 60 / editor.tempo * SR
+            continue
+        if command == "~clear":
             if proc:
-                proc_waiting = True
                 temp, proc = proc, None
                 try:
                     temp.kill()
                 except:
                     pass
-                if fn and file:
-                    temp, file = file, None
-                    temp.close()
-                    remove(file)
-            if fut:
-                stopped = True
-                if paused:
-                    channel._data_ = ()
-                    paused.set_result(None)
-                try:
-                    fut.result(timeout=5)
-                except:
-                    print_exc()
-                    print("Previously playing song timed out, killing relevant subprocesses and skipping...")
-                    drop = 0
-                    fut = None
-                if paused:
-                    paused = concurrent.futures.Future()
-            stopped = False
-            if reading:
-                reading.result()
-                reading = None
-            ext = construct_options()
-            if is_url(stream):
-                fn = "cache/~" + sh + ".pcm"
-                if os.path.exists(fn) and abs(os.path.getsize(fn) / 48000 / 2 / 2 - duration) < 1:
-                    stream = fn
-                    fn = None
-                    file = None
-                elif pos or not duration < inf or ext:
-                    ts = time.time_ns() // 1000
-                    fn = "cache/\x7f" + str(ts) + ".pcm"
+            if fn and file:
+                temp, file = file, None
+                temp.close()
+                submit(remove, file)
+            fn = file = proc = None
+            synth_samples = np.zeros(0, dtype=np.float32)
+            cleared = True
+            continue
+        if command.startswith("~state"):
+            i = int(command[6:])
+            if i and not paused:
+                paused = concurrent.futures.Future()
+            elif not i and paused:
+                paused.set_result(None)
+                paused = None
+            packet_advanced = paused
+            if paused:
+                pt2 = time.perf_counter() - pt
             else:
+                if pt2:
+                    pt = time.perf_counter() - pt2
+                pt2 = None
+            continue
+        if command.startswith("~osize"):
+            osize = tuple(map(int, command[7:].split()))
+            continue
+        if command.startswith("~ssize"):
+            ssize = tuple(map(int, command[7:].split()))
+            continue
+        if command.startswith("~download"):
+            st, fn2 = command[10:].rsplit(" ", 1)
+            if not os.path.exists(fn2) or time.time() - os.path.getmtime(fn2) > 86400 * 7:
+                st2 = base64.b85decode(st.encode("ascii")).decode("utf-8", "replace")
+                submit(download, st2, fn2)
+            continue
+        if command.startswith("~output"):
+            OUTPUT_DEVICE = command[8:]
+            waiting = concurrent.futures.Future()
+            submit(channel.close)
+            channel = get_channel()
+            waiting, w = None, waiting
+            w.set_result(None)
+            continue
+        if command.startswith("~record"):
+            s = command[8:]
+            if s:
+                OUTPUT_FILE = open(s, "ab")
+            else:
+                OUTPUT_FILE.close()
+                OUTPUT_FILE = None
+            continue
+        if command.startswith("~setting"):
+            s = command[9:]
+            if s.startswith("#"):
+                s = s[1:]
+                nostart = True
+            else:
+                nostart = False
+            if s.startswith("{"):
+                sets = orjson.loads(s)
+                settings.update(sets)
+            else:
+                setting, value = s.split(None, 1)
+                if not os.path.exists(value):
+                    value = eval(value, {}, {})
+                settings[setting] = value
+                if setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus"):
+                    continue
+            if nostart or not stream:
+                continue
+        elif command.startswith("~drop"):
+            drop += float(command[5:]) * 30
+            if drop <= 60 * 30:
+                continue
+            pos = (frame + drop) / 30
+            drop = 0
+        elif command == "~quit":
+            break
+        elif command != "~replay":
+            s = sys.stdin.readline().rstrip().split(" ", 3)
+            pos, duration, cdc, sh = s
+            pos, duration = map(float, (pos, duration))
+            stream = base64.b85decode(command.encode("ascii")).decode("utf-8", "replace")
+        shuffling = False
+        if proc:
+            proc_waiting = True
+            temp, proc = proc, None
+            try:
+                temp.kill()
+            except:
+                pass
+            if fn and file:
+                temp, file = file, None
+                temp.close()
+                remove(file)
+        if fut:
+            stopped = True
+            if paused:
+                channel._data_ = ()
+                paused.set_result(None)
+            try:
+                fut.result(timeout=5)
+            except:
+                print_exc()
+                print("Previously playing song timed out, killing relevant subprocesses and skipping...")
+                drop = 0
+                fut = None
+            if paused:
+                paused = concurrent.futures.Future()
+        stopped = False
+        if reading:
+            reading.result()
+            reading = None
+        ext = construct_options()
+        if is_url(stream):
+            fn = "cache/~" + sh + ".pcm"
+            if os.path.exists(fn) and abs(os.path.getsize(fn) / 48000 / 2 / 2 - duration) < 1:
+                stream = fn
                 fn = None
                 file = None
-            if not stream:
-                continue
-            cleared = False
-            if not is_url(stream) and stream.endswith(".pcm") and not ext and settings.speed >= 0:
-                f = open(stream, "rb")
-                proc = cdict(
-                    stdout=cdict(
-                        read=f.read,
-                    ),
-                    stderr=cdict(
-                        read=lambda: b"",
-                    ),
-                    is_running=lambda: True,
-                    kill=f.close,
-                )
-                if pos:
-                    i = round(pos * SR * 2) * 2
-                    f.seek(i)
-            elif stream[0] == "<" and stream[-1] == ">":
-                pya = afut.result()
-                i = int(stream.strip("<>"))
-                d = pya.get_device_info_by_index(i)
-                ai = pya.open(
-                    SR,
-                    2,
-                    pyaudio.paInt16,
-                    input=True,
-                    frames_per_buffer=800,
-                    input_device_index=i,
-                )
-                proc = cdict(
-                    stdout=cdict(
-                        read=lambda n: ai.read(n >> 2, exception_on_overflow=False),
-                    ),
-                    stderr=cdict(
-                        read=lambda: b"",
-                    ),
-                    is_running=lambda: True,
-                    kill=ai.close,
-                )
-                proc.readable = lambda: ai.get_read_available() >= req >> 2
-                if ext:
-                    fsize = inf
-                    f = proc.stdout
-                    f.seek = f.tell = lambda *args: 0
-                    f.close = ai.close
-                    cmd = list(ffmpeg_start + ("-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "-"))
-                    cmd.extend(ext)
-                    cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", "-"))
-                    print(cmd)
-                    proc = psutil.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=65536)
-                    reading = submit(reader, f, pos=0, pcm=True)
-            else:
-                f = None
-                if not fn and (cdc == "mp3" and pos >= 960 or settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
-                    if (fn or not stream.endswith(".pcm")) and (settings.speed < 0 or cdc != "mp3"):
-                        ostream = stream
-                        stream = "cache/~" + sh + ".pcm"
-                        if not os.path.exists(stream) or os.path.getsize(stream) / 48000 / 2 / 2 < duration - 1:
-                            cmd = ffmpeg_start + ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
-                            print(cmd)
-                            resp = subprocess.run(cmd)
-                    fn = None
-                    f = open(stream, "rb")
-                cmd = ffmpeg_start
-                if is_url(stream):
-                    cmd += ffmpeg_stream
-                    fn2 = "cache/~" + sh + ".pcm"
-                    if sh in seen_urls and not os.path.exists(fn2):
-                        submit(download, stream, fn2)
-                    else:
-                        seen_urls.add(sh)
-                cmd = list(cmd)
-                pcm = False
-                if not fn:
-                    if stream.endswith(".pcm"):
-                        cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
-                        pcm = True
-                    elif cdc == "mp3":
-                        cmd.extend(("-c:a", "mp3"))
-                cmd.extend(("-nostdin", "-i", "-" if f else stream))
-                cmd.extend(ext)
-                cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
-                if pos and not f:
-                    i = cmd.index("-i")
-                    ss = "-ss"
-                    cmd = cmd[:i] + [ss, str(pos)] + cmd[i:]
-                if not fn and f and pos == 0 and settings.shuffle == 2 and duration >= 960:
-                    proc = cdict(
-                        args=cmd,
-                        is_running=lambda: True,
-                        stdin=cdict(
-                            write=lambda b: None,
-                            close=lambda: None,
-                            closed=None,
-                        ),
-                        stdout=cdict(
-                            read=lambda n: emptymem[:n],
-                        ),
-                        stderr=cdict(
-                            read=lambda n: emptymem[:n],
-                        ),
-                        kill=lambda: None,
-                        kill2=f.close,
-                    )
-                else:
-                    print(cmd)
-                    proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, bufsize=65536)
-                if fn and not pos:
-                    proc.kill = lambda: None
-                elif f:
-                    fsize = os.path.getsize(stream)
-                    if pos:
-                        fp = round(pos / duration * fsize / 4) << 2
-                        if fp > fsize - 2:
-                            fp = fsize - 2
-                    else:
-                        fp = 0 if settings.speed >= 0 else fsize - 2
-                    reading = submit(reader, f, pos=fp, reverse=settings.speed < 0, shuffling=pos == 0 and settings.shuffle == 2, pcm=pcm)
-            if point_fut and not point_fut.done():
-                point_fut.result()
-            point(f"~{pos * 30} {duration}")
-            fut = submit(play, pos)
-            proc_waiting = False
+            elif pos or not duration < inf or ext:
+                ts = time.time_ns() // 1000
+                fn = "cache/\x7f" + str(ts) + ".pcm"
         else:
-            failed += 1
+            fn = None
+            file = None
+        if not stream:
+            continue
+        cleared = False
+        if not is_url(stream) and stream.endswith(".pcm") and not ext and settings.speed >= 0:
+            f = open(stream, "rb")
+            proc = cdict(
+                stdout=cdict(
+                    read=f.read,
+                ),
+                stderr=cdict(
+                    read=lambda: b"",
+                ),
+                is_running=lambda: True,
+                kill=f.close,
+            )
+            if pos:
+                i = round(pos * SR * 2) * 2
+                f.seek(i)
+        elif stream[0] == "<" and stream[-1] == ">":
+            pya = afut.result()
+            i = int(stream.strip("<>"))
+            d = pya.get_device_info_by_index(i)
+            ai = pya.open(
+                SR,
+                2,
+                pyaudio.paInt16,
+                input=True,
+                frames_per_buffer=800,
+                input_device_index=i,
+            )
+            proc = cdict(
+                stdout=cdict(
+                    read=lambda n: ai.read(n >> 2, exception_on_overflow=False),
+                ),
+                stderr=cdict(
+                    read=lambda: b"",
+                ),
+                is_running=lambda: True,
+                kill=ai.close,
+            )
+            proc.readable = lambda: ai.get_read_available() >= req >> 2
+            if ext:
+                fsize = inf
+                f = proc.stdout
+                f.seek = f.tell = lambda *args: 0
+                f.close = ai.close
+                cmd = list(ffmpeg_start + ("-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "-"))
+                cmd.extend(ext)
+                cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", "-"))
+                print(cmd)
+                proc = psutil.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=65536)
+                reading = submit(reader, f, pos=0, pcm=True)
+        else:
+            f = None
+            if not fn and (cdc == "mp3" and pos >= 960 or settings.shuffle == 2 and duration >= 960) or settings.speed < 0:
+                if (fn or not stream.endswith(".pcm")) and (settings.speed < 0 or cdc != "mp3"):
+                    ostream = stream
+                    stream = "cache/~" + sh + ".pcm"
+                    if not os.path.exists(stream) or os.path.getsize(stream) / 48000 / 2 / 2 < duration - 1:
+                        cmd = ffmpeg_start + ("-nostdin", "-i", ostream, "-f", "s16le", "-ar", "48k", "-ac", "2", stream)
+                        print(cmd)
+                        resp = subprocess.run(cmd)
+                fn = None
+                f = open(stream, "rb")
+            cmd = ffmpeg_start
+            if is_url(stream):
+                cmd += ffmpeg_stream
+                fn2 = "cache/~" + sh + ".pcm"
+                if sh in seen_urls and not os.path.exists(fn2):
+                    submit(download, stream, fn2)
+                else:
+                    seen_urls.add(sh)
+            cmd = list(cmd)
+            pcm = False
+            if not fn:
+                if stream.endswith(".pcm"):
+                    cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
+                    pcm = True
+                elif cdc == "mp3":
+                    cmd.extend(("-c:a", "mp3"))
+            cmd.extend(("-nostdin", "-i", "-" if f else stream))
+            cmd.extend(ext)
+            cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
+            if pos and not f:
+                i = cmd.index("-i")
+                ss = "-ss"
+                cmd = cmd[:i] + [ss, str(pos)] + cmd[i:]
+            if not fn and f and pos == 0 and settings.shuffle == 2 and duration >= 960:
+                proc = cdict(
+                    args=cmd,
+                    is_running=lambda: True,
+                    stdin=cdict(
+                        write=lambda b: None,
+                        close=lambda: None,
+                        closed=None,
+                    ),
+                    stdout=cdict(
+                        read=lambda n: emptymem[:n],
+                    ),
+                    stderr=cdict(
+                        read=lambda n: emptymem[:n],
+                    ),
+                    kill=lambda: None,
+                    kill2=f.close,
+                )
+            else:
+                print(cmd)
+                proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, bufsize=65536)
+            if fn and not pos:
+                proc.kill = lambda: None
+            elif f:
+                fsize = os.path.getsize(stream)
+                if pos:
+                    fp = round(pos / duration * fsize / 4) << 2
+                    if fp > fsize - 2:
+                        fp = fsize - 2
+                else:
+                    fp = 0 if settings.speed >= 0 else fsize - 2
+                reading = submit(reader, f, pos=fp, reverse=settings.speed < 0, shuffling=pos == 0 and settings.shuffle == 2, pcm=pcm)
+        if point_fut and not point_fut.done():
+            point_fut.result()
+        point(f"~{pos * 30} {duration}")
+        fut = submit(play, pos)
+        proc_waiting = False
     except:
         print_exc()
     async_wait()

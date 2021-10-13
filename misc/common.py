@@ -1345,6 +1345,14 @@ poly_names = dict(
     octeract=(4, 3, 3, 3, 3, 3, 3),
     hexadecazetton=(4, 3, 3, 3, 3, 3, 3),
     diacosipentacontahexazetton=(3, 3, 3, 3, 3, 3, 4),
+    decayotton=(3, 3, 3, 3, 3, 3, 3, 3),
+    enneract=(4, 3, 3, 3, 3, 3, 3, 3),
+    octadecayotton=(4, 3, 3, 3, 3, 3, 3, 3),
+    pentacosidodecayotton=(3, 3, 3, 3, 3, 3, 3, 4),
+    hendecaxennon=(3, 3, 3, 3, 3, 3, 3, 3, 3),
+    dekeract=(4, 3, 3, 3, 3, 3, 3, 3, 3),
+    icosaxennon=(4, 3, 3, 3, 3, 3, 3, 3, 3),
+    chilliaicositetraxennon=(3, 3, 3, 3, 3, 3, 3, 3, 4),
 )
 poly_names.update((fn.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower(), os.path.abspath("misc/default/" + fn)) for fn in os.listdir("misc/default") if fn.endswith(".obj"))
 poly_inv = {v: k for k, v in poly_names.items()}

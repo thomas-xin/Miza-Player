@@ -747,6 +747,8 @@ def setup_window(size):
     window = glfw.create_window(*size, "render", None, None)
     glfw.make_context_current(window)
     glutInitDisplayMode(GL_RGB)
+    gluPerspective(45, 1, 1/16, 6)
+    glTranslatef(0, 0, -2.5)
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
     glDisable(GL_DEPTH_TEST)
@@ -755,8 +757,6 @@ def setup_window(size):
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glBlendEquation(GL_FUNC_ADD)
     glPixelStorei(GL_PACK_ALIGNMENT, 1)
-    gluPerspective(45, 1, 1/16, 3)
-    glTranslatef(0, 0, -2)
     return window
 
 glfw.init()

@@ -264,7 +264,7 @@ def sc_player(d):
             self.fut = concurrent.futures.Future()
             if not len(self._data_):
                 self._data_ = SC_EMPTY[:cc * 1600]
-            b = self._data_[:towrite << 1].tobytes()
+            b = self._data_[:towrite << 1].data
             buffer = self._render_buffer(towrite)
             CFFI.memmove(buffer[0], b, len(b))
             self._render_release(towrite)
@@ -326,7 +326,8 @@ def sc_player(d):
 get_channel = lambda: sc_player(get_device(OUTPUT_DEVICE))
 DEVICE = None
 OUTPUT_DEVICE = None
-OUTPUT_FILE = None
+OUTPUT_FILE = OUTPUT_VIDEO = None
+video_write = None
 channel = cdict(close=lambda: None)
 
 ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
@@ -605,7 +606,7 @@ def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
             if reverse:
                 if len(b) & 1:
                     b = memoryview(b)[:-1]
-                b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
+                b = np.flip(np.frombuffer(b, dtype=np.uint16)).data
                 pos -= rsize
                 if pos <= 0:
                     proc.stdin.write(b)
@@ -615,7 +616,7 @@ def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
                         b = f.read(size)
                         if len(b) & 1:
                             b = memoryview(b)[:-1]
-                        b = np.flip(np.frombuffer(b, dtype=np.uint16)).tobytes()
+                        b = np.flip(np.frombuffer(b, dtype=np.uint16)).data
                         proc.stdin.write(b)
                     break
                 f.seek(pos)
@@ -874,7 +875,7 @@ lastspec = 0
 lastspec2 = 0
 
 def spectrogram_render():
-    global stderr_lock, ssize2, lastspec2, spec_update_fut, packet_advanced2
+    global stderr_lock, ssize2, lastspec2, spec_update_fut, packet_advanced2, video_write
     try:
         t = pc()
         dur = max(0.001, min(0.125, t - lastspec2))
@@ -888,7 +889,9 @@ def spectrogram_render():
             vertices = settings.get("spiral-vertices", 6)
         else:
             vertices = 0
-        binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, dur, t))) + b"\n"
+        t2 = pos if OUTPUT_VIDEO else t
+        d2 = 1 / 30 if OUTPUT_VIDEO else dur
+        binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2))) + b"\n"
         rproc.stdin.write(binfo)
         rproc.stdin.flush()
         line = rproc.stdout.readline().rstrip()
@@ -899,6 +902,10 @@ def spectrogram_render():
         if line[2:]:
             bsize = 3 * np.prod(deque(map(int, line[2:].split(b"~"))))
             spectrobytes = rproc.stdout.read(bsize)
+            if OUTPUT_VIDEO and not OUTPUT_VIDEO.stdin.closed:
+                while video_write:
+                    async_wait()
+                video_write = submit(OUTPUT_VIDEO.stdin.write, spectrobytes)
             while stderr_lock:
                 stderr_lock.result()
             stderr_lock = concurrent.futures.Future()
@@ -1029,7 +1036,7 @@ emptymem = memoryview(emptybuff)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
-    global file, fn, proc, drop, quiet, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, packet_advanced, packet_advanced2, packet_advanced3, sfut
+    global file, fn, proc, drop, quiet, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, packet_advanced, packet_advanced2, packet_advanced3, sfut, video_write
     skipzeros = False
     try:
         frame = pos * 30
@@ -1146,15 +1153,16 @@ def play(pos):
                     sbuffer = sbuffer.astype(np.float32)
                     sbuffer *= 1 / channel.peak
                 lastpacket = packet
-                packet = sample.tobytes()
+                packet = sample.data
                 packet_advanced = True
                 packet_advanced2 = True
                 packet_advanced3 = True
                 if OUTPUT_FILE:
-                    if sample.dtype != np.float32:
-                        sample = sample.astype(np.float32)
-                        sample *= 1 / 32767
-                    submit(OUTPUT_FILE.write, packet)
+                    s = sample
+                    if s.dtype != np.float32:
+                        s = s.astype(np.float32)
+                        s *= 1 / 32767
+                    submit(OUTPUT_FILE.write, s.data)
                 if not point_fut or point_fut.done():
                     point_fut = submit(point, f"~{frame} {duration}")
                 if settings.spectrogram >= 0 and ssize[0] and ssize[1] and not is_minimised():
@@ -1183,6 +1191,15 @@ def play(pos):
                         w.set_result(None)
                     else:
                         break
+                if OUTPUT_VIDEO and settings.spectrogram > 0:
+                    t = pc()
+                    while not video_write and pc() - t < 1:
+                        async_wait()
+                    try:
+                        video_write.result()
+                    except (AttributeError, ValueError):
+                        pass
+                    video_write = None
             except StopIteration:
                 pass
             frame += settings.speed * 2 ** (settings.nightcore / 12)
@@ -1322,7 +1339,7 @@ def synthesize():
 
 
 def piano_player():
-    global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3, sfut
+    global sample, sbuffer, spec_fut, point_fut, ssize, lastpacket, packet, packet_advanced, packet_advanced2, packet_advanced3, sfut, video_write
     try:
         while not hasattr(channel, "wait"):
             time.sleep(0.1)
@@ -1344,7 +1361,7 @@ def piano_player():
                 else:
                     sample = np.clip(s, -1, 1, out=s)
                 lastpacket = packet
-                packet = sbuffer.tobytes()
+                packet = sbuffer.data
                 packet_advanced = True
                 packet_advanced2 = True
                 packet_advanced3 = True
@@ -1377,6 +1394,15 @@ def piano_player():
                         w.set_result(None)
                     else:
                         break
+                if OUTPUT_VIDEO and settings.spectrogram > 0:
+                    t = pc()
+                    while not video_write and pc() - t < 1:
+                        async_wait()
+                    try:
+                        video_write.result()
+                    except (AttributeError, ValueError):
+                        pass
+                    video_write = None
             async_wait()
     except:
         print_exc()
@@ -1532,7 +1558,7 @@ while not sys.stdin.closed and failed < 8:
             bar = int(b)
             notes = orjson.loads(s)
             samples = render_notes(b, notes)
-            out = samples.astype(np.float32).tobytes()
+            out = samples.astype(np.float32).data
             with open(f"cache/&p{p}b{b}.pcm", "wb") as f:
                 f.write(out)
             continue
@@ -1617,10 +1643,27 @@ while not sys.stdin.closed and failed < 8:
         if command.startswith("~record"):
             s = command[8:]
             if s:
+                if " " in s:
+                    s, v = s.split(None, 1)
+                    args = (
+                        ffmpeg, "-y", "-hide_banner", "-v", "error",
+                        "-hwaccel", "auto", "-an",
+                        "-f", "rawvideo", "-pix_fmt", "rgb24",
+                        "-video_size", "x".join(map(str, ssize)),
+                        "-i", "-", "-r", "30", "-b:v", "5M", "-c:v", "h264", v
+                    )
+                    print(args)
+                    OUTPUT_VIDEO = psutil.Popen(args, stdin=subprocess.PIPE, bufsize=np.prod(ssize) * 3)
                 OUTPUT_FILE = open(s, "ab")
             else:
-                OUTPUT_FILE.close()
-                OUTPUT_FILE = None
+                if OUTPUT_VIDEO:
+                    OUTPUT_VIDEO.stdin.close()
+                if OUTPUT_FILE:
+                    OUTPUT_FILE.close()
+                if OUTPUT_VIDEO:
+                    OUTPUT_VIDEO.wait()
+                    point("~V")
+                OUTPUT_FILE = OUTPUT_VIDEO = None
             continue
         if command.startswith("~setting"):
             s = command[9:]

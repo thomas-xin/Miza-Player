@@ -568,7 +568,7 @@ def animate_ripple(changed=False):
         glLoadIdentity()
     w, h = specsize
     depth = 3
-    glLineWidth(specsize[0] / 48 / depth)
+    glLineWidth(specsize[0] / 64 / depth)
     # rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
     # ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
     # rz = 0.8 - abs(spec.rz % 90 - 45) / 90

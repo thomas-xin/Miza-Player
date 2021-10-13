@@ -703,31 +703,54 @@ def setup_buttons():
                 if DEVICE.name != OUTPUT_DEVICE:
                     mixer.submit(f"~output {OUTPUT_DEVICE}")
                     globals()["DEVICE"] = get_device(OUTPUT_DEVICE)
+        def end_recording():
+            mixer.submit("~record")
+            try:
+                if not os.path.getsize(sidebar.recording):
+                    raise FileNotFoundError
+            except FileNotFoundError:
+                pass
+            else:
+                fmt = ".ogg" if not sidebar.get("filming") else ".mp4"
+                fn = sidebar.recording.split("/", 1)[-1][1:].split(".", 1)[0] + fmt
+                fn = easygui.filesavebox(
+                    "Save As",
+                    "Miza Player",
+                    fn.translate(safe_filenames),
+                    filetypes=ftypes,
+                )
+                if fn:
+                    args = f"{ffmpeg} -hide_banner -y -v error"
+                    if sidebar.get("filming"):
+                        args += f" -i {sidebar.filming}"
+                        globals()["video-render"].result()
+                    args += f" -f f32le -ar 48k -ac 2 -i {sidebar.recording} -b:a 224k"
+                    if sidebar.get("filming"):
+                        args += " -c:v copy"
+                    args += f" {fn}"
+                    print(args)
+                    os.system(args)
+            sidebar.recording = ""
+            sidebar.filming = ""
         def record_audio():
             if not sidebar.get("recording"):
                 sidebar.recording = f"cache/\x7f{ts_us()}.pcm"
+                mixer.submit(f"~record {sidebar.recording}")
             else:
-                try:
-                    if not os.path.getsize(sidebar.recording):
-                        raise FileNotFoundError
-                except FileNotFoundError:
-                    pass
-                else:
-                    fn = sidebar.recording.split("/", 1)[-1][1:].split(".", 1)[0] + ".ogg"
-                    fn = easygui.filesavebox(
-                        "Save As",
-                        "Miza Player",
-                        fn.translate(safe_filenames),
-                        filetypes=ftypes,
-                    )
-                    if fn:
-                        os.system(f"{ffmpeg} -hide_banner -y -v error -f f32le -ar 48k -ac 2 -i {sidebar.recording} {fn}")
-                sidebar.recording = ""
-            mixer.submit(f"~record " + sidebar.recording)
+                end_recording()
+        def record_video():
+            if not sidebar.get("recording"):
+                sidebar.recording = f"cache/\x7f{ts_us()}.pcm"
+                sidebar.filming = f"cache/\x7f{ts_us()}.mp4"
+                globals()["video-render"] = concurrent.futures.Future()
+                mixer.submit(f"~record {sidebar.recording} {sidebar.filming}")
+            else:
+                end_recording()
         def record_menu():
             sidebar.menu = cdict(
                 buttons=(
                     ("Record audio", record_audio),
+                    ("Record video", record_video),
                     ("Change device", output_device),
                 ),
             )
@@ -1544,7 +1567,7 @@ def sc_player(d):
             self.fut = concurrent.futures.Future()
             if not len(self._data_):
                 self._data_ = SC_EMPTY[:cc * 1600]
-            b = self._data_[:towrite << 1].tobytes()
+            b = self._data_[:towrite << 1].data
             buffer = self._render_buffer(towrite)
             CFFI.memmove(buffer[0], b, len(b))
             self._render_release(towrite)
@@ -1646,6 +1669,9 @@ def pos():
                 submit(start_player, 0, True)
                 print("Re-evaluating file stream...")
                 submit(reevaluate)
+                continue
+            if s == "V":
+                globals()["video-render"].set_result(None)
                 continue
             if s[0] == "x":
                 spl = s[2:].split()

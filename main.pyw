@@ -1512,28 +1512,25 @@ def reevaluate():
         time.sleep(2)
 
 device_waiting = None
-
 def wait_on():
-    print(f"Waiting on {OUTPUT_DEVICE}...")
-    while device_waiting:
-        try:
-            d = get_device(OUTPUT_DEVICE)
-            if d:
-                globals()["device_waiting"] = None
-                print("Device target found.")
-                mixer.submit(f"~output {OUTPUT_DEVICE}")
-                return
-        except:
-            print_exc()
-        time.sleep(0.5)
-    print("Device switch cancelled.")
+    if not device_waiting:
+        return
+    try:
+        d = get_device(OUTPUT_DEVICE, default=False)
+        if d:
+            globals()["device_waiting"] = None
+            print("Device target found.")
+            mixer.submit(f"~output {OUTPUT_DEVICE}")
+            return
+    except:
+        print_exc()
 
-get_device = sc.get_speaker
-def get_device(name):
+def get_device(name, default=True):
     try:
         return sc.get_speaker(name)
-    except IndexError:
-        return sc.default_speaker()
+    except (IndexError, RuntimeError):
+        if default:
+            return sc.default_speaker()
 
 PG_USED = None
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
@@ -1670,7 +1667,8 @@ def pos():
             if s[0] == "w":
                 globals()["OUTPUT_DEVICE"] = s[2:]
                 if not device_waiting:
-                    globals()["device_waiting"] = submit(wait_on)
+                    globals()["device_waiting"] = OUTPUT_DEVICE
+                    print(f"Waiting on {OUTPUT_DEVICE}...")
                 continue
             if s == "W":
                 globals()["device_waiting"] = None
@@ -3473,6 +3471,8 @@ try:
                 globals()["last_save"] = t
         if not tick % (status_freq + (status_freq & 1)):
             submit(send_status)
+        if not tick % 240:
+            wait_on()
         fut = common.__dict__.get("repo-update")
         if fut:
             if fut is True:

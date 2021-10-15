@@ -210,7 +210,7 @@ def get_device(name):
     global DEVICE
     try:
         DEVICE = sc.get_speaker(name)
-    except IndexError:
+    except (IndexError, RuntimeError):
         pass
     else:
         point("~W")
@@ -1229,7 +1229,7 @@ class Sample(collections.abc.Hashable):
     def __hash__(self):
         data = self.data
         x = ceil(log2(len(data)))
-        y = [round(i) for i in np.linspace(0, len(data) - 1, num=x)]
+        y = [round(i) for i in np.linspace(0, len(data) - 1, num=x, dtype=np.float32)]
         return hash(np.sum(data[y]))
 
     def __eq__(self, other):
@@ -1279,8 +1279,10 @@ def synthesize():
                 wave = wave * (1 / len(partials))
             c = SR // 48
             if i in alphakeys:
-                xa = np.linspace(0, period, len(wave), endpoint=False)
-                wave = np.interp(np.linspace(offs, FR + offs, FR, endpoint=False) % period, xa, wave)
+                xa = np.linspace(0, period, len(wave), endpoint=False, dtype=np.float32)
+                space = np.linspace(offs, FR + offs, FR, endpoint=False, dtype=np.float32)
+                space %= period
+                wave = np.interp(space, xa, wave)
                 if i not in prevkeys:
                     x = min(int((period - offs) % period), FR - c)
                     wave[:x] = 0
@@ -1293,10 +1295,12 @@ def synthesize():
                 x = min(int((period - offs - c) % period), FR - c)
                 if s is None:
                     s = np.zeros(FR, dtype=np.float32)
-                xa = np.linspace(0, period, len(wave), endpoint=False)
-                wave = np.interp(np.linspace(offs, x + c + offs, x + c, endpoint=False) % period, xa, wave)
-                samplespace = np.linspace(-2, 2, x + c)
-                samplespace = scipy.special.erf(samplespace)
+                xa = np.linspace(0, period, len(wave), endpoint=False, dtype=np.float32)
+                space = np.linspace(offs, x + c + offs, x + c, endpoint=False, dtype=np.float32)
+                space %= period
+                wave = np.interp(space, xa, wave)
+                samplespace = np.linspace(-2, 2, x + c, dtype=np.float32)
+                samplespace = scipy.special.erf(samplespace).astype(np.float32)
                 samplespace -= 1
                 wave *= samplespace
                 wave *= -0.5
@@ -1307,7 +1311,7 @@ def synthesize():
         if dc < 5:
             lin = basewave + dc
             lin -= 2
-            lin = scipy.special.erf(lin)
+            lin = scipy.special.erf(lin).astype(np.float32)
             lin += 1
             lin *= (db - da) / 2
             lin += da
@@ -1469,7 +1473,7 @@ def render_notes(i, notes):
                 # length -= length % slength
             if length <= 0:
                 continue
-            positions = np.linspace(0, length / slength * len(wave), length, endpoint=False)
+            positions = np.linspace(0, length / slength * len(wave), length, endpoint=False, dtype=np.float32)
             positions %= len(wave)
             sample = np.interp(positions, np.arange(len(wave)), wave)
             if pos < 0:

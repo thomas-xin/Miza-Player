@@ -839,8 +839,7 @@ def bytes2zip(data):
     b = io.BytesIO()
     with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
         z.writestr("D", data=data)
-    b.seek(0)
-    return b.read()
+    return b.getbuffer()
 
 shash = lambda s: base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).rstrip(b"=").decode("ascii")
 

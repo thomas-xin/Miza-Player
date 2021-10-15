@@ -769,64 +769,65 @@ def send_status():
 cached_fns = {}
 def _enqueue_local(*files, probe=True):
     try:
-        if files:
-            sidebar.loading = True
-            start = len(queue)
-            title = None
-            for fn in files:
-                entries = None
-                if fn[0] == "<" and fn[-1] == ">":
-                    pya = afut.result()
-                    dev = pya.get_device_info_by_index(int(fn.strip("<>")))
-                    entry = cdict(
-                        url=fn,
-                        stream=fn,
-                        name=dev.get("name"),
-                        duration=inf,
-                    )
-                elif fn.endswith(".json"):
-                    with open(fn, "rb") as f:
-                        data = json.load(f)
-                    q = data.get("queue", ())
-                    entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
-                    queue.extend(entries)
-                    entry = entries[0]
-                else:
-                    fn = fn.replace("\\", "/")
-                    if "/" not in fn:
-                        fn = "/" + fn
-                    options.path, name = fn.rsplit("/", 1)
-                    name = name.rsplit(".", 1)[0]
+        if not files:
+            return
+        sidebar.loading = True
+        start = len(queue)
+        title = None
+        for fn in files:
+            entries = None
+            if fn[0] == "<" and fn[-1] == ">":
+                pya = afut.result()
+                dev = pya.get_device_info_by_index(int(fn.strip("<>")))
+                entry = cdict(
+                    url=fn,
+                    stream=fn,
+                    name=dev.get("name"),
+                    duration=inf,
+                )
+            elif fn.endswith(".json"):
+                with open(fn, "rb") as f:
+                    data = json.load(f)
+                q = data.get("queue", ())
+                entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
+                queue.extend(entries)
+                entry = entries[0]
+            else:
+                fn = fn.replace("\\", "/")
+                if "/" not in fn:
+                    fn = "/" + fn
+                options.path, name = fn.rsplit("/", 1)
+                name = name.rsplit(".", 1)[0]
+                try:
                     try:
-                        try:
-                            dur, cdc = cached_fns[fn]
-                        except KeyError:
-                            if probe:
-                                dur, cdc = cached_fns[fn] = get_duration_2(fn)
-                            else:
-                                dur, cdc = None, None
-                    except:
-                        print_exc()
-                        dur, cdc = (None, "N/A")
-                    entry = cdict(
-                        url=fn,
-                        stream=fn,
-                        name=name,
-                        duration=dur,
-                        cdc=cdc,
-                        pos=start,
-                    )
-                if not title:
-                    title = entry.name
-                    if len(files) > 1:
-                        title += f" +{len(files) - 1}"
-                    options.history.appendleft((title, files))
-                    options.history = options.history.uniq(sort=False)[:64]
-                if not entries:
-                    queue.append(entry)
-            if control.shuffle:
-                random.shuffle(queue.view[1:])
-            sidebar.loading = False
+                        dur, cdc = cached_fns[fn]
+                    except KeyError:
+                        if probe:
+                            dur, cdc = cached_fns[fn] = get_duration_2(fn)
+                        else:
+                            dur, cdc = None, None
+                except:
+                    print_exc()
+                    dur, cdc = (None, "N/A")
+                entry = cdict(
+                    url=fn,
+                    stream=fn,
+                    name=name,
+                    duration=dur,
+                    cdc=cdc,
+                    pos=start,
+                )
+            if not title:
+                title = entry.name
+                if len(files) > 1:
+                    title += f" +{len(files) - 1}"
+                options.history.appendleft((title, files))
+                options.history = options.history.uniq(sort=False)[:64]
+            if not entries:
+                queue.append(entry)
+        if control.shuffle:
+            random.shuffle(queue.view[1:])
+        sidebar.loading = False
     except:
         sidebar.loading = False
         print_exc()
@@ -834,31 +835,32 @@ def _enqueue_local(*files, probe=True):
 eparticle = dict(colour=(255,) * 3)
 def _enqueue_search(query):
     try:
-        if query:
-            sidebar.loading = True
-            start = len(queue)
-            ytdl = downloader.result()
-            try:
-                entries = ytdl.search(query)
-            except:
-                print_exc()
-                sidebar.particles.append(cdict(eparticle))
+        if not query:
+            return
+        sidebar.loading = True
+        start = len(queue)
+        ytdl = downloader.result()
+        try:
+            entries = ytdl.search(query)
+        except:
+            print_exc()
+            sidebar.particles.append(cdict(eparticle))
+        else:
+            if entries:
+                entry = entries[0]
+                name = entry.name
+                if len(entries) > 1:
+                    name += f" +{len(entries) - 1}"
+                url = query if is_url(query) and len(entries) > 1 else entry.url
+                options.history.appendleft((name, (url,)))
+                options.history = options.history.uniq(sort=False)[:64]
+                entries = [cdict(**e, pos=start) for e in entries]
+                queue.extend(entries)
             else:
-                if entries:
-                    entry = entries[0]
-                    name = entry.name
-                    if len(entries) > 1:
-                        name += f" +{len(entries) - 1}"
-                    url = query if is_url(query) and len(entries) > 1 else entry.url
-                    options.history.appendleft((name, (url,)))
-                    options.history = options.history.uniq(sort=False)[:64]
-                    entries = [cdict(**e, pos=start) for e in entries]
-                    queue.extend(entries)
-                else:
-                    sidebar.particles.append(cdict(eparticle))
-            if control.shuffle and len(queue) > 1:
-                random.shuffle(queue.view[bool(start):])
-            sidebar.loading = False
+                sidebar.particles.append(cdict(eparticle))
+        if control.shuffle and len(queue) > 1:
+            random.shuffle(queue.view[bool(start):])
+        sidebar.loading = False
     except:
         sidebar.loading = False
         print_exc()
@@ -868,17 +870,18 @@ def enqueue_auto(*queries):
     start = len(queue)
     for i, query in enumerate(queries):
         q = query.strip()
-        if q:
-            if is_url(q) or not os.path.exists(q):
-                if i < 1:
-                    futs.append(submit(_enqueue_search, q))
-                else:
-                    for fut in futs:
-                        fut.result()
-                    name = q.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
-                    queue.append(cdict(name=name, url=q, duration=None, pos=start))
+        if not q:
+            continue
+        if is_url(q) or not os.path.exists(q):
+            if i < 1:
+                futs.append(submit(_enqueue_search, q))
             else:
-                futs.append(submit(_enqueue_local, q, probe=i < 1))
+                for fut in futs:
+                    fut.result()
+                name = q.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+                queue.append(cdict(name=name, url=q, duration=None, pos=start))
+        else:
+            futs.append(submit(_enqueue_local, q, probe=i < 1))
 
 def load_project(fn, switch=True):
     if switch and not toolbar.editor:
@@ -887,15 +890,23 @@ def load_project(fn, switch=True):
     player.editor_surf = None
     globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
     try:
-        f = open(fn, "rb") if type(fn) is str else fn
-        with f:
-            b = f.read(7)
-            if b != b">~MPP~>":
-                raise TypeError("Invalid project file header.")
-            b2 = f.read()
-        with zipfile.ZipFile(io.BytesIO(b2), allowZip64=True, strict_timestamps=False) as z:
-            with z.open("<~MPP~<", force_zip64=True) as f:
-                pdata = pickle.load(f)
+        f = open(fn, "rb") if type(fn) is str else io.BytesIO(fn) if type(fn) is bytes else fn
+        pdata = None
+        try:
+            with f:
+                b = f.read(7)
+                if b != b">~MPP~>":
+                    raise TypeError("Invalid project file header.")
+                if type(fn) is bytes:
+                    b2 = memoryview(fn)[7:]
+                else:
+                    b2 = f.read()
+                with zipfile.ZipFile(io.BytesIO(b2), allowZip64=True, strict_timestamps=False) as z:
+                    with z.open("<~MPP~<", force_zip64=True) as f:
+                        pdata = pickle.load(f)
+        except BufferError:
+            if not pdata:
+                raise
         project.update(pdata)
         if not project.instruments:
             add_instrument(True)
@@ -928,10 +939,9 @@ def save_project(fn=None):
         with zipfile.ZipFile(pdata, mode="w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
             with z.open("<~MPP~<", "w", force_zip64=True) as f:
                 pickle.dump(project, f)
-        pdata.seek(0)
         f = open(fn, "wb") if type(fn) is str else fn or io.BytesIO()
         f.write(b">~MPP~>")
-        f.write(pdata.read())
+        f.write(pdata.getbuffer())
         if type(fn) is str:
             f.close()
             globals()["project_name"] = fn.rsplit(".", 1)[0]
@@ -1436,15 +1446,16 @@ def seek_rel(pos):
 
 def restart_mixer():
     global mixer
-    if mixer:
-        if mixer.is_running():
-            for p in mixer.children(True):
-                p.kill()
-            mixer.kill()
-        mixer = start_mixer()
-        mixer.state(player.paused)
-        submit(transfer_instrument, *project.instruments.values())
-        return seek_abs(player.pos)
+    if not mixer:
+        return
+    if mixer.is_running():
+        for p in mixer.children(True):
+            p.kill()
+        mixer.kill()
+    mixer = start_mixer()
+    mixer.state(player.paused)
+    submit(transfer_instrument, *project.instruments.values())
+    return seek_abs(player.pos)
 
 def play():
     try:
@@ -3366,7 +3377,7 @@ def save_settings():
             data["minimised"] = True
         if not pdata:
             fut.result()
-            globals()["pdata"] = base64.b85encode(b.read()).decode("ascii")
+            globals()["pdata"] = base64.b85encode(b.getbuffer()).decode("ascii")
         data["project"] = pdata
         with open("dump.json", "w", encoding="utf-8") as f:
             json.dump(data, f, separators=(",", ":"), default=json_default)
@@ -3429,7 +3440,7 @@ try:
             except:
                 pass
             else:
-                lp = submit(load_project, io.BytesIO(b), switch=False)
+                lp = submit(load_project, b, switch=False)
         if data.get("toolbar-editor"):
             if not player.paused:
                 pause_toggle(True)
@@ -3478,12 +3489,6 @@ try:
                     restarting = True
                     raise StopIteration
                 common.__dict__.pop("repo-update", None)
-            # elif not fut.done():
-            #     r = easygui.get_yes_or_no(
-            #         "Would you like to update the application? (takes effect upon next usage)",
-            #         "Miza Player ~ Update found!",
-            #     )
-            #     fut.set_result(r)
         foc = get_focused()
         unfocused = False
         if foc:
@@ -3910,10 +3915,6 @@ try:
                             rect,
                         )
                     modified.clear()
-            # if not tick & 7 and modified:
-            #     pygame.display.flip()
-            #     # glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-            #     modified.clear()
         elif minimised:
             sidebar.particles.clear()
             progress.particles.clear()

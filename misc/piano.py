@@ -352,9 +352,8 @@ def editor_update():
                 first = False
             if player.broken or player.paused:
                 break
-            b.seek(0)
             try:
-                channel.write(np.frombuffer(b.read(), dtype=np.float32))
+                channel.write(np.frombuffer(b.getbuffer(), dtype=np.float32))
             except:
                 print_exc()
                 break

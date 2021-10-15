@@ -8,11 +8,13 @@ for obj in gc.get_objects():
         CFFI = obj
         break
 
+import psutil, subprocess
 import sys
+rproc = psutil.Popen((sys.executable, "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
 sys.stdout.write = lambda *args, **kwargs: None
 import pygame
 
-import os, sys, numpy, math, random, base64, hashlib, orjson, time, subprocess, psutil, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools, io, zipfile
+import os, sys, numpy, math, random, base64, hashlib, orjson, time, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools, io, zipfile
 import concurrent.futures, scipy.special
 from math import *
 np = numpy
@@ -36,8 +38,6 @@ def is_minimised():
         globals()["unfocus-time"] = time.time()
         return
     return time.time() - globals()["unfocus-time"] > 3
-
-rproc = psutil.Popen((sys.executable, "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
 
 pt = None
 pt2 = None
@@ -76,8 +76,7 @@ def bytes2zip(data):
     b = io.BytesIO()
     with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
         z.writestr("D", data=data)
-    b.seek(0)
-    return b.read()
+    return b.getbuffer()
 
 def supersample(a, size, hq=False):
     n = len(a)
@@ -227,7 +226,7 @@ def sc_player(d):
     try:
         if not PG_USED:
             raise RuntimeError
-        player = d.player(SR, cc, 1600)
+        player = d.player(SR, cc, 2048)
     except RuntimeError:
         if PG_USED:
             pygame.mixer.Channel(0).stop()
@@ -267,7 +266,7 @@ def sc_player(d):
                 self._data_ = SC_EMPTY[:cc * 1600]
             b = self._data_[:towrite << 1].data
             buffer = self._render_buffer(towrite)
-            CFFI.memmove(buffer[0], b, len(b))
+            CFFI.memmove(buffer[0], b, b.nbytes)
             self._render_release(towrite)
             self._data_ = self._data_[towrite << 1:]
             if self.closed:
@@ -795,28 +794,19 @@ def oscilloscope(buffer):
     try:
         if packet:
             arr = buffer[::2] + buffer[1::2]
-            osci = np.empty(osize[0])
-            r = len(arr) / len(osci)
-            for i in range(len(osci)):
-                x = round(i * r)
-                y = round(i * r + r)
-                v = arr[x:y]
-                a = np.max(v)
-                b = np.min(v)
-                osci[i] = a if a >= -b else b
-            osci = np.clip(osci * 0.5, -1, 1, out=osci)
+            osci = supersample(arr, osize[0])
+            osci *= 0.5
+            osci = np.clip(osci, -1, 1, out=osci)
             if packet:
                 size = osize
                 OSCI = pygame.Surface(size)
                 if packet:
                     point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
                     for i in range(1, len(osci)):
-                        if not packet:
-                            return
                         prev = point
                         point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
                         hue = ((osci[i] + osci[i - 1]) / 4) % 1
-                        col = tuple(map(lambda x: round(x * 255), colorsys.hsv_to_rgb(1 - hue, 1, 1)))
+                        col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(1 - hue, 1, 1)]
                         pygame.draw.line(
                             OSCI,
                             col,
@@ -890,7 +880,7 @@ def spectrogram_render():
             vertices = settings.get("spiral-vertices", 6)
         else:
             vertices = 0
-        t2 = frame * 30 if OUTPUT_VIDEO else t
+        t2 = frame / 30 if OUTPUT_VIDEO else t
         d2 = 1 / 30 if OUTPUT_VIDEO else dur
         binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2))) + b"\n"
         rproc.stdin.write(binfo)
@@ -942,8 +932,8 @@ def spectrogram_update():
             if amp.dtype != np.float16:
                 amp = amp.astype(np.float16)
             b = amp.data
-            a = f"~e{b.nbytes}\n".encode("ascii")
-            rproc.stdin.write(a + b)
+            rproc.stdin.write(f"~e{b.nbytes}\n".encode("ascii"))
+            rproc.stdin.write(b)
             rproc.stdin.flush()
         if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
             spec_update_fut = submit(spectrogram_render)

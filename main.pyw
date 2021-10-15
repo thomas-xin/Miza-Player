@@ -1542,7 +1542,7 @@ def sc_player(d):
     try:
         if not PG_USED:
             raise RuntimeError
-        player = d.player(SR, cc, 1600)
+        player = d.player(SR, cc, 2048)
     except RuntimeError:
         if PG_USED:
             pygame.mixer.Channel(0).stop()
@@ -1567,7 +1567,9 @@ def sc_player(d):
     # (soundcard's normal one is insufficient for continuous playback)
     def play(self):
         while True:
-            if self.closed:
+            if player.paused:
+                if len(self._data_) > 3200 * cc:
+                    self._data_ = self._data_[-3200 * cc:]
                 return
             towrite = self._render_available_frames()
             if towrite < 50 * cc:
@@ -1580,7 +1582,7 @@ def sc_player(d):
                 self._data_ = SC_EMPTY[:cc * 1600]
             b = self._data_[:towrite << 1].data
             buffer = self._render_buffer(towrite)
-            CFFI.memmove(buffer[0], b, len(b))
+            CFFI.memmove(buffer[0], b, b.nbytes)
             self._render_release(towrite)
             self._data_ = self._data_[towrite << 1:]
             if self.closed:

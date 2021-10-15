@@ -1173,7 +1173,7 @@ def play(pos):
                         fut = submit(channel.wait)
                         fut.result(timeout=0.8)
                         fut = submit(channel.write, sample)
-                        fut.result(timeout=0.4)
+                        fut.result(timeout=0.8)
                     except:
                         print_exc()
                         print(f"{channel.type} timed out.")

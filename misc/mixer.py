@@ -84,10 +84,13 @@ def pc():
     return t - pt
 
 def round_random(x):
-    y = int(x)
+    try:
+        y = int(x)
+    except (ValueError, TypeError):
+        return x
     if y == x:
         return y
-    x %= 1
+    x -= y
     if random.random() <= x:
         y += 1
     return y

@@ -1,16 +1,6 @@
 # This file mostly contains code copied from the Miza discord bot's voice command category
 
-import os, youtube_dl, contextlib, requests, random, math, time, numpy, base64, hashlib, re, collections, psutil, subprocess, urllib.parse, concurrent.futures, itertools
-from math import *
-from traceback import print_exc
-
-np = numpy
-# youtube_dl = youtube_dlc
-suppress = contextlib.suppress
-url_parse = urllib.parse.quote_plus
-deque = collections.deque
-
-
+import concurrent.futures
 from concurrent.futures import thread
 
 def _adjust_thread_count(self):
@@ -46,14 +36,64 @@ def _adjust_thread_count(self):
 
 concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
 
-
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=32)
-
 create_future_ex = exc.submit
+
+class MultiAutoImporter:
+
+    class ImportedModule:
+
+        def __init__(self, module, pool):
+            object.__setattr__(self, "__module", module)
+            object.__setattr__(self, "__fut", pool.submit(__import__, module))
+
+        def __getattr__(self, k):
+            m = self.force()
+            return getattr(m, k)
+
+        def __setattr__(self, k, v):
+            m = self.force()
+            return setattr(m, k, v)
+
+        def force(self):
+            module = object.__getattribute__(self, "__module")
+            globals()[module] = m = object.__getattribute__(self, "__fut").result()
+            return m
+
+    def __init__(self, *args, pool=None, _globals=None):
+        self.pool = pool
+        if not _globals:
+            _globals = globals()
+        args = " ".join(args).replace(",", " ").split()
+        if not pool:
+            globals().update((k, __import__(k)) for k in args)
+        else:
+            futs = []
+            for arg in args:
+                futs.append(self.ImportedModule(arg, pool))
+            globals().update(zip(args, futs))
+
+importer = MultiAutoImporter(
+    "numpy, contextlib, urllib, collections, math, traceback, requests, orjson",
+    "os, youtube_dl, random, time, base64, hashlib, re, psutil, subprocess, itertools, zipfile",
+    pool=exc,
+    _globals=globals(),
+)
+
+np = numpy.force()
+suppress = contextlib.suppress
+urllib.force()
+import urllib.parse
+url_parse = urllib.parse.quote_plus
+deque = collections.deque
+math.force()
+from math import *
+traceback.force()
+from traceback import print_exc
 
 
 try:
-    with open("auth.json") as f:
+    with open("auth.json", "rb") as f:
         AUTH = eval(f.read())
 except FileNotFoundError:
     AUTH = {}
@@ -762,7 +802,7 @@ class AudioDownloader:
             self.youtube_dl_x += 1
             self.spotify_x += 1
             token = requests.get("https://open.spotify.com/get_access_token").content
-            self.spotify_header = {"authorization": f"Bearer {eval_json(token[:512])['accessToken']}"}
+            self.spotify_header = {"authorization": f"Bearer {orjson.loads(token[:512])['accessToken']}"}
             self.other_x += 1
         except:
             pass
@@ -859,7 +899,7 @@ class AudioDownloader:
         self.spotify_x += 1
         self.waiting.result()
         resp = requests.get(url, headers=self.spotify_header).content
-        d = eval_json(resp)
+        d = orjson.loads(resp)
         with suppress(KeyError):
             d = d["tracks"]
         try:
@@ -903,7 +943,7 @@ class AudioDownloader:
         out = deque()
         self.youtube_x += 1
         resp = requests.get(url).content
-        d = eval_json(resp)
+        d = orjson.loads(resp)
         items = d["items"]
         total = d.get("pageInfo", {}).get("totalResults", 0)
         for item in items:
@@ -943,7 +983,7 @@ class AudioDownloader:
                     resp = resp[:resp.index(b";</script><title>")]
                 except:
                     resp = resp[:resp.index(b';</script><link rel="')]
-            data = eval_json(resp)
+            data = orjson.loads(resp)
         except:
             print(resp)
             raise
@@ -1258,7 +1298,11 @@ class AudioDownloader:
                 url = verify_url(item)
                 if url[-5:] == ".json" or url[-4:] in (".txt", ".bin", ".zip"):
                     s = requests.get(url).content
-                    d = eval_json(s)
+                    if not s.startswith(b"{"):
+                        b = io.BytesIO(s)
+                        with zipfile.ZipFile(data, allowZip64=True, strict_timestamps=False) as z:
+                            s = z.read(z.namelist()[0])
+                    d = orjson.loads(s)
                     q = d["queue"][:262144]
                     return [cdict(name=e["name"], url=e["url"], duration=e.get("duration")) for e in q]
             elif mode in (None, "yt"):
@@ -1371,7 +1415,7 @@ class AudioDownloader:
         )
 
     def parse_yt(self, s):
-        data = eval_json(s)
+        data = orjson.loads(s)
         results = deque()
         try:
             pages = data["contents"]["twoColumnSearchResultsRenderer"]["primaryContents"]["sectionListRenderer"]["contents"]

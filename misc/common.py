@@ -872,13 +872,13 @@ globals().update(options)
 def zip2bytes(data):
     if not hasattr(data, "read"):
         data = io.BytesIO(data)
-    with zipfile.ZipFile(data, compression=zipfile.ZIP_LZMA, allowZip64=True, strict_timestamps=False) as z:
-        b = z.read("D")
+    with zipfile.ZipFile(data, allowZip64=True, strict_timestamps=False) as z:
+        b = z.read(z.namelist()[0])
     return b
 
 def bytes2zip(data):
     b = io.BytesIO()
-    with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_LZMA, allowZip64=True) as z:
+    with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=7, allowZip64=True) as z:
         z.writestr("D", data=data)
     return b.getbuffer()
 
@@ -973,7 +973,10 @@ def round_min(x):
             return round_min(complex(x).real) + round_min(complex(x).imag) * (1j)
 
 def round_random(x):
-    y = int(x)
+    try:
+        y = int(x)
+    except (ValueError, TypeError):
+        return x
     if y == x:
         return y
     x -= y

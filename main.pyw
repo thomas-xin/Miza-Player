@@ -367,6 +367,7 @@ def setup_buttons():
                             f.seek(0)
                             data = orjson.loads(zip2bytes(f.read()))
                         else:
+                            f.seek(0)
                             data = json.load(f)
                     q = data.get("queue", ())
                     options.history.appendleft((choice, tuple(e["url"] for e in q)))
@@ -443,6 +444,7 @@ def setup_buttons():
                                 f.seek(0)
                                 data = orjson.loads(zip2bytes(f.read()))
                             else:
+                                f.seek(0)
                                 data = json.load(f)
                         s = "\n".join(e["url"] for e in data.get("queue", ()) if e.get("url"))
                     else:
@@ -821,6 +823,14 @@ def _enqueue_local(*files, probe=True):
                     name=dev.get("name"),
                     duration=inf,
                 )
+            elif fn.endswith(".zip"):
+                with open(fn, "rb") as f:
+                    b = f.read()
+                data = orjson.loads(zip2bytes(b))
+                q = data.get("queue", ())
+                entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
+                queue.extend(entries)
+                entry = entries[0]
             elif fn.endswith(".json"):
                 with open(fn, "rb") as f:
                     data = json.load(f)
@@ -972,7 +982,7 @@ def save_project(fn=None):
                 instrument.pop("wave", None)
                 instrument.pop("encoded", None)
         pdata = io.BytesIO()
-        with zipfile.ZipFile(pdata, mode="w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+        with zipfile.ZipFile(pdata, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=7, allowZip64=True) as z:
             with z.open("<~MPP~<", "w", force_zip64=True) as f:
                 pickle.dump(project, f)
         f = open(fn, "wb") if type(fn) is str else fn or io.BytesIO()
@@ -1869,7 +1879,7 @@ def update_menu():
     player.flash_i = max(0, player.get("flash_i", 0) - duration * 60)
     player.flash_o = max(0, player.get("flash_o", 0) - duration * 60)
     toolbar.pause.timestamp = pc()
-    ratio = 1 + 1 / (duration * 8)
+    ratio = 1 + 1 / (duration * 12)
     progress.alpha *= 0.998 ** (duration * 480)
     if progress.alpha < 16:
         progress.alpha = progress.num = 0
@@ -1888,7 +1898,7 @@ def update_menu():
     sidebar.maxitems = mi = ceil(screensize[1] - options.toolbar_height - 36 + sidebar.scroll.pos % 32) // 32
     sidebar.base = max(0, int(sidebar.scroll.pos // 32))
     # print(sidebar.scroll.target, sidebar.scroll.pos, sidebar.maxitems, sidebar.base)
-    m2 = mi >> 1
+    m2 = mi + 1
     if toolbar.editor:
         for i, entry in enumerate(sidebar.instruments[sidebar.base:sidebar.base + mi], sidebar.base):
             i2 = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
@@ -3991,7 +4001,7 @@ try:
                 raise StopIteration
             elif event.type == MOUSEWHEEL:
                 if in_rect(mpos, sidebar.rect):
-                    sidebar.scroll.target -= event.y * 16
+                    sidebar.scroll.target -= event.y * 32
                 elif toolbar.editor and in_rect(mpos, player.rect):
                     player.editor.targ_y += event.y * 3.5
                     player.editor.targ_x += event.x * 3.5

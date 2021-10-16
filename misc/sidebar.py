@@ -5,7 +5,7 @@ def render_dragging():
             continue
         sat = 0.875
         val = 1
-        entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+        entry.colour = col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
         x, y = mpos2 - sidebar.selection_offset
         y += 52 + 16
         x += screensize[0] - sidebar_width + 4
@@ -20,7 +20,7 @@ def render_dragging():
             val = min(1, val + flash / 16)
         bevel_rectangle(
             DISP,
-            [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+            [round_random(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
             [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
             0,
             alpha=191,
@@ -59,7 +59,7 @@ def render_dragging():
         h = (i / 12 - 1 / 12 + abs(1 - pc() % 2) / 6) % 1
         anima_rectangle(
             DISP,
-            [round(x * 255) for x in colorsys.hsv_to_rgb(h, 0.9375, 1)],
+            [round_random(x * 255) for x in colorsys.hsv_to_rgb(h, 0.9375, 1)],
             [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
             frame=4,
             count=2,
@@ -74,7 +74,7 @@ globals()["ms"] = "_".join(("SEND", "status"))
 def render_sidebar(dur=0):
     global crosshair, hovertext, lq2
     modified.add(sidebar.rect)
-    offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
+    offs = round_random(sidebar.setdefault("relpos", 0) * -sidebar_width)
     sc = sidebar.colour or (64, 0, 96)
     if sidebar.ripples or offs > -sidebar_width + 4:
         DISP2 = HWSurface.any((sidebar.rect[2], sidebar.rect[3] + 4), FLAGS | SRCALPHA)
@@ -179,9 +179,9 @@ def render_sidebar(dur=0):
         lq2 = lq
         swap = None
         base, maxitems = sidebar.base, sidebar.maxitems
-        otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
+        otarget = round_random((mpos[1] - Z - 52 - 16 - 16) / 32)
         etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
-        target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
+        target = min(max(0, round_random((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
         if mc2[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
             if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                 for entry in queue:
@@ -198,13 +198,13 @@ def render_sidebar(dur=0):
                 ensure_next(i)
             if entry.get("selected") and sidebar.get("dragging"):
                 x = 4 + offs
-                y = round(Z + entry.get("pos", 0) * 32)
+                y = round_random(Z + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 32, 32)
                 sat = 0.875
                 val = 1
                 secondary = True
                 if pc() % 0.25 < 0.125:
-                    entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                    entry.colour = col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
                 else:
                     col = (255,) * 3
                 rounded_bev_rect(
@@ -212,7 +212,7 @@ def render_sidebar(dur=0):
                     col,
                     rect,
                     4,
-                    alpha=round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
+                    alpha=round_random(255 / (1 + abs(entry.get("pos", 0) - i) / 16)),
                     filled=False,
                 )
                 if not swap and not mc2[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
@@ -254,7 +254,7 @@ def render_sidebar(dur=0):
             if not isfinite(lq):
                 lq2 = nan
             x = 4 + offs
-            y = round(Z + entry.get("pos", 0) * 32)
+            y = round_random(Z + entry.get("pos", 0) * 32)
             rect = (x, y, sidebar_width - 32, 32)
             selectable = i == etarget
             if not selectable and sidebar.get("last_selected") and SHIFT(kheld):
@@ -444,13 +444,13 @@ def render_sidebar(dur=0):
                     sat = max(0, sat - flash / 16)
                     val = min(1, val + flash / 16)
                     entry.flash = flash - 1
-            entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+            entry.colour = col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
             rounded_bev_rect(
                 DISP2,
                 col,
                 rect,
                 4,
-                alpha=255 if secondary else round(255 / (1 + abs(entry.get("pos", 0) - i) / 4)),
+                alpha=255 if secondary else round_random(255 / (1 + abs(entry.get("pos", 0) - i) / 16)),
                 filled=not secondary,
             )
             if secondary:
@@ -461,7 +461,7 @@ def render_sidebar(dur=0):
                     val = min(1, val + flash / 16)
                 bevel_rectangle(
                     DISP2,
-                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [round_random(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
                     [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
                     0,
                     alpha=191,
@@ -504,11 +504,11 @@ def render_sidebar(dur=0):
                 if not entry.get("selected"):
                     continue
                 x = 4 + offs
-                y = round(Z + entry.get("pos", 0) * 32)
+                y = round_random(Z + entry.get("pos", 0) * 32)
                 sat = 0.875
                 val = 1
                 rect = (x, y, sidebar_width - 32, 32)
-                entry.colour = col = [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+                entry.colour = col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
                 sat = 0.875
                 val = 0.5
                 flash = entry.get("flash", 16)
@@ -517,7 +517,7 @@ def render_sidebar(dur=0):
                     val = min(1, val + flash / 16)
                 bevel_rectangle(
                     DISP2,
-                    [round(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
+                    [round_random(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)],
                     [rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
                     0,
                     alpha=191,
@@ -556,7 +556,7 @@ def render_sidebar(dur=0):
                 h = (i / 12 - 1 / 12 + abs(1 - pc() % 2) / 6) % 1
                 anima_rectangle(
                     DISP2,
-                    [round(x * 255) for x in colorsys.hsv_to_rgb(h, 0.9375, 1)],
+                    [round_random(x * 255) for x in colorsys.hsv_to_rgb(h, 0.9375, 1)],
                     [rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2],
                     frame=4,
                     count=2,
@@ -566,7 +566,7 @@ def render_sidebar(dur=0):
                 )
         if sidebar.get("loading"):
             x = 4 + offs
-            y = round(Z + (len(queue) - base) * 32)
+            y = round_random(Z + (len(queue) - base) * 32)
             rect = (x, y, sidebar_width - 32, 32)
             rounded_bev_rect(
                 DISP2,
@@ -601,7 +601,6 @@ def render_sidebar(dur=0):
         if swap:
             swap_start = swap_end = 0
             orig = queue[0]
-            dest = deque()
             targets = {}
             r = range(len(queue))
             for i, entry in enumerate(queue):
@@ -614,6 +613,7 @@ def render_sidebar(dur=0):
                     swap_end = max(x, i) + 1
                     targets[x] = entry
                     entry.moved = True
+            dest = deque()
             i = swap_start
             for entry in queue[swap_start:swap_end]:
                 while i in targets:

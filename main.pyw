@@ -48,6 +48,14 @@ project_name = "Untitled"
 instruments = project.instruments
 patterns = project.patterns
 
+class PlayerWaiter(deque, contextlib.AbstractContextManager):
+
+    def __enter__(self):
+        self.append(None)
+
+    def __exit__(self, *args):
+        self.pop()
+
 player = cdict(
     paused=False,
     index=0,
@@ -59,7 +67,7 @@ player = cdict(
         amplitude=0,
         velocity=0,
     ),
-    waiting=deque(),
+    waiting=PlayerWaiter(),
     editor=cdict(
         selection=cdict(
             point=None,
@@ -337,9 +345,9 @@ def setup_buttons():
         waves = button_images.waves.result()
         def get_playlist():
             items = deque()
-            for item in (item for item in os.listdir("playlists") if item.endswith(".json")):
-                u = unquote(item[:-5])
-                fn = "playlists/" + quote(u)[:245] + ".json"
+            for item in (item for item in os.listdir("playlists") if item.endswith(".json") or item.endswith(".zip")):
+                u = unquote(item.rsplit(".", 1)[0])
+                fn = "playlists/" + quote(u)[:245] + "." + item.rsplit(".", 1)[-1]
                 fn2 = "playlists/" + item
                 if fn != fn2 or not os.path.exists(fn):
                     os.rename(fn2, fn)
@@ -350,10 +358,16 @@ def setup_buttons():
             if choice:
                 sidebar.loading = True
                 start = len(queue)
-                fn = "playlists/" + quote(choice)[:245] + ".json"
+                fn = "playlists/" + quote(choice)[:245] + ".zip"
+                if not os.path.exists(fn):
+                    fn = fn[:-4] + ".json"
                 if os.path.exists(fn) and os.path.getsize(fn):
-                    with open(fn, "r", encoding="utf-8") as f:
-                        data = json.load(f)
+                    with open(fn, "rb") as f:
+                        if zipfile.is_zipfile(f):
+                            f.seek(0)
+                            data = orjson.loads(zip2bytes(f.read()))
+                        else:
+                            data = json.load(f)
                     q = data.get("queue", ())
                     options.history.appendleft((choice, tuple(e["url"] for e in q)))
                     options.history = options.history.uniq(sort=False)[:64]
@@ -400,22 +414,36 @@ def setup_buttons():
                             name,
                         ) or "").strip()
                         if text:
-                            with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
-                                json.dump(dict(queue=entries, stats={}), f, separators=(",", ":"))
+                            data = dict(queue=entries, stats={})
+                            fn = "playlists/" + quote(text)[:245] + ".json"
+                            if len(entries) > 1024:
+                                fn = fn[:-5] + ".zip"
+                                b = bytes2zip(orjson.dumps(data))
+                                with open(fn, "wb") as f:
+                                    f.write(b)
+                            else:
+                                with open(fn, "w", encoding="utf-8") as f:
+                                    json.dump(data, f, separators=(",", ":"))
                             easygui.show_message(
                                 f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
                                 "Success!",
                             )
             def edit_playlist():
-                items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
+                items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json") or item.endswith(".zip")]
                 if not items:
                     return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
                 choice = easygui.get_choice("Select a playlist to edit", "Miza Player", items)
                 if choice:
-                    fn = "playlists/" + quote(choice)[:245] + ".json"
+                    fn = "playlists/" + quote(choice)[:245] + ".zip"
+                    if not os.path.exists(fn):
+                        fn = fn[:-4] + ".json"
                     if os.path.exists(fn) and os.path.getsize(fn):
-                        with open(fn, "r", encoding="utf-8") as f:
-                            data = json.load(f)
+                        with open(fn, "rb") as f:
+                            if zipfile.is_zipfile(f):
+                                f.seek(0)
+                                data = orjson.loads(zip2bytes(f.read()))
+                            else:
+                                data = json.load(f)
                         s = "\n".join(e["url"] for e in data.get("queue", ()) if e.get("url"))
                     else:
                         print(fn)
@@ -441,8 +469,16 @@ def setup_buttons():
                                     entries.append(dict(name=name, url=url))
                             if entries:
                                 entries = list(entries)
-                                with open(fn, "w", encoding="utf-8") as f:
-                                    json.dump(dict(queue=entries, stats={}), f, separators=(",", ":"))
+                                data = dict(queue=entries, stats={})
+                                fn = "playlists/" + quote(text)[:245] + ".json"
+                                if len(entries) > 1024:
+                                    fn = fn[:-5] + ".zip"
+                                    b = bytes2zip(orjson.dumps(data))
+                                    with open(fn, "wb") as f:
+                                        f.write(b)
+                                else:
+                                    with open(fn, "w", encoding="utf-8") as f:
+                                        json.dump(data, f, separators=(",", ":"))
                                 easygui.show_message(
                                     f"Playlist {repr(choice)} has been updated!",
                                     "Success!",
@@ -1313,74 +1349,67 @@ def start_player(pos=None, force=False):
         if audio.speed < 0:
             return skip()
         pos = 0
-    player.waiting.append(None)
-    if pos is not None:
+    with player.waiting:
+        if pos is not None:
+            player.pos = pos
+            player.index = player.pos * 30
+        if force and is_url(queue[0].url):
+            queue[0].stream = None
+            queue[0].research = True
+            downloader.result().cache.pop(queue[0].url, None)
+        player.last = 0
+        player.amp = 0
+        player.pop("osci", None)
+        stream = prepare(queue[0], force=force + 1)
+        if not queue[0].url:
+            return skip()
+        stream = prepare(queue[0], force=force + 1)
+        entry = queue[0]
+        if not entry.url:
+            return skip()
+        if not stream:
+            player.fut = None
+            return None, inf
+        duration = entry.duration
+        if not duration:
+            info = get_duration_2(stream)
+            duration = info[0]
+            if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
+                fi = stream
+                fn = "cache/~" + shash(fi) + ".pcm"
+                if not os.path.exists(fn):
+                    fn = select_and_convert(fi)
+                duration = get_duration_2(fn)[0]
+                stream = entry.stream = fn
+        entry.duration = duration or entry.duration
+        duration = entry.duration or 300
+        if duration is None:
+            player.fut = None
+            return None, inf
+        if pos is None:
+            if audio.speed >= 0:
+                pos = 0
+            else:
+                pos = duration
+        elif pos >= duration:
+            if audio.speed > 0:
+                return skip()
+            pos = duration
+        elif pos <= 0:
+            if audio.speed < 0:
+                return skip()
+            pos = 0
+        if control.shuffle == 2:
+            player.needs_shuffle = False
+        else:
+            player.needs_shuffle = not is_url(stream)
+        es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
+        s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
+        mixer.submit(s, force=False)
         player.pos = pos
         player.index = player.pos * 30
-    if force and is_url(queue[0].url):
-        queue[0].stream = None
-        queue[0].research = True
-        downloader.result().cache.pop(queue[0].url, None)
-    player.last = 0
-    player.amp = 0
-    player.pop("osci", None)
-    stream = prepare(queue[0], force=force + 1)
-    if not queue[0].url:
-        player.waiting.popleft()
-        return skip()
-    stream = prepare(queue[0], force=force + 1)
-    entry = queue[0]
-    if not entry.url:
-        player.waiting.popleft()
-        return skip()
-    if not stream:
-        player.fut = None
-        player.waiting.popleft()
-        return None, inf
-    duration = entry.duration
-    if not duration:
-        info = get_duration_2(stream)
-        duration = info[0]
-        if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
-            fi = stream
-            fn = "cache/~" + shash(fi) + ".pcm"
-            if not os.path.exists(fn):
-                fn = select_and_convert(fi)
-            duration = get_duration_2(fn)[0]
-            stream = entry.stream = fn
-    entry.duration = duration or entry.duration
-    duration = entry.duration or 300
-    if duration is None:
-        player.fut = None
-        player.waiting.popleft()
-        return None, inf
-    if pos is None:
-        if audio.speed >= 0:
-            pos = 0
-        else:
-            pos = duration
-    elif pos >= duration:
-        if audio.speed > 0:
-            player.waiting.popleft()
-            return skip()
-        pos = duration
-    elif pos <= 0:
-        if audio.speed < 0:
-            player.waiting.popleft()
-            return skip()
-        pos = 0
-    if control.shuffle == 2:
-        player.needs_shuffle = False
-    else:
-        player.needs_shuffle = not is_url(stream)
-    es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
-    s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
-    mixer.submit(s, force=False)
-    player.pos = pos
-    player.index = player.pos * 30
-    player.end = duration or inf
-    player.waiting.pop()
-    return stream, duration
+        player.end = duration or inf
+        return stream, duration
 
 def start():
     if queue:
@@ -1438,9 +1467,11 @@ def seek_rel(pos):
     progress.num += pos
     progress.alpha = 255
     if audio.speed > 0 and pos > 0 and pos <= 180:
-        mixer.drop(pos)
+        with player.waiting:
+            mixer.drop(pos)
     elif audio.speed < 0 and pos < 0 and pos >= -180:
-        mixer.drop(pos)
+        with player.waiting:
+            mixer.drop(pos)
     else:
         seek_abs(max(0, player.pos + pos))
 
@@ -1854,15 +1885,22 @@ def update_menu():
     sidebar.scroll.target = max(0, min(sidebar.scroll.target, len(queue) * 32 - screensize[1] + options.toolbar_height + 36 + 32))
     r = ratio if sidebar.scrolling else (ratio - 1) / 3 + 1
     sidebar.scroll.pos = (sidebar.scroll.pos * (r - 1) + sidebar.scroll.target) / r
-    sidebar.maxitems = ceil(screensize[1] - options.toolbar_height - 36 + sidebar.scroll.pos % 32) // 32
+    sidebar.maxitems = mi = ceil(screensize[1] - options.toolbar_height - 36 + sidebar.scroll.pos % 32) // 32
     sidebar.base = max(0, int(sidebar.scroll.pos // 32))
     # print(sidebar.scroll.target, sidebar.scroll.pos, sidebar.maxitems, sidebar.base)
+    m2 = mi >> 1
     if toolbar.editor:
-        for i, entry in enumerate(sidebar.instruments[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base):
-            entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
+        for i, entry in enumerate(sidebar.instruments[sidebar.base:sidebar.base + mi], sidebar.base):
+            i2 = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
+            if abs(i2 - i) > m2:
+                i2 = i + (m2 if i2 > i else -m2)
+            entry.pos = i2
     else:
-        for i, entry in enumerate(queue[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base):
-            entry.pos = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
+        for i, entry in enumerate(queue[sidebar.base:sidebar.base + mi], sidebar.base):
+            i2 = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
+            if abs(i2 - i) > m2:
+                i2 = i + (m2 if i2 > i else -m2)
+            entry.pos = i2
     if kclick[K_SPACE]:
         pause_toggle()
         if player.paused:
@@ -2199,6 +2237,11 @@ if bubble_path:
 spinner_path = "misc/Default/bubble.png"
 submit(load_spinner, spinner_path)
 
+def get_spinny_life(t):
+    try:
+        return t[1].life
+    except (TypeError, AttributeError, IndexError):
+        return inf
 
 def spinnies():
     ts = 0
@@ -2216,12 +2259,7 @@ def spinnies():
             progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
             progress.angle = -t * pi
             pops = set()
-            def get_life(t):
-                try:
-                    return t[1].life
-                except (TypeError, AttributeError, IndexError):
-                    return inf
-            for i, p in sorted(enumerate(progress.particles), key=get_life):
+            for i, p in sorted(enumerate(progress.particles), key=get_spinny_life):
                 if not p:
                     break
                 p.life -= dur * 2.5
@@ -3082,7 +3120,7 @@ def draw_menu():
                     radius=r,
                     fill_ratio=0.5,
                 )
-            for i, p in sorted(enumerate(progress.particles), key=lambda t: t[1].life):
+            for i, p in sorted(enumerate(progress.particles), key=get_spinny_life):
                 if not p:
                     continue
                 col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]

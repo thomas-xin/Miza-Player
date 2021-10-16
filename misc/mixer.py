@@ -1,23 +1,57 @@
 # ONE SMALL STEP FOR MAN, ONE GIANT LEAP FOR SMUDGE KIND! Invaded once again on the 6th March >:D
 
-import soundcard as sc
-import gc
-for obj in gc.get_objects():
-    if isinstance(obj, sc.cffi.FFI):
-        # no such thing as private variables in python, even in modules. can't hide this from me :P
-        CFFI = obj
-        break
-
-import psutil, subprocess
-import sys
+import psutil, subprocess, sys
 rproc = psutil.Popen((sys.executable, "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
 sys.stdout.write = lambda *args, **kwargs: None
-import pygame
+import concurrent.futures
 
-import os, sys, numpy, math, random, base64, hashlib, orjson, time, traceback, contextlib, colorsys, ctypes, collections, samplerate, itertools, io, zipfile
-import concurrent.futures, scipy.special
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=12)
+
+class MultiAutoImporter:
+
+    class ImportedModule:
+
+        def __init__(self, module, pool):
+            object.__setattr__(self, "__module", module)
+            object.__setattr__(self, "__fut", pool.submit(__import__, module))
+
+        def __getattr__(self, k):
+            m = self.force()
+            return getattr(m, k)
+
+        def __setattr__(self, k, v):
+            m = self.force()
+            return setattr(m, k, v)
+
+        def force(self):
+            module = object.__getattribute__(self, "__module")
+            globals()[module] = m = object.__getattribute__(self, "__fut").result()
+            return m
+
+    def __init__(self, *args, pool=None, _globals=None):
+        self.pool = pool
+        if not _globals:
+            _globals = globals()
+        args = " ".join(args).replace(",", " ").split()
+        if not pool:
+            globals().update((k, __import__(k)) for k in args)
+        else:
+            futs = []
+            for arg in args:
+                futs.append(self.ImportedModule(arg, pool))
+            globals().update(zip(args, futs))
+
+importer = MultiAutoImporter(
+    "os, sys, numpy, math, cffi, soundcard, pygame, random, base64, hashlib, orjson, time, traceback",
+    "contextlib, colorsys, ctypes, collections, samplerate, itertools, io, zipfile",
+    pool=exc,
+    _globals=globals(),
+)
+math.force()
 from math import *
+numpy.force()
 np = numpy
+CFFI = cffi.FFI()
 deque = collections.deque
 suppress = contextlib.suppress
 try:
@@ -205,6 +239,8 @@ def bsend(*args):
 print = lambda *args, sep=" ", end="\n": point(repr(str(sep).join(map(str, args)) + end))
 print_exc = lambda: point(repr(traceback.format_exc()))
 
+
+sc = soundcard.force()
 
 def get_device(name):
     global DEVICE
@@ -1165,20 +1201,25 @@ def play(pos):
                 globals()["lastplay"] = pc()
                 while waiting:
                     waiting.result()
-                while True:
+                for i in range(2147483648):
                     try:
                         cc = sc.get_speaker(DEVICE.id).channels
                         if cc != channel.channels:
                             raise
                         fut = submit(channel.wait)
-                        fut.result(timeout=0.8)
+                        fut.result(timeout=0.9)
                         fut = submit(channel.write, sample)
                         fut.result(timeout=0.8)
                     except:
                         print_exc()
                         print(f"{channel.type} timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
-                        submit(channel.close)
+                        if i > 1:
+                            channel.close()
+                            import importlib
+                            importlib.reload(soundcard)
+                        else:
+                            submit(channel.close)
                         globals()["channel"] = get_channel()
                         globals()["waiting"], w = None, waiting
                         w.set_result(None)
@@ -1208,6 +1249,7 @@ baserange = np.arange(FR, dtype=np.float64)
 basewave = baserange / FR
 c = SR // 48
 cm = np.linspace(-2, 2, c, endpoint=True)
+import scipy.special
 cm = scipy.special.erf(cm)
 cm += 1
 cm /= 2
@@ -1372,20 +1414,25 @@ def piano_player():
                     spec_fut = submit(spectrogram)
                 while waiting:
                     waiting.result()
-                while True:
+                for i in range(2147483648):
                     try:
                         cc = sc.get_speaker(DEVICE.id).channels
                         if cc != channel.channels:
                             raise
                         fut = submit(channel.wait)
-                        fut.result(timeout=0.8)
+                        fut.result(timeout=0.9)
                         fut = submit(channel.write, sample)
-                        fut.result(timeout=0.4)
+                        fut.result(timeout=0.8)
                     except:
                         print_exc()
                         print(f"{channel.type} timed out.")
                         globals()["waiting"] = concurrent.futures.Future()
-                        submit(channel.close)
+                        if i > 1:
+                            channel.close()
+                            import importlib
+                            importlib.reload(soundcard)
+                        else:
+                            submit(channel.close)
                         globals()["channel"] = get_channel()
                         globals()["waiting"], w = None, waiting
                         w.set_result(None)

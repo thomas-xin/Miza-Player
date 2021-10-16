@@ -54,6 +54,49 @@ print_exc = traceback.print_exc
 from rainbow_print import *
 
 
+class MultiAutoImporter:
+
+    class ImportedModule:
+
+        def __init__(self, module, pool):
+            object.__setattr__(self, "__module", module)
+            object.__setattr__(self, "__fut", pool.submit(__import__, module))
+
+        def __getattr__(self, k):
+            m = self.force()
+            return getattr(m, k)
+
+        def __setattr__(self, k, v):
+            m = self.force()
+            return setattr(m, k, v)
+
+        def force(self):
+            module = object.__getattribute__(self, "__module")
+            globals()[module] = m = object.__getattribute__(self, "__fut").result()
+            return m
+
+    def __init__(self, *args, pool=None, _globals=None):
+        self.pool = pool
+        if not _globals:
+            _globals = globals()
+        args = " ".join(args).replace(",", " ").split()
+        if not pool:
+            globals().update((k, __import__(k)) for k in args)
+        else:
+            futs = []
+            for arg in args:
+                futs.append(self.ImportedModule(arg, pool))
+            globals().update(zip(args, futs))
+
+importer = MultiAutoImporter(
+    "psutil", "soundcard", "ctypes, struct, io", "requests", "PIL, easygui, easygui_qt, numpy, math",
+    "cffi, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, zipfile",
+    "pickle, PyQt5, hashlib, base64, urllib, datetime, weakref, orjson",
+    pool=exc,
+    _globals=globals(),
+)
+
+
 ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
 sox = "sox.exe" if os.name == "nt" else "sox"
@@ -318,8 +361,7 @@ options.editor = editor_default.union(options.get("editor") or ())
 orig_options = copy.deepcopy(options)
 
 
-import psutil, cffi
-import soundcard as sc
+sc = soundcard.force()
 CFFI = cffi.FFI()
 
 DEVICE = sc.default_speaker()
@@ -327,7 +369,7 @@ OUTPUT_DEVICE = DEVICE.name
 reset_menu = lambda *args, **kwargs: None
 
 def start_mixer():
-    global mixer, hwnd, pygame, user32, ctypes, struct, io
+    global mixer, hwnd, pygame, user32
     if "mixer" in globals() and mixer and mixer.is_running():
         mixer.kill()
     if "pygame" in globals() and getattr(pygame, "closed", None):
@@ -340,7 +382,6 @@ def start_mixer():
         bufsize=1048576,
     )
     if "pygame" not in globals():
-        import ctypes, struct, io
         user32 = ctypes.windll.user32
         user32.SetProcessDPIAware()
         write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
@@ -356,18 +397,17 @@ def start_mixer():
         mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
         hwnd = pygame.display.get_wm_info()["window"]
         if hasmisc:
-            s = io.StringIO()
-            s.write(("%" + str(hwnd) + "\n"))
+            s = []
+            s.append(("%" + str(hwnd) + "\n"))
             d = options.audio.copy()
             d.update(options.control)
             j = json.dumps(d, separators=(",", ":"))
-            s.write(f"~setting #{j}\n")
-            s.write(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
-            s.write(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
+            s.append(f"~setting #{j}\n")
+            s.append(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
+            s.append(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
             if OUTPUT_DEVICE:
-                s.write(f"~output {OUTPUT_DEVICE}\n")
-            s.seek(0)
-            mixer.stdin.write(s.read().encode("utf-8"))
+                s.append(f"~output {OUTPUT_DEVICE}\n")
+            mixer.stdin.write("".join(s).encode("utf-8"))
             try:
                 mixer.stdin.flush()
             except OSError:
@@ -689,16 +729,17 @@ def taskbar_progress_bar(ratio=1, colour=0):
 #     return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
 
 
-import PIL, easygui, easygui_qt, numpy, math, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, zipfile, pickle, hashlib, base64, urllib, requests, datetime
-import PyQt5
+PyQt5.force()
 from PyQt5 import QtCore, QtWidgets
 if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
     PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
 if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
     PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+PIL.force()
 from PIL import Image, ImageOps, ImageChops
+math.force()
 from math import *
-np = numpy
+np = numpy.force()
 easygui.__dict__.update(easygui_qt.easygui_qt.__dict__)
 deque = collections.deque
 suppress = contextlib.suppress
@@ -831,13 +872,13 @@ globals().update(options)
 def zip2bytes(data):
     if not hasattr(data, "read"):
         data = io.BytesIO(data)
-    with zipfile.ZipFile(data, compression=zipfile.ZIP_DEFLATED, allowZip64=True, strict_timestamps=False) as z:
+    with zipfile.ZipFile(data, compression=zipfile.ZIP_LZMA, allowZip64=True, strict_timestamps=False) as z:
         b = z.read("D")
     return b
 
 def bytes2zip(data):
     b = io.BytesIO()
-    with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+    with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_LZMA, allowZip64=True) as z:
         z.writestr("D", data=data)
     return b.getbuffer()
 
@@ -1007,8 +1048,6 @@ def as_pyg(hws):
     mi = GL_RGB if "A" not in hws.mode else GL_RGBA
     b = glReadPixels(0, 0, *hws.size, mi, GL_UNSIGNED_BYTE)
     return pygame.image.frombuffer(b, hws.size, hws.mode)
-
-import weakref
 
 class HWSurface:
 

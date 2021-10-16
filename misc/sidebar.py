@@ -222,7 +222,8 @@ def render_sidebar(dur=0):
             breaking = lambda i: False
         else:
             breaking = lambda i: i < base or i >= base + maxitems
-        if any(kc2) or any(mc2):
+        if kc2[K_DELETE] or kc2[K_BACKSPACE] or CTRL(kheld) and (kc2[K_x] or kc2[K_c] or kc2[K_a])\
+                or (SHIFT(kheld) and any(mc2)):
             entries = enumerate(queue)
         else:
             entries = enumerate(queue[base:base + maxitems], base)
@@ -360,8 +361,16 @@ def render_sidebar(dur=0):
                             name,
                         ) or "").strip()
                         if text:
-                            with open("playlists/" + quote(text)[:245] + ".json", "w", encoding="utf-8") as f:
-                                json.dump(dict(queue=entries, stats={}), f)
+                            data = dict(queue=entries, stats={})
+                            fn = "playlists/" + quote(text)[:245] + ".json"
+                            if len(entries) > 1024:
+                                fn = fn[:-5] + ".zip"
+                                b = bytes2zip(orjson.dumps(data))
+                                with open(fn, "wb") as f:
+                                    f.write(b)
+                            else:
+                                with open(fn, "w", encoding="utf-8") as f:
+                                    json.dump(data, f, separators=(",", ":"))
                             easygui.show_message(
                                 f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
                             )
@@ -590,17 +599,23 @@ def render_sidebar(dur=0):
                 (0, 0, sidebar_width - 48, 24),
             )
         if swap:
+            swap_start = swap_end = 0
             orig = queue[0]
             dest = deque()
             targets = {}
+            r = range(len(queue))
             for i, entry in enumerate(queue):
-                if i + swap < 0 or i + swap >= len(queue):
+                x = i + swap
+                if x not in r:
                     continue
                 if entry.get("selected"):
-                    targets[i + swap] = entry
+                    if not swap_start:
+                        swap_start = min(x, i)
+                    swap_end = max(x, i) + 1
+                    targets[x] = entry
                     entry.moved = True
-            i = 0
-            for entry in queue:
+            i = swap_start
+            for entry in queue[swap_start:swap_end]:
                 while i in targets:
                     dest.append(targets.pop(i))
                     i += 1
@@ -613,7 +628,7 @@ def render_sidebar(dur=0):
                 dest.extend(targets.values())
                 for entry in targets.values():
                     entry.pop("moved", None)
-            queue[:] = dest
+            queue[swap_start:swap_end] = dest
             if queue[0] is not orig:
                 submit(enqueue, queue[0])
             try:

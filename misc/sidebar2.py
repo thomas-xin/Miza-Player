@@ -8,7 +8,10 @@ def render_dragging_2():
         hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
         sat -= 0.125
         entry.colour = col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(hue, sat, val)]
-        x, y = mpos2 - sidebar.selection_offset
+        try:
+            x, y = mpos2 - sidebar.selection_offset
+        except AttributeError:
+            return
         y += 52 + 16
         x += screensize[0] - sidebar_width + 4
         if isfinite(lq2):

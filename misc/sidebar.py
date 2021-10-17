@@ -221,15 +221,6 @@ def render_sidebar(dur=0):
                 if not swap and not mc2[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
                     if target != i:
                         swap = target - i
-        if (SHIFT(kheld) or CTRL(kheld)) and mc2[0]:
-            breaking = lambda i: False
-        else:
-            breaking = lambda i: i < base or i >= base + maxitems
-        if SHIFT(kheld) and any(mc2) and isfinite(lq):
-            entries = enumerate(queue)
-        else:
-            entries = enumerate(queue[base:base + maxitems], base)
-            breaking = lambda i: False
         if CTRL(kheld) and kc2[K_a]:
             for entry in queue:
                 entry.selected = True
@@ -246,52 +237,42 @@ def render_sidebar(dur=0):
             else:
                 pops = set(pops2)
             sidebar.pop("last_selected", None)
-        for i, entry in entries:
+        selectables = ()
+        if isfinite(etarget):
+            if mc2[0]:
+                entry = queue[target]
+                if SHIFT(kheld):
+                    a, b = sorted((target, lq))
+                    for e in queue[a:b + 1]:
+                        e.selected = True
+                elif CTRL(kheld):
+                    entry.selected = not entry.get("selected")
+                else:
+                    entry.selected = True
+                sidebar.dragging = True
+                sidebar.last_selected = entry
+                lq2 = target
+                x = 4 + offs
+                y = round(Z + entry.get("pos", 0) * 32)
+                rect = (x, y, sidebar_width - 32, 32)
+                sidebar.selection_offset = np.array(mpos2) - rect[:2]
+            elif SHIFT(kheld):
+                a, b = sorted((target, lq))
+                selectables = range(a, b + 1)
+            else:
+                selectables = (target,)
+        for i, entry in enumerate(queue[base:base + maxitems], base):
             if not entry.url:
                 pops.add(i)
-                continue
-            if breaking(i):
-                entry.flash = 5
-                if control.shuffle:
-                    entry.pos = random.randint(0, len(queue) - 1)
-                else:
-                    entry.pos = i
                 continue
             if not isfinite(lq):
                 lq2 = nan
             x = 4 + offs
             y = round(Z + entry.get("pos", 0) * 32)
             rect = (x, y, sidebar_width - 32, 32)
-            selectable = i == etarget
-            if not selectable and sidebar.get("last_selected") and SHIFT(kheld):
-                b = lq
-                if b >= 0:
-                    a = target
-                    a, b = sorted((a, b))
-                    if a <= i <= b:
-                        selectable = True
+            selectable = i in selectables
             if selectable or entry.get("selected"):
-                if mc2[0] and selectable:
-                    if not sidebar.abspos:
-                        if entry.get("selected") and CTRL(kheld):
-                            entry.selected = False
-                            sidebar.dragging = False
-                            sidebar.pop("last_selected", None)
-                            lq = nan
-                        else:
-                            entry.selected = True
-                            sidebar.dragging = True
-                            if i == target:
-                                sidebar.last_selected = entry
-                                lq2 = i
-                                sidebar.selection_offset = np.array(mpos2) - rect[:2]
-                elif mc2[1] and i == etarget:
-                    if not entry.get("selected"):
-                        for e in queue:
-                            if e == entry:
-                                e.selected = True
-                            else:
-                                e.pop("selected", None)
+                if mc2[1] and i == etarget:
                     sidebar.last_selected = entry
                     sidebar.menu = cdict(
                         buttons=(

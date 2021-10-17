@@ -375,7 +375,7 @@ def setup_buttons():
                     entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
                     queue.extend(entries)
                 if control.shuffle and len(queue) > 1:
-                    random.shuffle(queue.view[1:])
+                    queue[1:].shuffle()
                 sidebar.loading = False
         def playlist_menu():
             def create_playlist():
@@ -636,9 +636,7 @@ def setup_buttons():
         flip = button_images.flip.result()
         def flip_1():
             mixer.clear()
-            for i, entry in enumerate(queue):
-                entry.pos = i
-            queue.fill(queue.view[::-1])
+            queue.reverse()
             player.fut = None
         toolbar.buttons.append(cdict(
             name="Flip",
@@ -649,9 +647,7 @@ def setup_buttons():
         scramble = button_images.scramble.result()
         def scramble_1():
             mixer.clear()
-            for i, entry in enumerate(queue):
-                entry.pos = i
-            random.shuffle(queue.view)
+            queue.shuffle()
             player.fut = None
         toolbar.buttons.append(cdict(
             name="Scramble",
@@ -661,13 +657,11 @@ def setup_buttons():
         reset_menu(full=False)
         unique = button_images.unique.result()
         def unique_1():
-            pops = set()
+            pops = deque()
             found = set()
-            for i, entry in enumerate(queue):
-                entry.pos = i
             for i, e in enumerate(queue):
                 if e.url in found:
-                    pops.add(i)
+                    pops.append(i)
                 else:
                     found.add(e.url)
             queue.pops(pops)
@@ -872,7 +866,7 @@ def _enqueue_local(*files, probe=True):
             if not entries:
                 queue.append(entry)
         if control.shuffle:
-            random.shuffle(queue.view[1:])
+            queue[1:].shuffle()
         sidebar.loading = False
     except:
         sidebar.loading = False
@@ -905,7 +899,7 @@ def _enqueue_search(query):
             else:
                 sidebar.particles.append(cdict(eparticle))
         if control.shuffle and len(queue) > 1:
-            random.shuffle(queue.view[bool(start):])
+            queue[bool(start):].shuffle()
         sidebar.loading = False
     except:
         sidebar.loading = False
@@ -1296,7 +1290,7 @@ def prepare(entry, force=False, download=False):
                 q1, q3 = queue.view[:i - 1], queue.view[i:]
                 q2 = alist(cdict(**e, pos=i) for e in resp)
                 if control.shuffle and len(q2) > 1:
-                    random.shuffle(q2.view)
+                    q2.shuffle()
                 queue.fill(np.concatenate((q1, q2, q3)))
                 submit(render_lyrics, queue[0])
     elif (force > 1 or force and not stream) and is_url(entry.get("url")):
@@ -1434,9 +1428,7 @@ def skip():
     if queue:
         e = queue.popleft()
         if control.shuffle:
-            for i, entry in enumerate(queue[1:], 1):
-                entry.pos = i
-            random.shuffle(queue.view[1:])
+            queue[1:].shuffle()
         if control.loop == 2:
             queue.appendleft(e)
         elif control.loop == 1:

@@ -11,9 +11,10 @@ class MultiAutoImporter:
 
     class ImportedModule:
 
-        def __init__(self, module, pool):
+        def __init__(self, module, pool, _globals):
             object.__setattr__(self, "__module", module)
             object.__setattr__(self, "__fut", pool.submit(__import__, module))
+            object.__setattr__(self, "__globals", _globals)
 
         def __getattr__(self, k):
             m = self.force()
@@ -25,7 +26,8 @@ class MultiAutoImporter:
 
         def force(self):
             module = object.__getattribute__(self, "__module")
-            globals()[module] = m = object.__getattribute__(self, "__fut").result()
+            _globals = object.__getattribute__(self, "__globals")
+            _globals[module] = m = object.__getattribute__(self, "__fut").result()
             return m
 
     def __init__(self, *args, pool=None, _globals=None):
@@ -34,12 +36,12 @@ class MultiAutoImporter:
             _globals = globals()
         args = " ".join(args).replace(",", " ").split()
         if not pool:
-            globals().update((k, __import__(k)) for k in args)
+            _globals.update((k, __import__(k)) for k in args)
         else:
             futs = []
             for arg in args:
-                futs.append(self.ImportedModule(arg, pool))
-            globals().update(zip(args, futs))
+                futs.append(self.ImportedModule(arg, pool, _globals))
+            _globals.update(zip(args, futs))
 
 importer = MultiAutoImporter(
     "os, sys, numpy, math, cffi, soundcard, pygame, random, base64, hashlib, orjson, time, traceback",

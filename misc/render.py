@@ -129,14 +129,6 @@ class Bar(Particle):
         octave = note // 12
         self.line = name + str(octave + 1)
         self.x = x
-        if dark:
-            self.colour = [i + 1 >> 1 for i in self.colour]
-            surf = pygame.Surface((1, 3))
-        else:
-            surf = pygame.Surface((1, 2))
-        surf.fill(self.colour)
-        surf.set_at((0, 0), 0)
-        self.surf = surf
         self.height = 0
         self.height2 = 0
         self.cache = {}
@@ -163,15 +155,24 @@ class Bar(Particle):
 
     def render(self, sfx, **void):
         size = min(2 * barheight, round_random(self.height))
-        if size:
-            dark = False
-            self.colour = tuple(round_random(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount) % 1, 1, 1))
-            note = highest_note - self.x + 9
-            if note % 12 in (1, 3, 6, 8, 10):
-                dark = True
-            surf = HWSurface.any((1, size))
-            surf = pygame.transform.smoothscale(self.surf, (1, size), surf)
-            sfx.blit(surf, (barcount - 2 - self.x, barheight - size))
+        if not size:
+            return
+        dark = False
+        self.colour = [round_random(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount) % 1, 1, 1)]
+        note = highest_note - self.x + 9
+        if note % 12 in (1, 3, 6, 8, 10):
+            dark = True
+        if dark:
+            self.colour = [i + 1 >> 1 for i in self.colour]
+            surf = HWSurface.any((1, 3))
+        else:
+            surf = HWSurface.any((1, 2))
+        surf.fill(self.colour)
+        surf.set_at((0, 0), 0)
+        self.surf = surf
+        surf = HWSurface.any((1, size))
+        surf = pygame.transform.smoothscale(self.surf, (1, size), surf)
+        sfx.blit(surf, (barcount - 2 - self.x, barheight - size))
 
     def post_render(self, sfx, scale, **void):
         size = self.height2

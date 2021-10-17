@@ -184,6 +184,8 @@ def render_sidebar(dur=0):
         base, maxitems = sidebar.base, sidebar.maxitems
         otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
         etarget = otarget if otarget in range(len(queue)) else nan
+        if isfinite(etarget) and not in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)):
+            etarget = nan
         target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
         if mc2[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
             if not isfinite(etarget) or not queue[etarget].get("selected"):

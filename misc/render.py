@@ -7,7 +7,7 @@ from math import *
 from traceback import print_exc
 np = numpy
 deque = collections.deque
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 def pyg2pil(surf):
     mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
@@ -414,7 +414,7 @@ def animate_polyhedron(changed=False):
     bars = globals()["bars"][::-1]
     dims = max(3, dimcount)
     try:
-        if changed and dimcount == 2:
+        if changed:
             raise KeyError
         spec = globals()["poly-s"]
         if spec.dims != dims or spec.dimcount != dimcount:
@@ -426,7 +426,12 @@ def animate_polyhedron(changed=False):
         spec.dims = dims
         spec.dimcount = dimcount
         spec.rotmat = np.identity(dims)
+        glPopMatrix()
+        gluPerspective(45, 1, 1/16, 6)
+        glTranslatef(0, 0, -2.5)
+        glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
+        glPushMatrix()
     w, h = specsize
     thickness = specsize[0] / 64 / max(1, (len(poly) + 2 >> 1) ** 0.5)
     glLineWidth(max(1, thickness))
@@ -535,18 +540,20 @@ def animate_ripple(changed=False):
             ry = 0
             rz = 0
         spec = globals()["ripple-s"] = Ripple_Spec
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
+        glPushMatrix()
     w, h = specsize
     depth = 3
     glLineWidth(specsize[0] / 64 / depth)
-    # rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
-    # ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
-    # rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-    # glPushMatrix()
-    # glRotatef(0.5, rx, ry, rz)
-    # spec.rx = (spec.rx + rx) % 360
-    # spec.ry = (spec.ry + ry) % 360
-    # spec.rz = (spec.rz + rz) % 360
+    rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
+    ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+    rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+    glRotatef(0.5, rx, ry, rz)
+    spec.rx = (spec.rx + rx) % 360
+    spec.ry = (spec.ry + ry) % 360
+    spec.rz = (spec.rz + rz) % 360
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnableClientState(GL_COLOR_ARRAY)
     try:
@@ -613,7 +620,6 @@ def animate_ripple(changed=False):
         verts.T[-1][:] = hi
         glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
         glDrawArrays(GL_LINES, 0, len(c))
-    # glPopMatrix()
     glFlush()
     x = y = 0
     if specsize[0] > ssize2[0]:
@@ -640,7 +646,6 @@ def spectrogram_render(bars):
     try:
         if specs == 1:
             sfx = pygame.Surface((barcount - 2, barheight))
-            # sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
             for bar in bars:
                 bar.render(sfx=sfx)
             func = None
@@ -722,16 +727,13 @@ def setup_window(size):
     window = glfw.create_window(*size, "render", None, None)
     glfw.make_context_current(window)
     glutInitDisplayMode(GL_RGB)
-    gluPerspective(45, 1, 1/16, 6)
-    glTranslatef(0, 0, -2.5)
-    glMatrixMode(GL_PROJECTION)
-    glLoadIdentity()
     glDisable(GL_DEPTH_TEST)
     glEnable(GL_BLEND)
     glEnable(GL_LINE_SMOOTH)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glBlendEquation(GL_FUNC_ADD)
     glPixelStorei(GL_PACK_ALIGNMENT, 1)
+    glPushMatrix()
     return window
 
 glfw.init()
@@ -748,7 +750,7 @@ while True:
                 specsize = ssize3
                 glfw.destroy_window(window)
                 window = setup_window(specsize)
-            bi = bars2 if specs in (2, 4) else bars
+            bi = bars2 if specs in (4, 5) else bars
             spectrogram_render(bi)
         elif line == b"~e":
             b = sys.stdin.buffer.readline()

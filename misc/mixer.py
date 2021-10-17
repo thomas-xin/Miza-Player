@@ -1006,7 +1006,7 @@ def spectrogram_update():
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
         if settings.spectrogram > 0:
-            if settings.spectrogram in (2, 4):
+            if settings.spectrogram in (4, 5):
                 amp = supersample(amp, barcount * 2)
             else:
                 amp = supersample(amp, barcount)

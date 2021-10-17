@@ -229,7 +229,7 @@ def render_project(fn):
         "-i",
         "-",
         "-b:a",
-        "192k",
+        "224k",
         fn,
     ), stdin=subprocess.PIPE, bufsize=1048576)
     if editor.pattern in FRESH_PATTERNS:

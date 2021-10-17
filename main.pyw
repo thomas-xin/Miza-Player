@@ -1799,7 +1799,7 @@ def download(entries, fn, settings=False):
         if fn.startswith(".pcm"):
             cmd += ("-f", "s16le")
         else:
-            cmd += ("-b:a", "192k")
+            cmd += ("-b:a", "224k")
         cmd += ("-ar", "48k", "-ac", "2", fn)
         print(cmd)
         saving = psutil.Popen(cmd, stdin=subprocess.PIPE, bufsize=192000)

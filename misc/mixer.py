@@ -522,7 +522,7 @@ def download(url, fn):
         if fn.endswith(".pcm"):
             cmd += ("-f", "s16le")
         else:
-            cmd += ("-b:a", "192k")
+            cmd += ("-b:a", "224k")
         cmd += ("-ar", "48k", "-ac", "2", fn)
         print(cmd)
         subprocess.run(cmd)

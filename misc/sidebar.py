@@ -183,10 +183,10 @@ def render_sidebar(dur=0):
         swap = None
         base, maxitems = sidebar.base, sidebar.maxitems
         otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
-        etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
+        etarget = otarget if otarget in range(len(queue)) else nan
         target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
         if mc2[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
-            if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
+            if not isfinite(etarget) or not queue[etarget].get("selected"):
                 for entry in queue:
                     entry.pop("selected", None)
                 sidebar.pop("last_selected", None)
@@ -197,7 +197,7 @@ def render_sidebar(dur=0):
             sidebar.pop("last_selected", None)
             lq = nan
         for i, entry in enumerate(queue[base:base + maxitems], base):
-            if i > 1 and options.control.presearch and (entry.duration is None or entry.get("research")) and (queue[i - 1].duration or i == base):
+            if options.control.presearch and i > 1 and (entry.duration is None or entry.get("research")) and (queue[i - 1].duration or i == base):
                 ensure_next(i)
             if entry.get("selected") and sidebar.get("dragging"):
                 x = 4 + offs

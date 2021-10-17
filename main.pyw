@@ -1469,11 +1469,11 @@ def seek_rel(pos):
     if pos + player.pos >= player.end:
         if audio.speed > 0:
             return skip()
-        pos = player.end
+        pos = player.end - player.pos
     if pos + player.pos <= 0:
         if audio.speed < 0:
             return skip()
-        pos = 0
+        pos = -player.pos
     progress.num += pos
     progress.alpha = 255
     if audio.speed > 0 and pos > 0 and pos <= 180:
@@ -1484,6 +1484,7 @@ def seek_rel(pos):
             mixer.drop(pos)
     else:
         seek_abs(max(0, player.pos + pos))
+    player.pos += pos
 
 def restart_mixer():
     global mixer

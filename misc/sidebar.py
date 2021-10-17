@@ -225,28 +225,31 @@ def render_sidebar(dur=0):
             breaking = lambda i: False
         else:
             breaking = lambda i: i < base or i >= base + maxitems
-        if kc2[K_DELETE] or kc2[K_BACKSPACE] or CTRL(kheld) and (kc2[K_x] or kc2[K_c] or kc2[K_a])\
-                or (SHIFT(kheld) and any(mc2)):
+        if SHIFT(kheld) and any(mc2) and isfinite(lq):
             entries = enumerate(queue)
         else:
             entries = enumerate(queue[base:base + maxitems], base)
             breaking = lambda i: False
+        if CTRL(kheld) and kc2[K_a]:
+            for entry in queue:
+                entry.selected = True
+            sidebar.last_selected = queue[-1]
+            lq = len(queue) - 1
+        if isfinite(lq) and CTRL(kheld) and (kc2[K_c] or kc2[K_x]):
+            for entry in (e for e in queue if e.get("selected")):
+                copies.append(entry.url)
+                entry.flash = 16
+        if isfinite(lq) and (kc2[K_DELETE] or kc2[K_BACKSPACE] or CTRL(kheld) and kc2[K_x]):
+            pops2 = (i for i, e in enumerate(queue) if e.get("selected"))
+            if pops:
+                pops.update(pops2)
+            else:
+                pops = set(pops2)
+            sidebar.pop("last_selected", None)
         for i, entry in entries:
             if not entry.url:
                 pops.add(i)
                 continue
-            if entry.get("selected"):
-                if kc2[K_DELETE] or kc2[K_BACKSPACE] or CTRL(kheld) and kc2[K_x]:
-                    pops.add(i)
-                    if sidebar.get("last_selected") == entry:
-                        sidebar.pop("last_selected", None)
-                if CTRL(kheld) and (kc2[K_c] or kc2[K_x]):
-                    entry.flash = 16
-                    copies.append(entry.url)
-            elif CTRL(kheld) and kc2[K_a]:
-                entry.selected = True
-                sidebar.last_selected = entry
-                lq = i
             if breaking(i):
                 entry.flash = 5
                 if control.shuffle:
@@ -290,131 +293,10 @@ def render_sidebar(dur=0):
                             else:
                                 e.pop("selected", None)
                     sidebar.last_selected = entry
-
-                    def copy_queue():
-                        entries = [e.url for e in queue if e.get("selected")]
-                        if not entries:
-                            entries = [entry.url]
-                        pyperclip.copy("\n".join(entries))
-
-                    def copy_name():
-                        entries = [e.name for e in queue if e.get("selected")]
-                        if not entries:
-                            entries = [entry.name]
-                        pyperclip.copy("\n".join(entries))
-
-                    def paste_queue():
-                        submit(enqueue_auto, *pyperclip.paste().splitlines())
-
-                    def play_now():
-                        if queue:
-                            a = deque()
-                            b = deque()
-                            for e in queue:
-                                if e == sidebar.get("last_selected"):
-                                    a.appendleft(e)
-                                elif e.get("selected"):
-                                    a.append(e)
-                                else:
-                                    b.append(e)
-                            a.extend(b)
-                            queue[:] = a
-                            mixer.clear()
-                            submit(start)
-
-                    def play_next():
-                        if len(queue) > 1:
-                            s = queue.popleft()
-                            a = deque()
-                            b = deque()
-                            for e in queue:
-                                if e == sidebar.get("last_selected"):
-                                    a.appendleft(e)
-                                elif e.get("selected"):
-                                    a.append(e)
-                                else:
-                                    b.append(e)
-                            a.extend(b)
-                            queue[:] = a
-                            queue.appendleft(s)
-
-                    def add_to_playlist():
-                        entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
-                        if not entries:
-                            entries = (entry,)
-                        url = entries[0]["url"]
-                        if is_url(url):
-                            ytdl = downloader.result()
-                            name = None
-                            if url in ytdl.searched:
-                                resp = ytdl.searched[url].data
-                                if len(resp) == 1:
-                                    name = resp[0].get("name")
-                            if not name:
-                                resp = ytdl.downloader.extract_info(url, download=False, process=False)
-                                name = resp.get("title") or entries[0].name
-                        else:
-                            name = entries[0]["name"]
-                        if len(entries) > 1:
-                            name += f" +{len(entries) - 1}"
-                        playlists = os.listdir("playlists")
-                        text = (easygui.get_string(
-                            "Enter a name for your new playlist!",
-                            "Miza Player",
-                            name,
-                        ) or "").strip()
-                        if text:
-                            data = dict(queue=entries, stats={})
-                            fn = "playlists/" + quote(text)[:245] + ".json"
-                            if len(entries) > 1024:
-                                fn = fn[:-5] + ".zip"
-                                b = bytes2zip(orjson.dumps(data))
-                                with open(fn, "wb") as f:
-                                    f.write(b)
-                            else:
-                                with open(fn, "w", encoding="utf-8") as f:
-                                    json.dump(data, f, separators=(",", ":"))
-                            easygui.show_message(
-                                f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
-                            )
-                    
-                    def save_as():
-                        name = None
-                        entries = deque()
-                        for entry in queue:
-                            if entry.get("selected"):
-                                if not name:
-                                    name = entry.name
-                                entries.append(entry)
-                        if not entries:
-                            name = queue[0].name
-                            entries = queue[:1]
-                        if len(entries) > 1:
-                            name += f" +{len(entries) - 1}"
-                        fn = easygui.filesavebox(
-                            "Save As",
-                            "Miza Player",
-                            name.translate(safe_filenames) + ".ogg",
-                            filetypes=ftypes,
-                        )
-                        if fn:
-                            submit(download, entries, fn, settings=True)
-                    
-                    def delete():
-                        if queue:
-                            pops = set()
-                            for j, e in enumerate(queue):
-                                if e.get("selected"):
-                                    pops.add(j)
-                            queue.pops(pops)
-                            if 0 in pops:
-                                mixer.clear()
-                                submit(start)
-
                     sidebar.menu = cdict(
                         buttons=(
-                            ("Copy URL (CTRL+C)", copy_queue),
-                            ("Copy name", copy_name),
+                            ("Copy URL (CTRL+C)", copy_queue, entry),
+                            ("Copy name", copy_name, entry),
                             ("Paste (CTRL+V)", paste_queue),
                             ("Play now", play_now),
                             ("Play next", play_next),
@@ -647,3 +529,104 @@ def render_sidebar(dur=0):
         )
     if offs <= -4:
         render_settings(dur)
+def copy_queue(entry):
+    entries = [e.url for e in queue if e.get("selected")]
+    if not entries:
+        entries = [entry.url]
+    pyperclip.copy("\n".join(entries))
+def copy_name(entry):
+    entries = [e.name for e in queue if e.get("selected")]
+    if not entries:
+        entries = [entry.name]
+    pyperclip.copy("\n".join(entries))
+def paste_queue():
+    submit(enqueue_auto, *pyperclip.paste().splitlines())
+def play_now():
+    if not queue:
+        return
+    selected = [i for i, e in enumerate(queue) if e.get("selected")]
+    temp = queue[selected]
+    queue.pops(selected)
+    queue.extendleft(temp[::-1])
+    mixer.clear()
+    submit(start)
+def play_next():
+    if len(queue) <= 1:
+        return
+    s = queue.popleft()
+    selected = [i for i, e in enumerate(queue) if e.get("selected")]
+    temp = queue[selected]
+    queue.pops(selected)
+    queue.extendleft(temp[::-1])
+    queue.appendleft(s)
+def add_to_playlist():
+    entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
+    if not entries:
+        entries = (entry,)
+    url = entries[0]["url"]
+    if is_url(url):
+        ytdl = downloader.result()
+        name = None
+        if url in ytdl.searched:
+            resp = ytdl.searched[url].data
+            if len(resp) == 1:
+                name = resp[0].get("name")
+        if not name:
+            resp = ytdl.downloader.extract_info(url, download=False, process=False)
+            name = resp.get("title") or entries[0].name
+    else:
+        name = entries[0]["name"]
+    if len(entries) > 1:
+        name += f" +{len(entries) - 1}"
+    playlists = os.listdir("playlists")
+    text = (easygui.get_string(
+        "Enter a name for your new playlist!",
+        "Miza Player",
+        name,
+    ) or "").strip()
+    if text:
+        data = dict(queue=entries, stats={})
+        fn = "playlists/" + quote(text)[:245] + ".json"
+        if len(entries) > 1024:
+            fn = fn[:-5] + ".zip"
+            b = bytes2zip(orjson.dumps(data))
+            with open(fn, "wb") as f:
+                f.write(b)
+        else:
+            with open(fn, "w", encoding="utf-8") as f:
+                json.dump(data, f, separators=(",", ":"))
+        easygui.show_message(
+            f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+        )
+def save_as():
+    name = None
+    entries = deque()
+    for entry in queue:
+        if entry.get("selected"):
+            if not name:
+                name = entry.name
+            entries.append(entry)
+    if not entries:
+        name = queue[0].name
+        entries = queue[:1]
+    if len(entries) > 1:
+        name += f" +{len(entries) - 1}"
+    fn = easygui.filesavebox(
+        "Save As",
+        "Miza Player",
+        name.translate(safe_filenames) + ".ogg",
+        filetypes=ftypes,
+    )
+    if fn:
+        submit(download, entries, fn, settings=True)
+def delete():
+    if not queue:
+        return
+    pops = set()
+    for j, e in enumerate(queue):
+        if e.get("selected"):
+            pops.add(j)
+    queue.pops(pops)
+    if 0 in pops:
+        mixer.clear()
+        submit(start)

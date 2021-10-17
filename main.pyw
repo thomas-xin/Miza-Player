@@ -616,7 +616,7 @@ def setup_buttons():
         def rleft():
             mixer.clear()
             queue.rotate(1)
-            start()
+            player.fut = None
         toolbar.buttons.append(cdict(
             name="Previous",
             image=back,
@@ -626,7 +626,7 @@ def setup_buttons():
         def rright():
             mixer.clear()
             queue.rotate(-1)
-            start()
+            player.fut = None
         toolbar.buttons.append(cdict(
             name="Next",
             image=front,
@@ -639,7 +639,7 @@ def setup_buttons():
             for i, entry in enumerate(queue):
                 entry.pos = i
             queue.fill(queue.view[::-1])
-            start()
+            player.fut = None
         toolbar.buttons.append(cdict(
             name="Flip",
             image=flip,
@@ -652,7 +652,7 @@ def setup_buttons():
             for i, entry in enumerate(queue):
                 entry.pos = i
             random.shuffle(queue.view)
-            start()
+            player.fut = None
         toolbar.buttons.append(cdict(
             name="Scramble",
             image=scramble,

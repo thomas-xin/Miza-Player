@@ -772,6 +772,7 @@ def render_piano():
     bv = ceil(note_height / 5)
     if not surf or surf.get_size() != ssize:
         surf = player["editor_surf"] = HWSurface.any(ssize, SRCALPHA)
+        surf.fill((0, 0, 0, 0))
         print(surf)
 
         for i in range(keys + 1):

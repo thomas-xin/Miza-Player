@@ -241,7 +241,7 @@ def render_sidebar(dur=0):
         if isfinite(etarget):
             if mc2[0]:
                 entry = queue[target]
-                if SHIFT(kheld):
+                if isfinite(lq) and SHIFT(kheld):
                     a, b = sorted((target, lq))
                     for e in queue[a:b + 1]:
                         e.selected = True
@@ -256,7 +256,7 @@ def render_sidebar(dur=0):
                 y = round(Z + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 32, 32)
                 sidebar.selection_offset = np.array(mpos2) - rect[:2]
-            elif SHIFT(kheld):
+            elif isfinite(lq) and SHIFT(kheld):
                 a, b = sorted((target, lq))
                 selectables = range(a, b + 1)
             else:

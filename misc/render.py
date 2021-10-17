@@ -665,6 +665,8 @@ def spectrogram_render(bars):
             if Bar.fsize != fsize:
                 Bar.fsize = fsize
                 Bar.font = pygame.font.Font("misc/Pacifico.ttf", bar.fsize)
+                for bar in bars:
+                    bar.cache.clear()
             highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:48]
             high = highbars[0]
             for bar in reversed(highbars):

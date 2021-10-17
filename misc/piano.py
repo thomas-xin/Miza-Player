@@ -541,7 +541,8 @@ def editor_toolbar():
         note_height = 12 * editor.zoom_y
         nw = round_random(max(272, editor.note.length * note_width + 1 + 4))
         mrect = (toolbar.pause.radius << 2, screensize[1] - toolbar_height + 12, nw, min(toolbar.pause.radius * 2, 64))
-        surf = pygame.Surface(mrect[2:], SRCALPHA)
+        surf = HWSurface.any(mrect[2:], SRCALPHA)
+        surf.fill((0, 0, 0, 0))
         pattern = project.patterns[editor.pattern]
         timesig = pattern.timesig
         barlength = timesig[0] * timesig[1]
@@ -770,7 +771,7 @@ def render_piano():
     offs_y = round((offs_y + soffs) % note_spacing - 1.5 * note_spacing)
     bv = ceil(note_height / 5)
     if not surf or surf.get_size() != ssize:
-        surf = player["editor_surf"] = pygame.Surface(ssize, SRCALPHA)
+        surf = player["editor_surf"] = HWSurface.any(ssize, SRCALPHA)
         print(surf)
 
         for i in range(keys + 1):
@@ -836,7 +837,7 @@ def render_piano():
             message_display((i + itx) // barlength, 12, (x + 3, 0), colour=(255, 255, 0), surface=DISP, align=0, cache=True)
     ssize = (PW, player.rect[3])
     if not editor.get("piano_surf") or editor.piano_surf.get_size() != ssize:
-        editor.piano_surf = surf = pygame.Surface(ssize)
+        editor.piano_surf = surf = HWSurface.any(ssize)
         offs_y = editor.scroll_y % 1 * note_spacing
         offs_y = round(offs_y - note_spacing / 2)
         for i in range(keys + 1):

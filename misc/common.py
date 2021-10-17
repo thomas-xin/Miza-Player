@@ -1057,6 +1057,28 @@ class HWSurface:
     cache = weakref.WeakKeyDictionary()
     anys = {}
     anyque = []
+    maxlen = 24
+
+    @classmethod
+    def any(cls, size, flags=0, colour=None):
+        size = astype(size, tuple)
+        m = 4 if flags & pygame.SRCALPHA else 3
+        t = (size, flags)
+        try:
+            self = cls.anys[t]
+        except KeyError:
+            if len(cls.anyque) >= cls.maxlen:
+                cls.anys.pop(cls.anyque.pop(0))
+            cls.anyque.append(t)
+            self = cls.anys[t] = pygame.Surface(size, flags)
+        else:
+            if t != cls.anyque[-1]:
+                cls.anyque.remove(t)
+                cls.anyque.append(t)
+        if colour is not None:
+            self.fill(colour)
+        return self
+
     # v1 = np.empty(8, dtype=np.float32)
     # v2 = np.empty(8, dtype=np.float32)
 
@@ -1078,33 +1100,6 @@ class HWSurface:
     get_size = lambda self: self.size
     get_width = lambda self: self.width
     get_height = lambda self: self.height
-
-    @classmethod
-    def any(cls, size, flags=0, colour=None):
-        size = astype(size, tuple)
-        m = 4 if flags & pygame.SRCALPHA else 3
-        t = (size, flags)
-        try:
-            self = cls.anys[t]
-        except KeyError:
-            if len(cls.anyque) >= 16:
-                cls.anys.pop(cls.anyque.pop(0))
-            cls.anyque.append(t)
-            self = pygame.Surface(size, flags)
-            # if m > 3:
-            #     self = self.convert_alpha()
-            # else:
-            #     self = self.convert()
-            cls.anys[t] = self#cls(size, flags, colour)
-            colour = None
-            # print("Windows:", len(cls.anys))
-        else:
-            if t != cls.anyque[-1]:
-                cls.anyque.remove(t)
-                cls.anyque.append(t)
-        if colour is not None:
-            self.fill(colour)
-        return self
 
     def fill(self, colour=(0,) * 4):
         glfw.make_context_current(self.wind)

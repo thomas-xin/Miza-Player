@@ -2,7 +2,7 @@ import sys
 write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame
 sys.stdout.write = write
-import time, numpy, math, random, orjson, collections, colorsys, traceback, subprocess, itertools
+import time, numpy, math, random, orjson, collections, colorsys, traceback, subprocess, itertools, weakref
 from math import *
 from traceback import print_exc
 np = numpy
@@ -18,6 +18,33 @@ def pil2pyg(im):
     mode = im.mode
     b = im.tobytes()
     return pygame.image.frombuffer(b, im.size, mode)
+
+class HWSurface:
+
+    cache = weakref.WeakKeyDictionary()
+    anys = {}
+    anyque = []
+    maxlen = 256
+
+    @classmethod
+    def any(cls, size, flags=0, colour=None):
+        size = astype(size, tuple)
+        m = 4 if flags & pygame.SRCALPHA else 3
+        t = (size, flags)
+        try:
+            self = cls.anys[t]
+        except KeyError:
+            if len(cls.anyque) >= cls.maxlen:
+                cls.anys.pop(cls.anyque.pop(0))
+            cls.anyque.append(t)
+            self = cls.anys[t] = pygame.Surface(size, flags)
+        else:
+            if t != cls.anyque[-1]:
+                cls.anyque.remove(t)
+                cls.anyque.append(t)
+        if colour is not None:
+            self.fill(colour)
+        return self
 
 import pygame.gfxdraw as gfxdraw
 pygame.font.init()
@@ -87,14 +114,14 @@ class Particle(collections.abc.Hashable):
 
 class Bar(Particle):
 
-    __slots__ = ("x", "colour", "height", "height2", "surf", "line")
+    __slots__ = ("x", "colour", "height", "height2", "surf", "line", "cache")
 
     fsize = 0
 
     def __init__(self, x, barcount):
         super().__init__()
         dark = False
-        self.colour = tuple(round(i * 255) for i in colorsys.hsv_to_rgb(x / barcount, 1, 1))
+        self.colour = [round(i * 255) for i in colorsys.hsv_to_rgb(x / barcount % 1, 1, 1)]
         note = highest_note - x + 9
         if note % 12 in (1, 3, 6, 8, 10):
             dark = True
@@ -103,13 +130,16 @@ class Bar(Particle):
         self.line = name + str(octave + 1)
         self.x = x
         if dark:
-            self.colour = tuple(i + 1 >> 1 for i in self.colour)
-            self.surf = Image.new("RGB", (1, 3), self.colour)
+            self.colour = [i + 1 >> 1 for i in self.colour]
+            surf = pygame.Surface((1, 3))
         else:
-            self.surf = Image.new("RGB", (1, 2), self.colour)
-        self.surf.putpixel((0, 0), 0)
+            surf = pygame.Surface((1, 2))
+        surf.fill(self.colour)
+        surf.set_at((0, 0), 0)
+        self.surf = surf
         self.height = 0
         self.height2 = 0
+        self.cache = {}
 
     def update(self, dur=1):
         if specs == 3:
@@ -139,74 +169,9 @@ class Bar(Particle):
             note = highest_note - self.x + 9
             if note % 12 in (1, 3, 6, 8, 10):
                 dark = True
-            if dark:
-                self.colour = tuple(i + 1 >> 1 for i in self.colour)
-                self.surf = Image.new("RGB", (1, 3), self.colour)
-            else:
-                self.surf = Image.new("RGB", (1, 2), self.colour)
-            self.surf.putpixel((0, 0), 0)
-            surf = self.surf.resize((1, size), resample=Image.BILINEAR)
-            sfx.paste(surf, (barcount - 2 - self.x, barheight - size))
-    
-    def render2(self, sfx, **void):
-        if not vertices > 0:
-            return
-        size = min(2 * barheight, round_random(self.height))
-        if size:
-            amp = size / barheight * 2
-            val = min(1, amp)
-            sat = 1 - min(1, max(0, amp - 1))
-            self.colour = tuple(round_random(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount / freqscale2) % 1, sat, val))
-            x = barcount * freqscale2 - self.x - 2
-            if vertices == 4:
-                DRAW.rectangle(
-                    (x, x, barcount * 2 * freqscale2 - x - 3, barcount * 2 * freqscale2 - x - 3),
-                    None,
-                    self.colour,
-                    width=1,
-                )
-            elif vertices == 2:
-                DRAW.line(
-                    (0, x, barcount * 2 * freqscale2 - 2, x),
-                    self.colour,
-                    width=1,
-                )
-                DRAW.line(
-                    (0, barcount * 2 * freqscale2 - x - 3, barcount * 2 * freqscale2 - 2, barcount * 2 * freqscale2 - x - 3),
-                    self.colour,
-                    width=1,
-                )
-            elif vertices <= 1:
-                DRAW.line(
-                    (0, barcount * 2 * freqscale2 - x * 2 - 4, barcount * 2 * freqscale2 - 2, barcount * 2 * freqscale2 - x * 2 - 4),
-                    self.colour,
-                    width=2,
-                )
-            elif vertices >= 32 or self.x <= 7 and not vertices & 1:
-                DRAW.ellipse(
-                    (x, x, barcount * 2 * freqscale2 - x - 3, barcount * 2 * freqscale2 - x - 3),
-                    None,
-                    self.colour,
-                    width=2,
-                )
-            else:
-                diag = 1
-                # if vertices & 1:
-                #     diag *= cos(pi / vertices)
-                radius = self.x * diag + 1
-                a = barcount * freqscale2 - 2
-                b = a / diag + 1
-                points = []
-                for i in range(vertices + 1):
-                    z = i / vertices * tau
-                    p = (a + radius * sin(z), b - radius * cos(z))
-                    points.append(p)
-                DRAW.line(
-                    points,
-                    self.colour,
-                    width=2,
-                    joint="curve"
-                )
+            surf = HWSurface.any((1, size))
+            surf = pygame.transform.smoothscale(self.surf, (1, size), surf)
+            sfx.blit(surf, (barcount - 2 - self.x, barheight - size))
 
     def post_render(self, sfx, scale, **void):
         size = self.height2
@@ -214,14 +179,18 @@ class Bar(Particle):
             ix = barcount - 1 - self.x - 1
             sx = ix / barcount * ssize2[0]
             w = (ix + 1) / barcount * ssize2[0] - sx
-            alpha = round_random(255 * scale)
+            alpha = round_random(85 * scale) * 3
             t = (self.line, self.fsize)
             if t not in TEXTS:
                 TEXTS[t] = self.font.render(self.line, True, (255,) * 3)
             surf = TEXTS[t]
             if alpha < 255:
-                surf = surf.copy()
-                surf.fill((255,) * 3 + (alpha,), special_flags=pygame.BLEND_RGBA_MULT)
+                try:
+                    surf = self.cache[alpha]
+                except KeyError:
+                    surf = surf.copy()
+                    surf.fill((255,) * 3 + (alpha,), special_flags=pygame.BLEND_RGBA_MULT)
+                    self.cache[alpha] = surf
             width, height = surf.get_size()
             x = round(sx + w / 2 - width / 2)
             y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
@@ -527,7 +496,7 @@ def animate_polyhedron(changed=False):
     maxb = sqrt(max(bar.height for bar in bars))
     ratio = min(48, max(8, 36864 / (len(poly) + 2 >> 1)))
     barm = sorted(((bar.height, i) for i, bar in enumerate(bars) if sqrt(bar.height) > maxb / ratio), reverse=True)
-    bari = sorted((i for _, i in barm[:round(ratio * 2)]), reverse=True)
+    bari = sorted((i for _, i in barm[:round_random(ratio * 2)]), reverse=True)
     # print(ratio, len(bari))
     if bari:
         radiii = radii[bari]
@@ -669,7 +638,8 @@ def spectrogram_render(bars):
     global ssize2, specs, dur, last
     try:
         if specs == 1:
-            sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
+            sfx = pygame.Surface((barcount - 2, barheight))
+            # sfx = Image.new("RGB", (barcount - 2, barheight), (0,) * 3)
             for bar in bars:
                 bar.render(sfx=sfx)
             func = None
@@ -688,15 +658,15 @@ def spectrogram_render(bars):
             sfx = func(changed)
 
         if specs == 1:
-            if sfx.size != ssize2:
-                sfx = sfx.resize(ssize2, resample=Image.NEAREST)
+            if sfx.get_size() != ssize2:
+                sfx2 = HWSurface.any(ssize2)
+                sfx = pygame.transform.scale(sfx, ssize2, sfx2)
             fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
             if Bar.fsize != fsize:
                 Bar.fsize = fsize
                 Bar.font = pygame.font.Font("misc/Pacifico.ttf", bar.fsize)
             highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:48]
             high = highbars[0]
-            sfx = pil2pyg(sfx)
             for bar in reversed(highbars):
                 bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
 

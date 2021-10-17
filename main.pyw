@@ -3073,7 +3073,7 @@ def draw_menu():
         if options.get("oscilloscope") and is_active() and player.get("osci"):
             surf = player.osci
             if tuple(osci_rect[2:]) != surf.get_size():
-                s2 = HWSurface.any(osci_rect[2:], surf.get_flags())
+                s2 = HWSurface.any(osci_rect[2:], FLAGS | SRCALPHA)
                 player.osci = surf = pygame.transform.scale(surf, osci_rect[2:], s2)
             DISP.blit(
                 surf,

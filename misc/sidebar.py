@@ -182,9 +182,9 @@ def render_sidebar(dur=0):
         lq2 = lq
         swap = None
         base, maxitems = sidebar.base, sidebar.maxitems
-        otarget = round_random((mpos[1] - Z - 52 - 16 - 16) / 32)
+        otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
         etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
-        target = min(max(0, round_random((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
+        target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
         if mc2[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
             if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                 for entry in queue:
@@ -201,7 +201,7 @@ def render_sidebar(dur=0):
                 ensure_next(i)
             if entry.get("selected") and sidebar.get("dragging"):
                 x = 4 + offs
-                y = round_random(Z + entry.get("pos", 0) * 32)
+                y = round(Z + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 32, 32)
                 sat = 0.875
                 val = 1
@@ -257,7 +257,7 @@ def render_sidebar(dur=0):
             if not isfinite(lq):
                 lq2 = nan
             x = 4 + offs
-            y = round_random(Z + entry.get("pos", 0) * 32)
+            y = round(Z + entry.get("pos", 0) * 32)
             rect = (x, y, sidebar_width - 32, 32)
             selectable = i == etarget
             if not selectable and sidebar.get("last_selected") and SHIFT(kheld):
@@ -507,7 +507,7 @@ def render_sidebar(dur=0):
                 if not entry.get("selected"):
                     continue
                 x = 4 + offs
-                y = round_random(Z + entry.get("pos", 0) * 32)
+                y = round(Z + entry.get("pos", 0) * 32)
                 sat = 0.875
                 val = 1
                 rect = (x, y, sidebar_width - 32, 32)
@@ -569,7 +569,7 @@ def render_sidebar(dur=0):
                 )
         if sidebar.get("loading"):
             x = 4 + offs
-            y = round_random(Z + (len(queue) - base) * 32)
+            y = round(Z + (len(queue) - base) * 32)
             rect = (x, y, sidebar_width - 32, 32)
             rounded_bev_rect(
                 DISP2,

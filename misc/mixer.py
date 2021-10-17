@@ -43,7 +43,7 @@ class MultiAutoImporter:
 
 importer = MultiAutoImporter(
     "os, sys, numpy, math, cffi, soundcard, pygame, random, base64, hashlib, orjson, time, traceback",
-    "contextlib, colorsys, ctypes, collections, samplerate, itertools, io, zipfile",
+    "contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
     pool=exc,
     _globals=globals(),
 )
@@ -241,6 +241,18 @@ def bsend(*args):
 
 print = lambda *args, sep=" ", end="\n": point(repr(str(sep).join(map(str, args)) + end))
 print_exc = lambda: point(repr(traceback.format_exc()))
+
+def astype(obj, t, *args, **kwargs):
+    try:
+        if not isinstance(obj, t):
+            if callable(t):
+                return t(obj, *args, **kwargs)
+            return t
+    except TypeError:
+        if callable(t):
+            return t(obj, *args, **kwargs)
+        return t
+    return obj
 
 
 sc = soundcard.force()
@@ -827,6 +839,33 @@ def construct_options(full=True):
         args.append(",".join(options))
     return args
 
+class HWSurface:
+
+    cache = weakref.WeakKeyDictionary()
+    anys = {}
+    anyque = []
+    maxlen = 12
+
+    @classmethod
+    def any(cls, size, flags=0, colour=None):
+        size = astype(size, tuple)
+        m = 4 if flags & pygame.SRCALPHA else 3
+        t = (size, flags)
+        try:
+            self = cls.anys[t]
+        except KeyError:
+            if len(cls.anyque) >= cls.maxlen:
+                cls.anys.pop(cls.anyque.pop(0))
+            cls.anyque.append(t)
+            self = cls.anys[t] = pygame.Surface(size, flags)
+        else:
+            if t != cls.anyque[-1]:
+                cls.anyque.remove(t)
+                cls.anyque.append(t)
+        if colour is not None:
+            self.fill(colour)
+        return self
+
 stderr_lock = None
 def oscilloscope(buffer):
     global stderr_lock
@@ -838,7 +877,8 @@ def oscilloscope(buffer):
             osci = np.clip(osci, -1, 1, out=osci)
             if packet:
                 size = osize
-                OSCI = pygame.Surface(size)
+                OSCI = HWSurface.any(size)
+                OSCI.fill((0, 0, 0, 0))
                 if packet:
                     point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
                     for i in range(1, len(osci)):

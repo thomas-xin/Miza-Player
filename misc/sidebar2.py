@@ -146,9 +146,9 @@ def render_sidebar_2(dur=0):
         lq2 = lq
         swap = None
         base, maxitems = sidebar.base, sidebar.maxitems
-        otarget = round_random((mpos[1] - Z - 52 - 16 - 16) / 32)
+        otarget = round((mpos[1] - Z - 52 - 16 - 16) / 32)
         etarget = otarget if in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)) else nan
-        target = min(max(0, round_random((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
+        target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
         if mc2[0] and not sidebar.scrolling and in_sidebar and not in_rect(mpos, sidebar.scroll.rect) and not kheld[K_LSHIFT] and not kheld[K_RSHIFT] and not kheld[K_LCTRL] and not kheld[K_RCTRL]:
             if etarget not in range(len(queue)) or not queue[etarget].get("selected"):
                 for entry in queue:
@@ -158,7 +158,7 @@ def render_sidebar_2(dur=0):
         for i, entry in enumerate(queue[base:base + maxitems], base):
             if entry.get("selected") and sidebar.get("dragging"):
                 x = 4 + offs
-                y = round_random(Z + entry.get("pos", 0) * 32)
+                y = round(Z + entry.get("pos", 0) * 32)
                 rect = (x, y, sidebar_width - 32, 32)
                 col = project.instruments[project.instrument_layout[i]].colour
                 hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
@@ -206,7 +206,7 @@ def render_sidebar_2(dur=0):
             if not isfinite(lq):
                 lq2 = nan
             x = 4 + offs
-            y = round_random(Z + entry.get("pos", 0) * 32)
+            y = round(Z + entry.get("pos", 0) * 32)
             rect = (x, y, sidebar_width - 32, 32)
             selectable = i == etarget
             if not selectable and sidebar.get("last_selected") and (kheld[K_LSHIFT] or kheld[K_RSHIFT]):
@@ -320,7 +320,7 @@ def render_sidebar_2(dur=0):
                 if not entry.get("selected"):
                     continue
                 x = 4 + offs
-                y = round_random(Z + entry.get("pos", 0) * 32)
+                y = round(Z + entry.get("pos", 0) * 32)
                 col = project.instruments[project.instrument_layout[i]].colour
                 hue, sat, val = colorsys.rgb_to_hsv(*(x / 255 for x in col))
                 sat -= 0.125
@@ -374,7 +374,7 @@ def render_sidebar_2(dur=0):
                 )
         if sidebar.get("loading"):
             x = 4 + offs
-            y = round_random(Z + (len(queue) - base) * 32)
+            y = round(Z + (len(queue) - base) * 32)
             rect = (x, y, sidebar_width - 32, 32)
             rounded_bev_rect(
                 DISP2,
@@ -469,7 +469,7 @@ def render_sidebar_2(dur=0):
                 font="Comic Sans MS",
             )
             # numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
-            s = str(round_random(instrument.synth.get(opt, 0) * 100, 2)) + "%"
+            s = str(round(instrument.synth.get(opt, 0) * 100, 2)) + "%"
             message_display(
                 s,
                 11,
@@ -486,21 +486,21 @@ def render_sidebar_2(dur=0):
                 x = min(1, max(0, x))
             else:
                 x = min(1, abs(x))
-            x = round_random(x * w)
+            x = round(x * w)
             brect = (screensize[0] + offs + 6, 91 + i * 32, sidebar_width - 12, 13)
             brect2 = (offs2 + 6, 41 + i * 32, sidebar_width - 12, 13)
             hovered = in_sidebar and in_rect(mpos, brect) or syediting[opt]
             crosshair |= bool(hovered) << 1
             v = max(0, min(1, (mpos2[0] - (screensize[0] + offs + 8)) / (sidebar_width - 16))) * (srange[1] - srange[0]) + srange[0]
             if len(srange) > 2:
-                v = round_min(math.round_random(v / srange[2]) * srange[2])
+                v = round_min(math.round(v / srange[2]) * srange[2])
             else:
-                rv = round_min(math.round_random(v * 32) / 32)
+                rv = round_min(math.round(v * 32) / 32)
                 if type(rv) is int and rv not in srange:
                     v = rv
             if hovered and not hovertext:
                 hovertext = cdict(
-                    text=str(round_random(v * 100, 2)) + "%",
+                    text=str(round(v * 100, 2)) + "%",
                     size=10,
                     colour=(255, 255, 127),
                 )

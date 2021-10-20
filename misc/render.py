@@ -640,7 +640,7 @@ def animate_ripple(changed=False):
     hi *= 0.25
     hi = np.repeat(hi.astype(np.float32), 2, axis=0)[1:-1]
     hi = np.tile(hi, (V * depth, 1)).T
-    maxlen = ceil(384 / V)
+    maxlen = ceil(360 / V) - 1
     vertarray = None
     if "linearray" not in globals() or linearray.maxlen != maxlen + 1:
         globals()["linearray"] = deque(maxlen=maxlen + 1)

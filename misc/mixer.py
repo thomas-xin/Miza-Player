@@ -117,14 +117,14 @@ def bytes2zip(data):
         z.writestr("D", data=data)
     return b.getbuffer()
 
-def supersample(a, size, hq=False):
+def supersample(a, size, hq=False, in_place=False):
     n = len(a)
     if n == size:
         return a
     if n < size:
         if hq:
             a = samplerate.resample(a, size / len(a), "sinc_fastest")
-            return supersample(a, size)
+            return supersample(a, size, in_place=in_place)
         interp = np.linspace(0, n - 1, size)
         return np.interp(interp, range(n), a)
     try:
@@ -133,8 +133,16 @@ def supersample(a, size, hq=False):
         dtype = object
     ftype = np.float64 if dtype is object or issubclass(dtype.type, np.integer) else dtype
     x = ceil(n / size)
-    interp = np.linspace(0, n - 1, x * size, dtype=ftype)
+    args = ("ss-interps", 0, n - 1, x * size)
+    try:
+        if not in_place:
+            raise KeyError
+        interp = globals()[args]
+    except KeyError:
+        interp = globals()[args] = np.linspace(*args[1:], dtype=ftype)
     a = np.interp(interp, range(n), a)
+    if in_place:
+        return np.mean(a.reshape(-1, x), 1, out=a[:size])
     return np.mean(a.reshape(-1, x), 1, dtype=dtype)
 
 SR = 48000
@@ -534,7 +542,7 @@ removing = set()
 def remover():
     try:
         while True:
-            for fn in deque(removing):
+            for fn in tuple(removing):
                 try:
                     os.remove(fn)
                 except PermissionError:
@@ -542,7 +550,7 @@ def remover():
                 except FileNotFoundError:
                     pass
                 removing.discard(file)
-            time.sleep(0.1)
+            time.sleep(0.5)
     except:
         print_exc()
 
@@ -874,7 +882,7 @@ def oscilloscope(buffer):
     try:
         if packet:
             arr = buffer[::2] + buffer[1::2]
-            osci = supersample(arr, osize[0])
+            osci = supersample(arr, osize[0], in_place=True)
             osci *= 0.5
             osci = np.clip(osci, -1, 1, out=osci)
             if packet:
@@ -888,7 +896,7 @@ def oscilloscope(buffer):
                         point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
                         hue = ((osci[i] + osci[i - 1]) / 4) % 1
                         col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(1 - hue, 1, 1)]
-                        pygame.draw.line(
+                        pygame.draw.aaline(
                             OSCI,
                             col,
                             point,
@@ -956,12 +964,12 @@ def spectrogram_render():
         specs = settings.spectrogram
         packet_advanced2 = False
         if specs == 3:
-            vertices = settings.get("gradient-vertices", 4)
+            vertices = settings.get("gradient-vertices")
         elif specs == 4:
-            vertices = settings.get("spiral-vertices", 6)
+            vertices = settings.get("spiral-vertices")
         else:
             vertices = 0
-        t2 = frame / 30 if OUTPUT_VIDEO else t
+        t2 = frame / 30
         d2 = 1 / 30 if OUTPUT_VIDEO else dur
         binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2))) + b"\n"
         rproc.stdin.write(binfo)
@@ -992,30 +1000,48 @@ def spectrogram_render():
         print_exc()
 
 def spectrogram_update():
-    global lastspec, spec_update_fut, spec2_fut, packet_advanced2, packet_advanced3
+    global lastspec, spec_update_fut, spec2_fut, spec_buffer, packet_advanced2, packet_advanced3
     try:
         t = pc()
         dur = max(0.001, min(0.125, t - lastspec))
         lastspec = t
-        dft = np.fft.rfft(spec_buffer).astype(np.complex64)
-        np.multiply(spec_buffer, (1 / 3) ** dur, out=spec_buffer)
-        arr = np.zeros(barcount * freqscale, dtype=dft.dtype)
+        dft1 = np.fft.rfft(spec_buffer)
+        if dft1.dtype == np.complex64:
+            dft = dft1
+        else:
+            try:
+                dft = globals()["spec-dft-arr"]
+            except KeyError:
+                dft = globals()["spec-dft-arr"] = np.zeros(len(dft1), dtype=np.complex64)
+            dft[:] = dft1
+        try:
+            arr = globals()["spec-fft-arr"]
+        except KeyError:
+            arr = globals()["spec-fft-arr"] = np.zeros(barcount * freqscale, dtype=dft.dtype)
+        else:
+            arr.fill(0)
         np.add.at(arr, fftrans, dft)
         arr[0] = 0
-        amp = np.abs(arr, dtype=np.float32).astype(np.float16)
+        try:
+            amp = globals()["spec-fft-amp"]
+        except KeyError:
+            amp = globals()["spec-fft-amp"] = np.zeros(barcount * freqscale, dtype=np.float16)
+        np.abs(arr, out=amp)
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
         if settings.spectrogram > 0:
-            if settings.spectrogram in (4, 5):
-                amp = supersample(amp, barcount * 2)
+            if settings.spectrogram == 2:
+                amp = supersample(amp, barcount // 4 + 1, in_place=True)
+            elif settings.spectrogram == 4:
+                amp = supersample(amp, barcount * 2 - 1, in_place=True)
             else:
-                amp = supersample(amp, barcount)
-            if amp.dtype != np.float16:
-                amp = amp.astype(np.float16)
+                amp = supersample(amp, barcount, in_place=True)
+            amp = np.asanyarray(amp, dtype=np.float16)
             b = amp.data
             rproc.stdin.write(f"~e{b.nbytes}\n".encode("ascii"))
             rproc.stdin.write(b)
             rproc.stdin.flush()
+        spec_buffer *= (1 / 3) ** dur
         if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
             spec_update_fut = submit(spectrogram_render)
             packet_advanced2 = False
@@ -1025,18 +1051,23 @@ def spectrogram_update():
     except:
         print_exc()
 
-spec_empty = np.zeros(res_scale, dtype=np.float32)
+spec_empty = np.zeros(res_scale, dtype=np.float16)
 spec_buffer = spec_empty
 def spectrogram():
     global spec_buffer, spec2_fut, packet_advanced3
     try:
         if packet and sample is not None:
+            try:
+                buffer = globals()["spec-sample-16"]
+            except KeyError:
+                buffer = globals()["spec-sample-16"] = np.empty(len(sample), dtype=np.float16)
             if sample.dtype != np.float32:
-                buffer = sample.astype(np.float16)
+                buffer[:] = sample
                 buffer *= 1 / channel.peak
             else:
-                buffer = sample.astype(np.float16)
-            spec_buffer = np.append(spec_buffer[-res_scale + len(buffer):], buffer)
+                buffer[:] = sample
+            spec_buffer[:-len(buffer)] = spec_buffer[len(buffer):]
+            spec_buffer[-len(buffer):] = buffer
             if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
                 spec2_fut = submit(spectrogram_update)
                 packet_advanced3 = None
@@ -1193,8 +1224,13 @@ def play(pos):
                     s = sfut.result()
                 else:
                     s = synthesize()
-                if settings.silenceremove and quiet >= 15 and s is None and np.mean(np.abs(sample)) < 1 / 512:
-                    raise StopIteration
+                if s is None:
+                    if settings.silenceremove and np.mean(np.abs(sample)) < channel.peak / 512:
+                        if quiet >= 15:
+                            raise StopIteration
+                        quiet += 1
+                    else:
+                        quiet = 0
                 sfut = submit(synthesize)
                 if channel.dtype == np.float32:
                     sample = sample.astype(np.float32)
@@ -1212,12 +1248,13 @@ def play(pos):
                             s = s.astype(channel.dtype)
                         s += sample
                         sample = s
-                if settings.silenceremove and np.mean(np.abs(sample)) < channel.peak / 512:
-                    if quiet >= 15:
-                        raise StopIteration
-                    quiet += 1
-                else:
-                    quiet = 0
+                if s is not None:
+                    if settings.silenceremove and np.mean(np.abs(sample)) < channel.peak / 512:
+                        if quiet >= 15:
+                            raise StopIteration
+                        quiet += 1
+                    else:
+                        quiet = 0
                 if sample.dtype == np.float32:
                     np.clip(sample, -channel.peak, channel.peak, out=sample)
                     # print(settings.volume, channel.dtype, sample.dtype, channel.peak, sample)
@@ -1387,7 +1424,7 @@ def synthesize():
                 space %= period
                 wave = np.interp(space, xa, wave)
                 samplespace = np.linspace(-2, 2, x + c, dtype=np.float32)
-                samplespace = scipy.special.erf(samplespace).astype(np.float32)
+                samplespace = np.asanyarray(scipy.special.erf(samplespace), dtype=np.float32)
                 samplespace -= 1
                 wave *= samplespace
                 wave *= -0.5
@@ -1398,7 +1435,7 @@ def synthesize():
         if dc < 5:
             lin = basewave + dc
             lin -= 2
-            lin = scipy.special.erf(lin).astype(np.float32)
+            lin = np.asanyarray(scipy.special.erf(lin), dtype=np.float32)
             lin += 1
             lin *= (db - da) / 2
             lin += da
@@ -1441,7 +1478,7 @@ def piano_player():
                 sbuffer = s
                 if channel.dtype != np.float32:
                     sample = s * 32768
-                    sample = np.clip(sample, -32768, 32767, out=sample).astype(np.int16)
+                    sample = np.asanyarray(np.clip(sample, -32768, 32767, out=sample), dtype=np.int16)
                 else:
                     sample = np.clip(s, -1, 1, out=s)
                 lastpacket = packet
@@ -1647,7 +1684,7 @@ while not sys.stdin.closed and failed < 8:
             bar = int(b)
             notes = orjson.loads(s)
             samples = render_notes(b, notes)
-            out = samples.astype(np.float32).data
+            out = np.asanyarray(samples, dtype=np.float32).data
             with open(f"cache/&p{p}b{b}.pcm", "wb") as f:
                 f.write(out)
             continue

@@ -24,7 +24,7 @@ class HWSurface:
     cache = weakref.WeakKeyDictionary()
     anys = {}
     anyque = []
-    maxlen = 256
+    maxlen = 128
 
     @classmethod
     def any(cls, size, flags=0, colour=None):
@@ -89,8 +89,8 @@ while lower_bound[0] not in "0123456789-":
 lowest_note += int(lower_bound) * 12 - 11
 
 barcount = int(highest_note - lowest_note) + 1 + 2
-freqscale2 = 2
-barcount2 = barcount * freqscale2
+barcount2 = barcount * 2 - 1
+barcount3 = barcount // 4 + 1
 barheight = 720
 
 PARTICLES = set()
@@ -197,88 +197,112 @@ class Bar(Particle):
             y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
             sfx.blit(surf, (x, y))
 
+prism_setup = np.fromiter(map(int, """
+0-2-3
+1-3-4
+2-4-5
+3-5-0
+4-0-1
+5-1-2
+6-8-9
+7-9-10
+8-10-11
+9-11-6
+10-6-7
+11-7-8
+0-1-7
+0-7-6
+1-2-8
+1-8-7
+2-3-9
+2-9-8
+3-4-10
+3-10-9
+4-5-11
+4-11-10
+5-0-6
+5-6-11""".lstrip().replace("\n", "-").split("-")), dtype=np.uint8)
 
 def animate_prism(changed=False):
-    if not vertices:
-        return
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glClear(GL_COLOR_BUFFER_BIT)
+    bars = bars3[::-1]
+    x = len(bars)
     try:
         if changed:
             raise KeyError
-        spec = globals()["ripple-s"]
+        spec = globals()["prism-s"]
     except KeyError:
-        class Ripple_Spec:
-            angle = 0
-        spec = globals()["ripple-s"] = Ripple_Spec()
+        class Prism_Spec:
+            pass
+        spec = globals()["prism-s"] = Prism_Spec
         glLoadIdentity()
-        glRotatef(45, 1, 1, 1)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluPerspective(45, 1, 1 / 16, 99999)
+        glTranslatef(-x // 2 - 3, x // 2 - 3, -x * 1.6)
+        glRotatef(60, 1, 0.25, -0.125)
     w, h = specsize
-    glRotatef(0.5, 0, 1, 0)
+    glLineWidth(specsize[0] / 256)
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnableClientState(GL_COLOR_ARRAY)
-    try:
-        radii = globals()["ripple-r"]
-    except KeyError:
-        r = np.array([bar.x / len(bars) for bar in bars], dtype=np.float16)
-        r.T[-1] = 1
-        radii = globals()["ripple-r"] = np.repeat(r, 3).reshape((len(bars), 3))
 
     try:
-        hsv = globals()["ripple-hsv"]
+        hsv = globals()["prism-hsv"]
     except KeyError:
-        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
+        hsv = globals()["prism-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
     try:
-        hue = globals()["ripple-h"]
+        rgba = globals()["prism-rgba"]
     except KeyError:
-        hh = [1 - bar.x / barcount / freqscale2 for bar in bars]
-        hue = globals()["ripple-h"] = np.array(hh, dtype=np.float16)
+        rgba = globals()["prism-rgba"] = np.empty((len(bars), 4), dtype=np.float32)
+    try:
+        hue = globals()["prism-h"]
+    except KeyError:
+        hh = [bar.x / len(bars) for bar in bars]
+        hue = globals()["prism-h"] = np.array(hh, dtype=np.float16)
     H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
     hsv.T[0][:] = H % 1
     alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
     sat = np.clip(alpha - 1, None, 1)
     np.subtract(1, sat, out=sat)
     hsv.T[1][:] = sat
+    hsv.T[2] = alpha
     np.clip(hsv, None, 1, out=hsv)
-    hsv.T[:2] *= 255
-    hsv = hsv.astype(np.uint8)
-    hsv.T[2][:] = 255
-    img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
-    colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
-    colours.T[:3] *= 1 / 255
-    mult = np.linspace(1, 0, len(alpha))
-    alpha *= mult
-    colours.T[-1][:] = alpha
-    colours = np.repeat(colours.astype(np.float32), 2, axis=0)[1:-1]
-    colours = np.tile(colours, (vertices * depth, 1))
-    hi = hue + pc_ / 3 % 1
-    hi *= -tau
-    np.sin(hi, out=hi)
-    hi *= 0.25
-    hi = np.repeat(hi.astype(np.float32), 2, axis=0)[1:-1]
-    hi = np.tile(hi, (vertices * depth, 1)).T
-    maxlen = ceil(384 / vertices)
-    if linearray.maxlen != maxlen:
-        globals()["linearray"] = deque(maxlen=maxlen)
-    vertarray = np.empty((depth * vertices, len(bars), 3), dtype=np.float16)
-    linearray.append([colours, None])
-    i = 0
-    for _ in range(depth):
-        angle = spec.angle + tau - tau / vertices if vertices else spec.angle
-        zs = np.linspace(spec.angle, angle, vertices)
-        directions = ([cos(z), sin(z), 1] for z in zs)
-        for d in directions:
-            vertarray[i][:] = radii * d
-            i += 1
-        spec.angle += 1 / 360 / depth * tau
-    linearray[-1][-1] = np.repeat(vertarray.astype(np.float32), 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
-    r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
-    for c, m in linearray:
-        c.T[-1] *= r
+    hsv *= 255
+    hsv2 = hsv.astype(np.uint8)
+    img = Image.frombuffer("HSV", (len(bars), 1), hsv2.tobytes()).convert("RGB")
+    rgba.T[:3].T[:] = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 3))
+    rgba.T[:3] *= 1 / 255
+    rgba.T[-1][:] = 2 / 3
+    colours = rgba
+
+    maxlen = len(bars)
+    vertarray = None
+    if "hexarray" not in globals() or hexarray.maxlen != maxlen + 1:
+        globals()["hexarray"] = deque(maxlen=maxlen + 1)
+    elif len(hexarray) > maxlen:
+        colarray, vertarray = hexarray.popleft()
+    if vertarray is None:
+        vertarray = np.empty((len(bars), len(prism_setup), 3), dtype=np.float32)
+        colarray = np.empty((len(bars), len(prism_setup), 4), dtype=np.float32)
+    hexarray.append([colarray, vertarray])
+
+    hexagon = np.array([[cos(z), sin(z), 0] for z in (i * tau / 6 for i in range(6))] * 2, dtype=np.float32)
+    b = (0, 0, 0, 2 / 3)
+    bc = np.array([b, b], dtype=np.float32)
+    for i, h, c in zip(range(len(bars)), alpha, colours):
+        hexagon[6:].T[-1] = h * 2
+        np.take(hexagon, prism_setup, axis=0, out=vertarray[i])
+        vertarray[i].T[0] += i * 1.5
+        if i & 1:
+            vertarray[i].T[1] -= sqrt(3) / 2
+        bc[1] = c
+        np.take(bc, prism_setup < 6, axis=0, out=colarray[i])
+
+    for c, v in hexarray:
         glColorPointer(4, GL_FLOAT, 0, c.ravel())
-        verts = np.asanyarray(m, dtype=np.float32)
-        verts.T[-1][:] = hi
-        glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
-        glDrawArrays(GL_LINES, 0, len(c))
+        glVertexPointer(3, GL_FLOAT, 0, v.ravel())
+        glDrawArrays(GL_TRIANGLES, 0, len(bars) * len(prism_setup))
+        v.T[1] -= sqrt(3)
     glFlush()
     x = y = 0
     if specsize[0] > ssize2[0]:
@@ -367,7 +391,6 @@ def load_model(fn):
     verts = np.asanyarray(verts, dtype=np.float16)
     return verts, dims
 
-
 found_polytopes = {}
 perms = {}
 def get_dimension(dim):
@@ -384,7 +407,7 @@ def get_dimension(dim):
     return perm
 default_poly = schlafli("144")
 
-def animate_polyhedron(changed=False):
+def animate_polytope(changed=False):
     if not vertices:
         return
     glClear(GL_COLOR_BUFFER_BIT)
@@ -426,12 +449,11 @@ def animate_polyhedron(changed=False):
         spec.dims = dims
         spec.dimcount = dimcount
         spec.rotmat = np.identity(dims)
-        glPopMatrix()
-        gluPerspective(45, 1, 1/16, 6)
-        glTranslatef(0, 0, -2.5)
+        glLoadIdentity()
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        glPushMatrix()
+        gluPerspective(45, 1, 1/16, 6)
+        glTranslatef(0, 0, -2.5)
     w, h = specsize
     thickness = specsize[0] / 64 / max(1, (len(poly) + 2 >> 1) ** 0.5)
     glLineWidth(max(1, thickness))
@@ -466,47 +488,47 @@ def animate_polyhedron(changed=False):
     glEnableClientState(GL_COLOR_ARRAY)
     try:
         radii = globals()["poly-r"]
-        # if radii.shape[1] != len(poly):
-        #     raise KeyError
     except KeyError:
         r = np.array([bar.x / len(bars) for bar in bars], dtype=np.float16)
-        # r = np.tile(r, (len(poly), 3)).reshape((len(bars), len(poly), 3))
         radii = globals()["poly-r"] = r
 
     try:
         hsv = globals()["poly-hsv"]
     except KeyError:
-        hsv = globals()["poly-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
+        hsv = globals()["poly-hsv"] = np.empty((len(bars), 4), dtype=np.float16)
+    try:
+        rgba = globals()["poly-rgba"]
+    except KeyError:
+        rgba = globals()["poly-rgba"] = np.empty((len(bars), 4), dtype=np.float32)
     try:
         hue = globals()["poly-h"]
     except KeyError:
-        hh = [1 - bar.x / barcount / freqscale2 for bar in bars]
+        hh = [1 - bar.x / len(bars) for bar in bars]
         hue = globals()["poly-h"] = np.array(hh, dtype=np.float16)
     H = hue + (pc_ / 4 + sin(pc_ * tau / 12) / 6) % 1
     hsv.T[0][:] = H % 1
     alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
-    sat = np.clip(alpha - 1, None, 1)
+    sat = np.clip(alpha - 1, 0, 1)
     np.subtract(1, sat, out=sat)
     hsv.T[1][:] = sat
-    np.clip(hsv, None, 1, out=hsv)
     hsv.T[:2] *= 255
-    hsv = hsv.astype(np.uint8)
-    hsv.T[2][:] = 255
-    img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
-    colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
+    hsv2 = hsv.T[:3].T.astype(np.uint8)
+    hsv2.T[2][:] = 255
+    img = Image.frombuffer("HSV", (len(bars), 1), hsv2.tobytes()).convert("RGB")
+    rgba.T[:3].T[:] = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 3))
+    colours = rgba
     colours.T[:3] *= 1 / 255
     mult = np.linspace(alpha_mult, 0, len(alpha))
-    # mult **= 2
     alpha *= mult
     colours.T[-1][:] = alpha
+
     maxb = sqrt(max(bar.height for bar in bars))
     ratio = min(48, max(8, 36864 / (len(poly) + 2 >> 1)))
     barm = sorted(((bar.height, i) for i, bar in enumerate(bars) if sqrt(bar.height) > maxb / ratio), reverse=True)
     bari = sorted((i for _, i in barm[:round_random(ratio * 2)]), reverse=True)
-    # print(ratio, len(bari))
     if bari:
         radiii = radii[bari]
-        colours = np.tile(colours[bari].astype(np.float32), (1, len(poly))).reshape((len(bari), len(poly), 4))
+        colours = np.tile(colours[bari], (1, len(poly))).reshape((len(bari), len(poly), 4))
         verts = np.stack([poly.astype(np.float32)] * len(bari))
         for v, r in zip(verts, radiii):
             v *= r
@@ -525,14 +547,17 @@ def animate_polyhedron(changed=False):
     return sfx
 
 def animate_ripple(changed=False):
-    if not vertices:
+    if not vertices or not vertices[0]:
         return
+    V, R = vertices
     glClear(GL_COLOR_BUFFER_BIT)
     bars = bars2[::-1]
     try:
         if changed:
             raise KeyError
         spec = globals()["ripple-s"]
+        if spec.R != R:
+            raise KeyError
     except KeyError:
         class Ripple_Spec:
             angle = 0
@@ -540,20 +565,30 @@ def animate_ripple(changed=False):
             ry = 0
             rz = 0
         spec = globals()["ripple-s"] = Ripple_Spec
-        glPopMatrix()
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-        glPushMatrix()
+        if R:
+            glLoadIdentity()
+            glMatrixMode(GL_MODELVIEW)
+            glLoadIdentity()
+        else:
+            glLoadIdentity()
+            glMatrixMode(GL_PROJECTION)
+            glLoadIdentity()
+            gluPerspective(45, 1, 1 / 16, 6)
+            glTranslatef(0, 0, -2.5)
+        spec.R = R
     w, h = specsize
     depth = 3
     glLineWidth(specsize[0] / 64 / depth)
-    rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
-    ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
-    rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-    glRotatef(0.5, rx, ry, rz)
-    spec.rx = (spec.rx + rx) % 360
-    spec.ry = (spec.ry + ry) % 360
-    spec.rz = (spec.rz + rz) % 360
+    if R:
+        rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
+        ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+        rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+        glRotatef(-0.5, rx, ry, rz)
+        spec.rx = (spec.rx + rx) % 360
+        spec.ry = (spec.ry + ry) % 360
+        spec.rz = (spec.rz + rz) % 360
+    else:
+        glRotatef(-0.5, 0, 0, 1)
     glEnableClientState(GL_VERTEX_ARRAY)
     glEnableClientState(GL_COLOR_ARRAY)
     try:
@@ -566,60 +601,82 @@ def animate_ripple(changed=False):
     try:
         hsv = globals()["ripple-hsv"]
     except KeyError:
-        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
+        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 4), dtype=np.float16)
+    try:
+        rgba = globals()["ripple-rgba"]
+    except KeyError:
+        rgba = globals()["ripple-rgba"] = np.empty((len(bars), 4), dtype=np.float32)
     try:
         hue = globals()["ripple-h"]
     except KeyError:
-        hh = [1 - bar.x / barcount / freqscale2 for bar in bars]
+        hh = [1 - bar.x / len(bars) for bar in bars]
         hue = globals()["ripple-h"] = np.array(hh, dtype=np.float16)
-    H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
+    if R:
+        H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
+    else:
+        H = hue - (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
     hsv.T[0][:] = H % 1
     alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
-    sat = np.clip(alpha - 1, None, 1)
+    sat = np.clip(alpha - 1, 0, 1)
     np.subtract(1, sat, out=sat)
     hsv.T[1][:] = sat
-    np.clip(hsv, None, 1, out=hsv)
     hsv.T[:2] *= 255
-    hsv = hsv.astype(np.uint8)
-    hsv.T[2][:] = 255
-    img = Image.frombuffer("HSV", (len(bars), 1), hsv.tobytes()).convert("RGBA")
-    colours = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 4)).astype(np.float16)
-    colours.T[:3] *= 1 / 255
+    hsv2 = hsv.T[:3].T.astype(np.uint8)
+    hsv2.T[2][:] = 255
+    img = Image.frombuffer("HSV", (len(bars), 1), hsv2.tobytes()).convert("RGB")
+    rgba.T[:3].T[:] = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 3))
+    rgba.T[:3] *= 1 / 255
     mult = np.linspace(1, 0, len(alpha))
-    # mult **= 2
+    if R:
+        mult **= 2
     alpha *= mult
-    colours.T[-1][:] = alpha
-    colours = np.repeat(colours.astype(np.float32), 2, axis=0)[1:-1]
-    colours = np.tile(colours, (vertices * depth, 1))
+    rgba.T[-1][:] = alpha
+    colours = np.repeat(rgba, 2, axis=0)[1:-1]
+    colours = np.tile(colours, (V * depth, 1))
+
     hi = hue + pc_ / 3 % 1
     hi *= -tau
     np.sin(hi, out=hi)
     hi *= 0.25
     hi = np.repeat(hi.astype(np.float32), 2, axis=0)[1:-1]
-    hi = np.tile(hi, (vertices * depth, 1)).T
-    maxlen = ceil(384 / vertices)
-    if linearray.maxlen != maxlen:
-        globals()["linearray"] = deque(maxlen=maxlen)
-    vertarray = np.empty((depth * vertices, len(bars), 3), dtype=np.float16)
+    hi = np.tile(hi, (V * depth, 1)).T
+    maxlen = ceil(384 / V)
+    vertarray = None
+    if "linearray" not in globals() or linearray.maxlen != maxlen + 1:
+        globals()["linearray"] = deque(maxlen=maxlen + 1)
+    elif len(linearray) > maxlen:
+        vertarray = linearray.popleft()[-1].swapaxes(0, 1)[:len(bars)].swapaxes(0, 1)
+    if vertarray is None:
+        vertarray = np.empty((depth * V, len(bars), 3), dtype=np.float16)
     linearray.append([colours, None])
+    angle = spec.angle + tau - tau / V
+    zs = np.linspace(spec.angle, angle, V)
     i = 0
     for _ in range(depth):
-        angle = spec.angle + tau - tau / vertices if vertices else spec.angle
-        zs = np.linspace(spec.angle, angle, vertices)
         directions = ([cos(z), sin(z), 1] for z in zs)
         for d in directions:
             vertarray[i][:] = radii * d
             i += 1
-        spec.angle += 1 / 360 / depth * tau
-    linearray[-1][-1] = np.repeat(vertarray.astype(np.float32), 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
+        x = tau / 360 / depth
+        spec.angle = (spec.angle + x) % tau
+        zs += x
+    try:
+        rva32 = globals()["rva32"]
+        if rva32.shape != vertarray.shape:
+            raise KeyError
+    except KeyError:
+        rva32 = globals()["rva32"] = vertarray.astype(np.float32)
+    else:
+        rva32[:] = vertarray
+    rva = np.repeat(rva32, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
+    linearray[-1][-1] = rva
     r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
-    for c, m in linearray:
-        c.T[-1] *= r
+    for c, verts in linearray:
         glColorPointer(4, GL_FLOAT, 0, c.ravel())
-        verts = np.asanyarray(m, dtype=np.float32)
         verts.T[-1][:] = hi
         glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
         glDrawArrays(GL_LINES, 0, len(c))
+        c.T[-1] *= r
     glFlush()
     x = y = 0
     if specsize[0] > ssize2[0]:
@@ -631,7 +688,7 @@ def animate_ripple(changed=False):
 
 bars = [Bar(i - 1, barcount) for i in range(barcount)]
 bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
-linearray = deque()
+bars3 = [Bar(i - 1, barcount3) for i in range(barcount3)]
 last = None
 # r = 23 / 24
 # s = 1 / 48
@@ -642,7 +699,7 @@ last = None
 # )
 
 def spectrogram_render(bars):
-    global ssize2, specs, dur, last
+    global ssize2, specs, dur, last, sp_changed
     try:
         if specs == 1:
             sfx = pygame.Surface((barcount - 2, barheight))
@@ -652,16 +709,15 @@ def spectrogram_render(bars):
         elif specs == 2:
             func = animate_prism
         elif specs == 3:
-            func = animate_polyhedron
+            func = animate_polytope
         else:
             func = animate_ripple
         if last != func:
             last = func
-            changed = True
-        else:
-            changed = False
+            sp_changed = True
         if func:
-            sfx = func(changed)
+            sfx = func(sp_changed)
+        sp_changed = False
 
         if specs == 1:
             if sfx.get_size() != ssize2:
@@ -733,7 +789,7 @@ def setup_window(size):
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glBlendEquation(GL_FUNC_ADD)
     glPixelStorei(GL_PACK_ALIGNMENT, 1)
-    glPushMatrix()
+    globals()["sp_changed"] = True
     return window
 
 glfw.init()
@@ -750,12 +806,23 @@ while True:
                 specsize = ssize3
                 glfw.destroy_window(window)
                 window = setup_window(specsize)
-            bi = bars2 if specs in (4, 5) else bars
+            if specs == 2:
+                bi = bars3
+            elif specs == 4:
+                bi = bars2
+            else:
+                bi = bars
             spectrogram_render(bi)
         elif line == b"~e":
             b = sys.stdin.buffer.readline()
-            amp = np.frombuffer(sys.stdin.buffer.read(int(b)), dtype=np.float16)
-            bi = bars2 if len(amp) > len(bars) else bars
+            b = sys.stdin.buffer.read(int(b))
+            amp = np.frombuffer(b, dtype=np.float16)
+            if specs == 2:
+                bi = bars3
+            elif specs == 4:
+                bi = bars2
+            else:
+                bi = bars
             for i, pwr in enumerate(amp):
                 bi[i].ensure(pwr / 2)
         elif not line:

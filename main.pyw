@@ -1254,6 +1254,7 @@ def prepare(entry, force=False, download=False):
                         fn = select_and_convert(fi)
                     duration = get_duration_2(fn)[0]
                     stream = entry.stream = fn
+                globals()["queue-length"] = -1
             entry.duration = duration or entry.duration
             return entry.stream
         ytdl = downloader.result()
@@ -1270,6 +1271,7 @@ def prepare(entry, force=False, download=False):
                 duration = get_duration_2(fn)[0]
                 stream = entry.stream = fn
                 entry.duration = duration or entry.duration
+                globals()["queue-length"] = -1
                 return stream
             entry.url = ""
             print_exc()
@@ -1281,6 +1283,7 @@ def prepare(entry, force=False, download=False):
                 entry.pop("lyrics_loading", None)
                 if len(resp) == 1:
                     submit(render_lyrics, queue[0])
+            globals()["queue-length"] = -1
             entry.update(data)
             if len(resp) > 1:
                 try:
@@ -1300,6 +1303,7 @@ def prepare(entry, force=False, download=False):
             stream = data[0].setdefault("stream", data[0].url)
         else:
             stream = ytdl.get_stream(entry, force=True, download=False)
+        globals()["queue-length"] = -1
     elif not is_url(stream) and not os.path.exists(stream):
         entry.stream = os.path.exists(entry.url) and entry.url
         duration = entry.duration
@@ -1313,6 +1317,7 @@ def prepare(entry, force=False, download=False):
                     fn = select_and_convert(fi)
                 duration = get_duration_2(fn)[0]
                 stream = entry.stream = fn
+            globals()["queue-length"] = -1
         entry.duration = duration or entry.duration
         return entry.stream
     else:
@@ -1329,6 +1334,7 @@ def prepare(entry, force=False, download=False):
                 fn = select_and_convert(fi)
             duration = get_duration_2(fn)[0]
             stream = entry.stream = fn
+        globals()["queue-length"] = -1
     elif stream and is_url(stream) and download:
         es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
         mixer.submit(f"~download {es} cache/~{shash(entry.url)}.pcm")
@@ -1515,7 +1521,7 @@ def play():
                             restart_mixer()
                         continue
                     b += mixer.stderr.read(req - len(b))
-                osci = pygame.image.frombuffer(b, osize, "RGB").convert()
+                osci = pygame.image.frombuffer(b, osize, "RGB")
                 osci.set_colorkey((0,) * 3)
                 player.osci = osci
             else:
@@ -1530,7 +1536,9 @@ def play():
                             restart_mixer()
                         continue
                     b += mixer.stderr.read(req - len(b))
-                spec = pygame.image.frombuffer(b, ssize, "RGB").convert()
+                if not options.spectrogram:
+                    continue
+                spec = pygame.image.frombuffer(b, ssize, "RGB")
                 player.spec = spec
                 player.pop("spec_used", None)
     except:
@@ -1887,22 +1895,35 @@ def update_menu():
     toolbar.pause.speed *= 0.995 ** (duration * 480)
     sidebar.scroll.target = max(0, min(sidebar.scroll.target, len(queue) * 32 - screensize[1] + options.toolbar_height + 36 + 32))
     r = ratio if sidebar.scrolling else (ratio - 1) / 3 + 1
-    sidebar.scroll.pos = (sidebar.scroll.pos * (r - 1) + sidebar.scroll.target) / r
+    if abs(sidebar.scroll.pos - sidebar.scroll.target) < 1 / 32:
+        sidebar.scroll.pos = sidebar.scroll.target
+    else:
+        sidebar.scroll.pos = (sidebar.scroll.pos * (r - 1) + sidebar.scroll.target) / r
     sidebar.maxitems = mi = ceil(screensize[1] - options.toolbar_height - 36 + sidebar.scroll.pos % 32) // 32
     sidebar.base = max(0, int(sidebar.scroll.pos // 32))
     # print(sidebar.scroll.target, sidebar.scroll.pos, sidebar.maxitems, sidebar.base)
     m2 = mi + 1
     if toolbar.editor:
         for i, entry in enumerate(sidebar.instruments[sidebar.base:sidebar.base + mi], sidebar.base):
-            i2 = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
-            if abs(i2 - i) > m2:
+            if i == entry.setdefault("pos", 0):
+                continue
+            i2 = (entry.pos * (ratio - 1) + i) / ratio
+            d = abs(i2 - i)
+            if d > m2:
                 i2 = i + (m2 if i2 > i else -m2)
+            elif d < 1 / 32:
+                i2 = i
             entry.pos = i2
     else:
         for i, entry in enumerate(queue[sidebar.base:sidebar.base + mi], sidebar.base):
-            i2 = (entry.get("pos", 0) * (ratio - 1) + i) / ratio
-            if abs(i2 - i) > m2:
+            if i == entry.setdefault("pos", 0):
+                continue
+            i2 = (entry.pos * (ratio - 1) + i) / ratio
+            d = abs(i2 - i)
+            if d > m2:
                 i2 = i + (m2 if i2 > i else -m2)
+            elif d < 1 / 32:
+                i2 = i
             entry.pos = i2
     if kclick[K_SPACE]:
         pause_toggle()
@@ -2261,7 +2282,7 @@ def spinnies():
             progress.vis = (progress.vis * (ratio - 1) + player.pos) / ratio
             progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio)
             progress.angle = -t * pi
-            pops = set()
+            pops = deque()
             for i, p in sorted(enumerate(progress.particles), key=get_spinny_life):
                 if not p:
                     break
@@ -2271,7 +2292,7 @@ def spinnies():
                     p.rad = max(0, p.rad - 12 * dur)
                     p.hsv[2] = max(p.hsv[2] - dur / 5, 0)
                 if p.life < 3:
-                    pops.add(i)
+                    pops.append(i)
             try:
                 progress.particles.pops(pops)
             except IndexError:
@@ -2673,7 +2694,25 @@ def draw_menu():
                 if p:
                     paste_queue = lambda: submit(enqueue_auto, *p.splitlines())
                     sidebar.menu.buttons = (("Paste", paste_queue),) + sidebar.menu.buttons
-    if (sidebar.updated or not tick & 7 or in_rect(mpos2, sidebar.rect) and (any(mclick) or any(kclick))) and sidebar.colour:
+    if tick & 7:
+        cond = False
+    elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scrolling or in_rect(mpos2, sidebar.rect) or sidebar.abspos:
+        cond = True
+    else:
+        if toolbar.editor:
+            q = sidebar.instruments
+        else:
+            q = queue
+        cond = any(i != e.pos or e.get("selected") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
+    if cond:
+        globals()["last-cond"] = True
+    elif globals().get("last-cond"):
+        cond = globals().pop("last-cond", None)
+    elif not tick % 120:
+        cond = True
+    sidebar_rendered = False
+    if (cond or sidebar.updated or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
+        sidebar_rendered = True
         if toolbar.editor:
             render_sidebar_2(dur)
         else:
@@ -3293,38 +3332,46 @@ def draw_menu():
                     )
                 elif s == 4:
                     def change_vertices():
+                        vertices = options.control["spiral-vertices"]
+                        v = vertices[0]
                         enter = easygui.get_string(
                             "Change vertex count",
                             "Miza Player",
-                            str(options.control.get("spiral-vertices")),
+                            str(v),
                         )
                         if enter:
                             enter = int(float(enter))
                             if enter > 384:
                                 enter = 384
-                            options.control["spiral-vertices"] = enter
-                            mixer.submit(f"~setting #spiral-vertices {enter}")
+                            vertices[0] = enter
+                            mixer.submit(f"~setting #spiral-vertices {vertices}")
+                    def toggle_rotation():
+                        vertices = options.control["spiral-vertices"]
+                        vertices[1] = int(not vertices[1])
+                        mixer.submit(f"~setting #spiral-vertices {vertices}")
 
                     sidebar.menu = cdict(
                         buttons=(
                             ("Change vertex count", change_vertices),
+                            ("Toggle rotation", toggle_rotation),
                         ),
                     )
             else:
                 player.flash_s = 32
                 options.spectrogram = (options.get("spectrogram", 0) + 1) % 5
-                if options.spectrogram == 2:
-                    options.spectrogram += 1
+                # if options.spectrogram == 2:
+                #     options.spectrogram += 1
                 mixer.submit(f"~setting spectrogram {options.spectrogram}")
                 if not options.spectrogram and queue:
                     submit(render_lyrics, queue[0])
+                    player.spec = None
     if mclick[0] and in_rect(mpos, osci_rect) and not toolbar.resizer:
         player.flash_o = 32
         options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
         mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
     if toolbar.editor:
         editor_toolbar()
-    if (mclick[0] or not tick & 7) and sidebar.get("dragging"):
+    if sidebar_rendered and sidebar.get("dragging"):
         if toolbar.editor:
             render_dragging_2()
         else:
@@ -3672,7 +3719,10 @@ try:
                         if tuple(srect) != surf.get_size():
                             specf = True
                             s2 = HWSurface.any(srect, FLAGS)
-                            player.specr_fut = pygame.transform.scale(surf, srect, s2)
+                            try:
+                                player.specr_fut = pygame.transform.scale(surf, srect, s2)
+                            except ValueError:
+                                player.specr_fut = pygame.transform.scale(surf.convert(), srect, s2)
                         else:
                             player.specr_fut = surf
                         prect = rect[:2]
@@ -4023,13 +4073,13 @@ try:
 except Exception as ex:
     futs = set()
     futs.add(submit(requests.delete, mp))
+    try:
+        os.remove(collections2f)
+    except:
+        pass
+    futs.add(submit(update_collections2))
     save_settings()
     if restarting:
-        futs.add(submit(update_collections2))
-        try:
-            os.remove(collections2f)
-        except:
-            pass
         futs.add(submit(os.system, f"start /MIN cmd /k {sys.executable} main.pyw"))
     pygame.closed = True
     if type(ex) is not StopIteration:

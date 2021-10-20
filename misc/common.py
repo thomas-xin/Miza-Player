@@ -1,8 +1,7 @@
-import os, sys, json, traceback, subprocess, copy, time, concurrent.futures
+import os, sys, subprocess, time, concurrent.futures
 
 if os.name != "nt":
     raise NotImplementedError("This program is currently implemented to use Windows API and filesystem only.")
-
 
 async_wait = lambda: time.sleep(0.004)
 utc = time.time
@@ -49,7 +48,6 @@ def _settimeout(*args, timeout=0, **kwargs):
         time.sleep(timeout)
     args[0](*args[1:], **kwargs)
 settimeout = lambda *args, **kwargs: submit(_settimeout, *args, **kwargs)
-print_exc = traceback.print_exc
 
 from rainbow_print import *
 
@@ -91,9 +89,9 @@ class MultiAutoImporter:
             _globals.update(zip(args, futs))
 
 importer = MultiAutoImporter(
-    "psutil", "soundcard", "ctypes, struct, io", "requests", "PIL, easygui, easygui_qt, numpy, math",
+    "psutil", "soundcard", "ctypes, struct, io", "requests", "PIL, easygui, easygui_qt, numpy, math, traceback",
     "cffi, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, zipfile",
-    "pickle, PyQt5, hashlib, base64, urllib, datetime, weakref, orjson",
+    "pygame, pickle, PyQt5, hashlib, base64, urllib, datetime, weakref, orjson, copy, json",
     pool=exc,
     _globals=globals(),
 )
@@ -113,6 +111,7 @@ except FileNotFoundError:
 hasmisc = os.path.exists("misc")
 argp = [sys.executable]
 pyv = sys.version_info[1]
+print_exc = traceback.print_exc
 from install_update_p import *
 
 
@@ -165,11 +164,11 @@ if update_collections:
 
     def add_to_path():
         p = os.path.abspath("sndlib")
-        PATH = set(i.rstrip("/\\") for i in os.getenv("PATH", "").split(os.pathsep))
+        PATH = set(i.rstrip("/\\") for i in os.getenv("PATH", "").split(os.pathsep) if i)
         if p not in PATH:
             print(f"Adding {p} to PATH...")
             PATH.add(p)
-            s = os.pathsep.join(PATH) + os.pathsep
+            s = os.pathsep.join(PATH)
             subprocess.run(["setx", "path", s])
             os.environ["PATH"] = s
 
@@ -181,12 +180,11 @@ if update_collections:
     except FileNotFoundError:
         url = "https://dl.dropboxusercontent.com/s/q34exu54opnilli/sndlib.zip?dl=1"
         subprocess.run((sys.executable, "downloader.py", url, "ffmpeg.zip"), cwd="misc")
-        print("Sound library extraction complete.")
-        import zipfile
         with zipfile.ZipFile("misc/ffmpeg.zip", "r") as z:
             z.extractall("sndlib")
         os.remove("misc/ffmpeg.zip")
         add_to_path()
+        print("Sound library extraction complete.")
 
 
 def state(i):
@@ -213,8 +211,8 @@ def mixer_submit(s, force, debug):
         ts = pc()
         if laststart:
             diff = ts - min(laststart)
-            if diff < 0.5:
-                delay = 0.5 - diff
+            if diff < 0.4:
+                delay = 0.4 - diff
                 laststart.add(ts)
                 time.sleep(delay)
                 if ts < max(laststart):
@@ -276,7 +274,7 @@ control_default = cdict(
     autoupdate=0,
 )
 control_default["gradient-vertices"] = (4, 3, 3)
-control_default["spiral-vertices"] = 24
+control_default["spiral-vertices"] = [24, 1]
 editor_default = cdict(
     mode="I",
     freeform=False,
@@ -359,8 +357,10 @@ if options.toolbar_height < 64:
 options.audio = audio_default.union(options.get("audio") or ())
 options.control = control_default.union(options.get("control") or ())
 options.editor = editor_default.union(options.get("editor") or ())
-
 orig_options = copy.deepcopy(options)
+
+if not isinstance(options.control.get("spiral-vertices"), list):
+    options.control["spiral-vertices"] = [options.control["spiral-vertices"], 1]
 
 
 sc = soundcard.force()
@@ -371,10 +371,10 @@ OUTPUT_DEVICE = DEVICE.name
 reset_menu = lambda *args, **kwargs: None
 
 def start_mixer():
-    global mixer, hwnd, pygame, user32
+    global mixer, hwnd
     if "mixer" in globals() and mixer and mixer.is_running():
         mixer.kill()
-    if "pygame" in globals() and getattr(pygame, "closed", None):
+    if "DISP" in globals() and getattr(pygame, "closed", None):
         return
     mixer = psutil.Popen(
         argp + ["misc/mixer.py"],
@@ -383,11 +383,8 @@ def start_mixer():
         stderr=subprocess.PIPE,
         bufsize=1048576,
     )
-    if "pygame" not in globals():
-        user32 = ctypes.windll.user32
-        user32.SetProcessDPIAware()
+    if "DISP" not in globals():
         write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
-        import pygame
         sys.stdout.write = write
         start_display()
     else:
@@ -403,7 +400,7 @@ def start_mixer():
             s.append(("%" + str(hwnd) + "\n"))
             d = options.audio.copy()
             d.update(options.control)
-            j = json.dumps(d, separators=(",", ":"))
+            j = orjson.dumps(d).decode("utf-8")
             s.append(f"~setting #{j}\n")
             s.append(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
             s.append(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
@@ -421,9 +418,11 @@ def start_mixer():
     return mixer
 
 def start_display():
-    global DISP, screensize2, ICON, ICON_DISP
+    global DISP, screensize2, ICON, ICON_DISP, user32
     appid = "Miza Player \x7f"
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
+    user32 = ctypes.windll.user32
+    user32.SetProcessDPIAware()
     if hasmisc:
         icon = pygame.image.load("misc/icon.png")
         ICON = pygame.transform.smoothscale(icon, (64, 64))
@@ -850,20 +849,27 @@ def update_collections2():
         b = resp.content
     with open(collections2f, "wb") as f:
         f.write(b)
+    print("collections2.tmp updated.")
     if "alist" in globals():
         return
     cd = cdict
     exec(compile(b, "collections2.tmp", "exec"), globals())
     globals()["cdict"] = cd
-    print("collections2.tmp updated.")
 
 repo_fut = None
 if not os.path.exists(collections2f):
     update_collections2()
     repo_fut = submit(update_repo)
-with open(collections2f, "rb") as f:
-    b = f.read()
-exec(compile(b, "collections2.tmp", "exec"), globals())
+try:
+    with open(collections2f, "rb") as f:
+        b = f.read()
+    b = b.strip(b"\x00")
+    if not b:
+        raise FileNotFoundError
+    exec(compile(b, "collections2.tmp", "exec"), globals())
+except FileNotFoundError:
+    update_collections2()
+    repo_fut = submit(update_repo)
 if utc() - os.path.getmtime(collections2f) > 3600:
     submit(update_collections2)
 repo_fut = submit(update_repo)
@@ -2400,14 +2406,14 @@ def select_and_convert(stream):
     return convert(b)
 
 
-def supersample(a, size, hq=False):
+def supersample(a, size, hq=False, in_place=False):
     n = len(a)
     if n == size:
         return a
     if n < size:
         if hq:
             a = samplerate.resample(a, size / len(a), "sinc_fastest")
-            return supersample(a, size)
+            return supersample(a, size, in_place=in_place)
         interp = np.linspace(0, n - 1, size)
         return np.interp(interp, range(n), a)
     try:
@@ -2416,8 +2422,16 @@ def supersample(a, size, hq=False):
         dtype = object
     ftype = np.float64 if dtype is object or issubclass(dtype.type, np.integer) else dtype
     x = ceil(n / size)
-    interp = np.linspace(0, n - 1, x * size, dtype=ftype)
+    args = ("ss-interps", 0, n - 1, x * size)
+    try:
+        if not in_place:
+            raise KeyError
+        interp = globals()[args]
+    except KeyError:
+        interp = globals()[args] = np.linspace(*args[1:], dtype=ftype)
     a = np.interp(interp, range(n), a)
+    if in_place:
+        return np.mean(a.reshape(-1, x), 1, out=a[:size])
     return np.mean(a.reshape(-1, x), 1, dtype=dtype)
 
 

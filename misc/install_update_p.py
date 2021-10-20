@@ -12,11 +12,11 @@ if "\\AppData\\" in sys.executable:
     for p in paths:
         if not os.path.exists(p):
             continue
-        PATH = set(i.rstrip("/\\") for i in os.getenv("PATH", "").split(os.pathsep))
+        PATH = set(i.rstrip("/\\") for i in os.getenv("PATH", "").split(os.pathsep) if i)
         if p not in PATH:
             print(f"Adding {p} to PATH...")
             PATH.add(p)
-            s = os.pathsep.join(PATH) + os.pathsep
+            s = os.pathsep.join(PATH)
             subprocess.run(["setx", "path", s])
             os.environ["PATH"] = s
 

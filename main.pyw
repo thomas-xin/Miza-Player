@@ -2698,6 +2698,8 @@ def draw_menu():
         cond = False
     elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scrolling or in_rect(mpos2, sidebar.rect) or sidebar.abspos:
         cond = True
+    elif CTRL(kheld) and (kc2[K_a] or kc2[K_s]):
+        cond = True
     else:
         if toolbar.editor:
             q = sidebar.instruments
@@ -2706,12 +2708,12 @@ def draw_menu():
         cond = any(i != e.pos or e.get("selected") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
     if cond:
         globals()["last-cond"] = True
-    elif globals().get("last-cond"):
+    elif not tick & 7 and globals().get("last-cond"):
         cond = globals().pop("last-cond", None)
     elif not tick % 120:
         cond = True
     sidebar_rendered = False
-    if (cond or sidebar.updated or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
+    if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
         sidebar_rendered = True
         if toolbar.editor:
             render_sidebar_2(dur)
@@ -3477,6 +3479,7 @@ for i in range(26):
 for i in range(1, 11):
     globals()[f"K_{i % 10}"] = i + 29
 code = ""
+K_ESCAPE = 41
 K_BACKSPACE = 42
 K_SPACE = 44
 K_EQUALS = 46
@@ -3628,33 +3631,38 @@ try:
             addi.result()
             addp.result()
             lpos = mpos
-            mprev = mheld
-            mheld = get_pressed()
-            mc4 = astype(mc3, list)
-            mc3 = astype(mc2, list)
-            mc2 = astype(mclick, list)
-            mclick = [x and not y for x, y in zip(mheld, mprev)]
-            for i in range(len(mclick)):
-                mc2[i] = mc2[i] or mclick[i]
-                mc3[i] = mc3[i] or mclick[i]
-                mc4[i] = mc4[i] or mclick[i]
-            mrelease = [not x and y for x, y in zip(mheld, mprev)]
-            mpos2 = mouse_rel_pos()
-            mpos3 = pygame.mouse.get_pos()
-            if foc:
-                mpos = mpos3
-            else:
-                mpos = (nan,) * 2
-            kprev = kheld
-            kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
-            kc2 = astype(kclick, np.bool_)
-            kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
-            np.logical_or(kc2, kclick, out=kc2)
-            krelease = [not x and y for x, y in zip(kheld, kprev)]
-            kspam = KeyList(x == 1 or y >= 20 for x, y in zip(kclick, kheld))
-            # if any(kclick):
-            #     print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
+            if not tick & 3:
+                mprev = mheld
+                mheld = get_pressed()
+                mc4 = astype(mc3, list)
+                mc3 = astype(mc2, list)
+                mc2 = astype(mclick, list)
+                mclick = [x and not y for x, y in zip(mheld, mprev)]
+                for i in range(len(mclick)):
+                    mc2[i] = mc2[i] or mclick[i]
+                    mc3[i] = mc3[i] or mclick[i]
+                    mc4[i] = mc4[i] or mclick[i]
+                mrelease = [not x and y for x, y in zip(mheld, mprev)]
+                mpos2 = mouse_rel_pos()
+                mpos3 = pygame.mouse.get_pos()
+                if foc:
+                    mpos = mpos3
+                else:
+                    mpos = (nan,) * 2
+                kprev = kheld
+                kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
+                # kc3 = astype(kc2, np.bool_)
+                kc2 = astype(kclick, np.bool_)
+                kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
+                np.logical_or(kc2, kclick, out=kc2)
+                # np.logical_or(kc3, kclick, out=kc3)
+                krelease = [not x and y for x, y in zip(kheld, kprev)]
+                kspam = KeyList(x == 1 or y >= 20 for x, y in zip(kclick, kheld))
+                # if any(kclick):
+                #     print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
             if kclick[K_BACKQUOTE]:
+                if code:
+                    _ = code
                 output = easygui.textbox(
                     "Debug mode",
                     "Miza Player",
@@ -3674,7 +3682,7 @@ try:
                     except:
                         output = traceback.format_exc()
                     output = output.strip()
-                    code = output
+                    _ = code = output
                     output = easygui.textbox(
                         orig,
                         "Miza Player",
@@ -3746,7 +3754,7 @@ try:
                                 prect,
                             )
                             modified.add(player.rect)
-            if not tick & 3 or mpos != lpos or (mpos2 != lpos and any(mheld)) or any(mclick) or any(kclick) or any(mrelease) or any(isnan(x) != isnan(y) for x, y in zip(mpos, lpos)):
+            if not tick & 3:
                 try:
                     update_menu()
                 except:
@@ -3758,7 +3766,6 @@ try:
                 player.last = 0
                 progress.num = 0
                 progress.alpha = 0
-                # player.pop("spec", None)
             if not tick + 6 & 7 and toolbar.editor:
                 render_piano()
                 if modified:
@@ -4044,7 +4051,7 @@ try:
                 raise StopIteration
             elif event.type == MOUSEWHEEL:
                 if in_rect(mpos, sidebar.rect):
-                    sidebar.scroll.target -= event.y * 32
+                    sidebar.scroll.target -= event.y * 48
                 elif toolbar.editor and in_rect(mpos, player.rect):
                     player.editor.targ_y += event.y * 3.5
                     player.editor.targ_x += event.x * 3.5

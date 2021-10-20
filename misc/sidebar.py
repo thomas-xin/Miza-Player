@@ -200,7 +200,7 @@ def render_sidebar(dur=0):
                     entry.pop("selected", None)
                 sidebar.pop("last_selected", None)
                 lq = nan
-        elif kc2[K_ESCAPE]:
+        if kc2[K_ESCAPE] and sidebar.get("last_selected"):
             for entry in queue:
                 entry.pop("selected", None)
             sidebar.pop("last_selected", None)

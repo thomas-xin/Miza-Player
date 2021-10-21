@@ -134,22 +134,19 @@ class Bar(Particle):
         self.cache = {}
 
     def update(self, dur=1):
-        if specs == 3:
-            rat = 1 / 60
-        else:
-            rat = 0.2
         if self.height:
-            self.height = self.height * rat ** dur - 1
-            if self.height < 0:
+            self.height = self.height * 0.16 ** dur
+            if self.height < 1:
                 self.height = 0
         if self.height2:
-            self.height2 = self.height2 * rat ** dur - 1
-            if self.height2 < 0:
+            self.height2 = self.height2 * 0.32 ** dur
+            if self.height2 < 1:
                 self.height2 = 0
 
     def ensure(self, value):
         if self.height < value:
             self.height = value
+        value *= sqrt(2)
         if self.height2 < value:
             self.height2 = value
 
@@ -176,26 +173,27 @@ class Bar(Particle):
 
     def post_render(self, sfx, scale, **void):
         size = self.height2
-        if size > 8:
-            ix = barcount - 1 - self.x - 1
-            sx = ix / barcount * ssize2[0]
-            w = (ix + 1) / barcount * ssize2[0] - sx
-            alpha = round_random(85 * scale) * 3
-            t = (self.line, self.fsize)
-            if t not in TEXTS:
-                TEXTS[t] = self.font.render(self.line, True, (255,) * 3)
-            surf = TEXTS[t]
-            if alpha < 255:
-                try:
-                    surf = self.cache[alpha]
-                except KeyError:
-                    surf = surf.copy()
-                    surf.fill((255,) * 3 + (alpha,), special_flags=pygame.BLEND_RGBA_MULT)
-                    self.cache[alpha] = surf
-            width, height = surf.get_size()
-            x = round(sx + w / 2 - width / 2)
-            y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
-            sfx.blit(surf, (x, y))
+        if size < 8:
+            return
+        ix = barcount - 2 - self.x
+        sx = ix / (barcount - 2) * ssize2[0]
+        w = (ix + 1) / (barcount - 2) * ssize2[0] - sx
+        alpha = round_random(85 * scale) * 3
+        t = (self.line, self.fsize)
+        if t not in TEXTS:
+            TEXTS[t] = self.font.render(self.line, True, (255,) * 3)
+        surf = TEXTS[t]
+        if alpha < 255:
+            try:
+                surf = self.cache[alpha]
+            except KeyError:
+                surf = surf.copy()
+                surf.fill((255,) * 3 + (alpha,), special_flags=pygame.BLEND_RGBA_MULT)
+                self.cache[alpha] = surf
+        width, height = surf.get_size()
+        x = round(sx + w / 2 - width / 2)
+        y = round_random(max(84, ssize2[1] - size + 12 - width * (sqrt(5) + 1)))
+        sfx.blit(surf, (x, y))
 
 prism_setup = np.fromiter(map(int, """
 0-2-3
@@ -239,7 +237,7 @@ def animate_prism(changed=False):
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         gluPerspective(45, 1, 1 / 16, 99999)
-        glTranslatef(-x // 2 - 2.5, x // 2 - 3, -x * 1.5)
+        glTranslatef(-x // 2 - 2.5, x // 2 - 9, -x * 1.5)
         glRotatef(75, 1, 0.25, -0.125)
         # glDisable(GL_DEPTH_TEST)
         # glEnable(GL_CULL_FACE)
@@ -765,6 +763,8 @@ def spectrogram_render(bars):
 
         if specs == 2:
             dur *= 3
+        elif specs == 3:
+            dur *= 1.5
         elif specs == 4:
             dur *= 2
         write = False
@@ -844,7 +844,7 @@ while True:
             else:
                 bi = bars
             for i, pwr in enumerate(amp):
-                bi[i].ensure(pwr / 2)
+                bi[i].ensure(pwr / 4)
         elif not line:
             break
         glfwPollEvents()

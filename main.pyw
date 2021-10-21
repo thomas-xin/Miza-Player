@@ -2692,7 +2692,7 @@ def draw_menu():
                     sidebar.menu.buttons = (("Paste", paste_queue),) + sidebar.menu.buttons
     if tick & 7:
         cond = False
-    elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scrolling or not is_unfocused() and in_rect(mpos2, sidebar.rect) or sidebar.abspos:
+    elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scrolling or not is_unfocused() and mpos != mpprev and in_rect(mpos2, sidebar.rect) or sidebar.abspos:
         cond = True
     elif CTRL(kheld) and (kc2[K_a] or kc2[K_s]):
         cond = True
@@ -3492,7 +3492,7 @@ reset_menu()
 enext = set()
 foc = True
 minimised = False
-mpos = mpos2 = (-inf,) * 2
+mpos = mpos2 = mpprev = (-inf,) * 2
 mheld = mclick = mc2 = mc3 = mc4 = mrelease = mprev = (None,) * 5
 kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
@@ -3639,6 +3639,10 @@ try:
                     mc3[i] = mc3[i] or mclick[i]
                     mc4[i] = mc4[i] or mclick[i]
                 mrelease = [not x and y for x, y in zip(mheld, mprev)]
+                try:
+                    mpprev = mpos3
+                except NameError:
+                    mpprev = mpos
                 mpos2 = mouse_rel_pos()
                 mpos3 = pygame.mouse.get_pos()
                 if foc:

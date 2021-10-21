@@ -957,9 +957,9 @@ lastspec2 = 0
 def spectrogram_render():
     global stderr_lock, ssize2, lastspec2, spec_update_fut, packet_advanced2, video_write
     try:
-        t = pc()
-        dur = max(0.001, min(0.125, t - lastspec2))
-        lastspec2 = t
+        # t = pc()
+        # dur = max(0.001, min(0.125, t - lastspec2))
+        # lastspec2 = t
         ssize2 = ssize
         specs = settings.spectrogram
         packet_advanced2 = False

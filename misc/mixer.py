@@ -970,7 +970,7 @@ def spectrogram_render():
         else:
             vertices = 0
         t2 = frame / 30
-        d2 = 1 / 30 if OUTPUT_VIDEO else dur
+        d2 = 1 / 30
         binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2))) + b"\n"
         rproc.stdin.write(binfo)
         rproc.stdin.flush()

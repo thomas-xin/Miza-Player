@@ -197,12 +197,6 @@ class Bar(Particle):
             y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
             sfx.blit(surf, (x, y))
 
-# 6-8-9
-# 7-9-10
-# 8-10-11
-# 9-11-6
-# 10-6-7
-# 11-7-8
 prism_setup = np.fromiter(map(int, """
 0-2-3
 1-3-4
@@ -210,6 +204,12 @@ prism_setup = np.fromiter(map(int, """
 3-5-0
 4-0-1
 5-1-2
+6-8-9
+7-9-10
+8-10-11
+9-11-6
+10-6-7
+11-7-8
 0-1-7
 0-7-6
 1-2-8
@@ -268,7 +268,7 @@ def animate_prism(changed=False):
     except KeyError:
         hh = [bar.x / len(bars) for bar in bars]
         hue = globals()["prism-h"] = np.array(hh, dtype=np.float16)
-    H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
+    H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) * 2 % 1
     hsv.T[0][:] = H % 1
     alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
     sat = np.clip(alpha - 1, 0, 1)
@@ -296,14 +296,15 @@ def animate_prism(changed=False):
     hexarray.append([colarray, vertarray])
 
     hexagon = np.array([[cos(z), sin(z), 0] for z in (i * tau / 6 for i in range(6))] * 2, dtype=np.float32)
-    b = (0, 0, 0, 2 / 3)
+    b = (0, 0, 0, 1 / 6)
     bc = np.array([b, b], dtype=np.float32)
     for i, h, c in zip(range(len(bars) - 1, -1, -1), alpha, colours):
-        hexagon[6:].T[-1] = h * 4
+        hexagon[6:].T[-1] = h * 3
         np.take(hexagon, prism_setup, axis=0, out=vertarray[i])
         vertarray[i].T[0] += i * 1.5
         if i & 1:
             vertarray[i].T[1] -= sqrt(3) / 2
+        bc[0][:3] = c[:3]
         bc[1] = c
         np.take(bc, prism_setup < 6, axis=0, out=colarray[i])
 
@@ -762,7 +763,11 @@ def spectrogram_render(bars):
             except AttributeError:
                 spectrobytes = pygame.image.tostring(sfx, "RGB")
 
-        write = specs == 3
+        if specs == 2:
+            dur *= 3
+        elif specs == 4:
+            dur *= 2
+        write = False
         for bar in bars:
             if bar.height2:
                 write = True

@@ -469,7 +469,7 @@ def editor_toolbar():
             ("autoswap", "Auto swap", "Switch back to editing after making a selection."),
         )
         mrect = (toolbar.pause.radius << 2, screensize[1] - toolbar_height + 12, 192, min(toolbar_height, 160))
-        surf = HWSurface.any(mrect[2:], FLAGS | SRCALPHA)
+        surf = DISP.subsurface(mrect)
         for i, t in enumerate(selset):
             s, name, description = t
             apos = (mrect[0] + 16, screensize[1] - toolbar_height + i * 32 + 32)
@@ -523,10 +523,6 @@ def editor_toolbar():
             A = ImageChops.multiply(a, a2)
             im.putalpha(A)
             surf = pil2pyg(im, convert=False)
-        DISP.blit(
-            as_pyg(surf),
-            mrect[:2],
-        )
 
     r = (c[0] - w, c[1], w, w)
     ct = (191, 255, 127) if options.editor.mode == "I" else (112, 127, 96)
@@ -541,8 +537,7 @@ def editor_toolbar():
         note_height = 12 * editor.zoom_y
         nw = round_random(max(272, editor.note.length * note_width + 1 + 4))
         mrect = (toolbar.pause.radius << 2, screensize[1] - toolbar_height + 12, nw, min(toolbar.pause.radius * 2, 64))
-        surf = HWSurface.any(mrect[2:], SRCALPHA)
-        surf.fill((0, 0, 0, 0))
+        surf = DISP.subsurface(mrect)
         pattern = project.patterns[editor.pattern]
         timesig = pattern.timesig
         barlength = timesig[0] * timesig[1]
@@ -569,10 +564,6 @@ def editor_toolbar():
             A = ImageChops.multiply(a, a2)
             im.putalpha(A)
             surf = pil2pyg(im, convert=False)
-        DISP.blit(
-            surf,
-            mrect[:2],
-        )
         notesel = (toolbar.pause.radius << 2, screensize[1] - toolbar_height + 8, screensize[0] - toolbar.pause.radius * 6 - 96, note_height + 9)
         if in_rect(mpos, notesel) or editor.note.get("resizing"):
             target_length = (mpos2[0] - toolbar.pause.radius * 4) / note_width

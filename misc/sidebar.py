@@ -80,7 +80,7 @@ def render_sidebar(dur=0):
     offs = round_random(sidebar.setdefault("relpos", 0) * -sidebar_width)
     sc = sidebar.colour or (64, 0, 96)
     if sidebar.ripples or offs > -sidebar_width + 4:
-        DISP2 = HWSurface.any((sidebar.rect[2], sidebar.rect[3] + 4), FLAGS | SRCALPHA)
+        DISP2 = DISP.subsurface(sidebar.rect)
         bevel_rectangle(
             DISP2,
             sc,
@@ -135,10 +135,6 @@ def render_sidebar(dur=0):
                 (sidebar.scroll.select_rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
                 4,
             )
-        DISP.blit(
-            as_pyg(DISP2),
-            sidebar.rect[:2],
-        )
     else:
         bevel_rectangle(
             DISP,
@@ -169,8 +165,9 @@ def render_sidebar(dur=0):
             if fn:
                 submit(download, entries, fn, settings=True)
         Z = -sidebar.scroll.pos
-        DISP2 = HWSurface.any((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), FLAGS | SRCALPHA)
-        DISP2.fill((0, 0, 0, 0))
+        sub = (sidebar.rect2[2] - 4, sidebar.rect2[3] - 52 - 16)
+        subp = (screensize[0] - sidebar_width + 4, 52 + 16)
+        DISP2 = DISP.subsurface(subp + sub)
         if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_v]:
             submit(enqueue_auto, *pyperclip.paste().split())
         if in_rect(mpos, sidebar.rect) and mc2[0] or not mheld[0]:
@@ -513,10 +510,6 @@ def render_sidebar(dur=0):
             except (AttributeError, ValueError, IndexError):
                 sidebar.pop("last_selected", None)
                 lq2 = nan
-        DISP.blit(
-            as_pyg(DISP2),
-            (screensize[0] - sidebar_width + 4, 52 + 16),
-        )
     if offs <= -4:
         render_settings(dur)
 def copy_queue(entry):

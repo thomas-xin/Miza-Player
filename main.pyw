@@ -1073,6 +1073,7 @@ def reset_menu(full=True, reset=False):
         osize = osize2
         mixer.submit(f"~osize {' '.join(map(str, osize))}")
         mixer.new = False
+    globals()["last-cond"] = True
 
 
 submit(setup_buttons)
@@ -2345,10 +2346,9 @@ def render_settings(dur, ignore=False):
     global crosshair, hovertext
     offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
     sc = sidebar.colour or (64, 0, 96)
-    DISP2 = HWSurface.any((sidebar.rect2[2], sidebar.rect2[3] - 52), FLAGS | SRCALPHA)
-    # DISP2.fill((0, 0, 0, 0))
-    DISP2.fill(sc)
-    DISP2.set_colorkey(sc)
+    sub = (sidebar.rect2[2], sidebar.rect2[3] - 52)
+    subp = (screensize[0] - sidebar_width, 52)
+    DISP2 = DISP.subsurface(subp + sub)
     in_sidebar = in_rect(mpos, sidebar.rect)
     offs2 = offs + sidebar_width
     c = options.get("sidebar_colour", (64, 0, 96))
@@ -2637,10 +2637,6 @@ def render_settings(dur, ignore=False):
         surface=DISP2,
         cache=True,
     )
-    DISP.blit(
-        as_pyg(DISP2),
-        (screensize[0] - sidebar_width, 52),
-    )
 
 def draw_menu():
     global crosshair, hovertext
@@ -2705,12 +2701,12 @@ def draw_menu():
             q = sidebar.instruments
         else:
             q = queue
-        cond = any(i != e.pos or e.get("selected") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
+        cond = any(i != e.get("pos", 0) or e.get("selected") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
     if cond:
         globals()["last-cond"] = True
     elif not tick & 7 and globals().get("last-cond"):
         cond = globals().pop("last-cond", None)
-    elif not tick % 120:
+    elif not tick % 240:
         cond = True
     sidebar_rendered = False
     if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
@@ -2946,9 +2942,9 @@ def draw_menu():
                     val = -1
                 if val == 2:
                     if i > 1:
-                        sprite = quadratic_gradient(button.sprite.get_size(), pc()).convert_alpha()
+                        sprite = quadratic_gradient(button.sprite.get_size(), pc())
                     else:
-                        sprite = radial_gradient(button.sprite.get_size(), -pc()).convert_alpha()
+                        sprite = radial_gradient(button.sprite.get_size(), -pc())
                     sprite.blit(
                         button.sprite,
                         (0, 0),
@@ -3786,7 +3782,7 @@ try:
                             size,
                             (player.rect[2] >> 1, size),
                             col,
-                            surface=DISP,
+                            surface=DISP.subsurface(player.rect),
                             cache=True,
                             background=(0,) * 3,
                             font="Rockwell",
@@ -3805,7 +3801,7 @@ try:
                             size,
                             (player.rect[2] >> 1, size),
                             (255,) * 3,
-                            surface=DISP,
+                            surface=DISP.subsurface(player.rect),
                             cache=True,
                             background=(0,) * 3,
                             font="Rockwell",
@@ -3834,7 +3830,7 @@ try:
                             size,
                             (player.rect[2] >> 1, size),
                             (255, 0, 0),
-                            surface=DISP,
+                            surface=DISP.subsurface(player.rect),
                             cache=True,
                             background=(0,) * 3,
                             font="Rockwell",

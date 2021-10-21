@@ -197,6 +197,12 @@ class Bar(Particle):
             y = round_random(max(84, ssize2[1] - size - width * (sqrt(5) + 1)))
             sfx.blit(surf, (x, y))
 
+# 6-8-9
+# 7-9-10
+# 8-10-11
+# 9-11-6
+# 10-6-7
+# 11-7-8
 prism_setup = np.fromiter(map(int, """
 0-2-3
 1-3-4
@@ -204,12 +210,6 @@ prism_setup = np.fromiter(map(int, """
 3-5-0
 4-0-1
 5-1-2
-6-8-9
-7-9-10
-8-10-11
-9-11-6
-10-6-7
-11-7-8
 0-1-7
 0-7-6
 1-2-8
@@ -225,7 +225,7 @@ prism_setup = np.fromiter(map(int, """
 
 def animate_prism(changed=False):
     glClear(GL_COLOR_BUFFER_BIT)
-    bars = bars3[::-1]
+    bars = bars3
     x = len(bars)
     try:
         if changed:
@@ -239,12 +239,21 @@ def animate_prism(changed=False):
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
         gluPerspective(45, 1, 1 / 16, 99999)
-        glTranslatef(-x // 2 - 3, x // 2 - 3, -x * 1.6)
-        glRotatef(60, 1, 0.25, -0.125)
+        glTranslatef(-x // 2 - 2.5, x // 2 - 3, -x * 1.5)
+        glRotatef(75, 1, 0.25, -0.125)
+        # glDisable(GL_DEPTH_TEST)
+        # glEnable(GL_CULL_FACE)
+        # glCullFace(GL_BACK)
+        # glFrontFace(GL_CCW)
+        # glDisable(GL_BLEND)
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_CULL_FACE)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glEnableClientState(GL_COLOR_ARRAY)
     w, h = specsize
     glLineWidth(specsize[0] / 256)
-    glEnableClientState(GL_VERTEX_ARRAY)
-    glEnableClientState(GL_COLOR_ARRAY)
 
     try:
         hsv = globals()["prism-hsv"]
@@ -262,11 +271,11 @@ def animate_prism(changed=False):
     H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
     hsv.T[0][:] = H % 1
     alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
-    sat = np.clip(alpha - 1, None, 1)
+    sat = np.clip(alpha - 1, 0, 1)
     np.subtract(1, sat, out=sat)
     hsv.T[1][:] = sat
     hsv.T[2] = alpha
-    np.clip(hsv, None, 1, out=hsv)
+    hsv.T[2] *= 0.5
     hsv *= 255
     hsv2 = hsv.astype(np.uint8)
     img = Image.frombuffer("HSV", (len(bars), 1), hsv2.tobytes()).convert("RGB")
@@ -289,8 +298,8 @@ def animate_prism(changed=False):
     hexagon = np.array([[cos(z), sin(z), 0] for z in (i * tau / 6 for i in range(6))] * 2, dtype=np.float32)
     b = (0, 0, 0, 2 / 3)
     bc = np.array([b, b], dtype=np.float32)
-    for i, h, c in zip(range(len(bars)), alpha, colours):
-        hexagon[6:].T[-1] = h * 2
+    for i, h, c in zip(range(len(bars) - 1, -1, -1), alpha, colours):
+        hexagon[6:].T[-1] = h * 4
         np.take(hexagon, prism_setup, axis=0, out=vertarray[i])
         vertarray[i].T[0] += i * 1.5
         if i & 1:
@@ -454,10 +463,16 @@ def animate_polytope(changed=False):
         glLoadIdentity()
         gluPerspective(45, 1, 1/16, 6)
         glTranslatef(0, 0, -2.5)
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_CULL_FACE)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glEnableClientState(GL_COLOR_ARRAY)
     w, h = specsize
     thickness = specsize[0] / 64 / max(1, (len(poly) + 2 >> 1) ** 0.5)
     glLineWidth(max(1, thickness))
-    alpha_mult = min(1, thickness)
+    alpha_mult = min(1, thickness) / 2
     angle = tau / 512
     i = 0
     perms = get_dimension(dimcount)
@@ -484,8 +499,6 @@ def animate_polytope(changed=False):
             dim += 1
             outs *= np.tile(dim, (3, 1)).T
         poly = outs
-    glEnableClientState(GL_VERTEX_ARRAY)
-    glEnableClientState(GL_COLOR_ARRAY)
     try:
         radii = globals()["poly-r"]
     except KeyError:
@@ -575,6 +588,12 @@ def animate_ripple(changed=False):
             glLoadIdentity()
             gluPerspective(45, 1, 1 / 16, 6)
             glTranslatef(0, 0, -2.5)
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_CULL_FACE)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glEnableClientState(GL_COLOR_ARRAY)
         spec.R = R
     w, h = specsize
     depth = 3
@@ -589,8 +608,6 @@ def animate_ripple(changed=False):
         spec.rz = (spec.rz + rz) % 360
     else:
         glRotatef(-0.5, 0, 0, 1)
-    glEnableClientState(GL_VERTEX_ARRAY)
-    glEnableClientState(GL_COLOR_ARRAY)
     try:
         radii = globals()["ripple-r"]
     except KeyError:
@@ -783,8 +800,6 @@ def setup_window(size):
     window = glfw.create_window(*size, "render", None, None)
     glfw.make_context_current(window)
     glutInitDisplayMode(GL_RGB)
-    glDisable(GL_DEPTH_TEST)
-    glEnable(GL_BLEND)
     glEnable(GL_LINE_SMOOTH)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     glBlendEquation(GL_FUNC_ADD)

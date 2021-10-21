@@ -1273,7 +1273,7 @@ def quadratic_gradient(size=gsize, t=None, curve=None):
         quadratics[x] = pil2pyg(img, convert=True)
     surf = quadratics[x]
     if surf.get_size() != size:
-        s2 = HWSurface.any(size, surf.get_flags())
+        s2 = HWSurface.any(size, FLAGS)
         surf = pygame.transform.scale(surf, size, s2)
         if curve:
             h = size[1]
@@ -1282,9 +1282,9 @@ def quadratic_gradient(size=gsize, t=None, curve=None):
                 tx = t - curve * (i / (m - 1))
                 g = quadratic_gradient((size[0], 1), tx)
                 y = h // 2 - (not h & 1)
-                surf.blit(g, (0, y - i), special_flags=BLEND_ALPHA_SDL2)
+                surf.blit(g, (0, y - i))
                 y = h // 2
-                surf.blit(g, (0, y + i), special_flags=BLEND_ALPHA_SDL2)
+                surf.blit(g, (0, y + i))
     return surf
 
 rgw = 256
@@ -1311,7 +1311,7 @@ def radial_gradient(size=(rgw,) * 2, t=None):
         radials[x] = pil2pyg(img, convert=True)
     surf = radials[x]
     if surf.get_size() != size:
-        s2 = HWSurface.any(size, surf.get_flags())
+        s2 = HWSurface.any(size, FLAGS)
         surf = pygame.transform.scale(surf, size, s2)
     return surf
 

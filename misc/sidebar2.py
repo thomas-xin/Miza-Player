@@ -70,7 +70,7 @@ def render_sidebar_2(dur=0):
     offs = round_random(sidebar.setdefault("relpos", 0) * -sidebar_width)
     sc = sidebar.colour or (64, 0, 96)
     if sidebar.ripples or offs > -sidebar_width + 4:
-        DISP2 = HWSurface.any((sidebar.rect[2], sidebar.rect[3] + 4), FLAGS | SRCALPHA)
+        DISP = DISP.subsurface(sidebar.rect)
         bevel_rectangle(
             DISP2,
             sc,
@@ -111,10 +111,6 @@ def render_sidebar_2(dur=0):
                 (sidebar.scroll.select_rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
                 4,
             )
-        DISP.blit(
-            as_pyg(DISP2),
-            sidebar.rect[:2],
-        )
     else:
         bevel_rectangle(
             DISP,
@@ -125,8 +121,9 @@ def render_sidebar_2(dur=0):
     if offs > 4 - sidebar_width:
         queue = sidebar.instruments
         Z = -sidebar.scroll.pos
-        DISP2 = HWSurface.any((sidebar.rect2[2], sidebar.rect2[3] - 52 - 16), FLAGS | SRCALPHA)
-        DISP2.fill((0, 0, 0, 0))
+        sub = (sidebar.rect2[2] - 4, sidebar.rect2[3] - 52 - 16)
+        subp = (screensize[0] - sidebar_width + 4, 52 + 16)
+        DISP2 = DISP.subsurface(subp + sub)
         if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_v]:
             submit(enqueue_auto, *pyperclip.paste().splitlines())
         in_sidebar = in_rect(mpos, sidebar.rect)
@@ -444,18 +441,13 @@ def render_sidebar_2(dur=0):
             except (AttributeError, ValueError, IndexError):
                 sidebar.pop("last_selected", None)
                 lq2 = nan
-        DISP.blit(
-            as_pyg(DISP2),
-            (screensize[0] - sidebar_width + 4, 52 + 16),
-        )
     if offs <= -4 and sidebar.abspos == 1:
         render_settings(dur, ignore=True)
     if offs <= -4 and sidebar.abspos == 2:
         instrument = project.instruments[project.instrument_layout[sidebar.editing]]
-        DISP2 = HWSurface.any((sidebar.rect2[2], sidebar.rect2[3] - 52), FLAGS | SRCALPHA)
-        # DISP2.fill((0, 0, 0, 0))
-        DISP2.fill(sc)
-        DISP2.set_colorkey(sc)
+        sub = (sidebar.rect2[2] - 4, sidebar.rect2[3] - 52)
+        subp = (screensize[0] - sidebar_width, 52)
+        DISP2 = DISP.subsurface(subp + sub)
         in_sidebar = in_rect(mpos, sidebar.rect)
         offs2 = offs + sidebar_width
         for i, opt in enumerate(sysettings):
@@ -562,7 +554,3 @@ def render_sidebar_2(dur=0):
                     2,
                     filled=False,
                 )
-        DISP.blit(
-            as_pyg(DISP2),
-            (screensize[0] - sidebar_width, 52),
-        )

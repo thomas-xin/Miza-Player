@@ -1025,7 +1025,7 @@ def spectrogram_update():
         try:
             amp = globals()["spec-fft-amp"]
         except KeyError:
-            amp = globals()["spec-fft-amp"] = np.zeros(barcount * freqscale, dtype=np.float16)
+            amp = globals()["spec-fft-amp"] = np.zeros(barcount * freqscale, dtype=np.float32)
         np.abs(arr, out=amp)
         x = barcount - np.argmax(amp) / freqscale - 0.5
         point(f"~n {x}")
@@ -1036,7 +1036,7 @@ def spectrogram_update():
                 amp = supersample(amp, barcount * 2 - 1, in_place=True)
             else:
                 amp = supersample(amp, barcount, in_place=True)
-            amp = np.asanyarray(amp, dtype=np.float16)
+            amp = np.asanyarray(amp, dtype=np.float32)
             b = amp.data
             rproc.stdin.write(f"~e{b.nbytes}\n".encode("ascii"))
             rproc.stdin.write(b)
@@ -1051,7 +1051,7 @@ def spectrogram_update():
     except:
         print_exc()
 
-spec_empty = np.zeros(res_scale, dtype=np.float16)
+spec_empty = np.zeros(res_scale, dtype=np.float32)
 spec_buffer = spec_empty
 def spectrogram():
     global spec_buffer, spec2_fut, packet_advanced3
@@ -1060,7 +1060,7 @@ def spectrogram():
             try:
                 buffer = globals()["spec-sample-16"]
             except KeyError:
-                buffer = globals()["spec-sample-16"] = np.empty(len(sample), dtype=np.float16)
+                buffer = globals()["spec-sample-16"] = np.empty(len(sample), dtype=np.float32)
             if sample.dtype != np.float32:
                 buffer[:] = sample
                 buffer *= 1 / channel.peak
@@ -1346,7 +1346,7 @@ sel_instrument = 0
 class Sample(collections.abc.Hashable):
 
     def __init__(self, data, opt):
-        self.data = np.frombuffer(zip2bytes(base64.b85decode(data)), dtype=np.float16).astype(np.float32)
+        self.data = np.frombuffer(zip2bytes(base64.b85decode(data)), dtype=np.float32)
         self.cache = {}
         self.opt = opt
 

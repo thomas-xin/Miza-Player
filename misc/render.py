@@ -256,7 +256,7 @@ def animate_prism(changed=False):
     try:
         hsv = globals()["prism-hsv"]
     except KeyError:
-        hsv = globals()["prism-hsv"] = np.empty((len(bars), 3), dtype=np.float16)
+        hsv = globals()["prism-hsv"] = np.empty((len(bars), 3), dtype=np.float32)
     try:
         rgba = globals()["prism-rgba"]
     except KeyError:
@@ -265,10 +265,10 @@ def animate_prism(changed=False):
         hue = globals()["prism-h"]
     except KeyError:
         hh = [bar.x / len(bars) for bar in bars]
-        hue = globals()["prism-h"] = np.array(hh, dtype=np.float16)
+        hue = globals()["prism-h"] = np.array(hh, dtype=np.float32)
     H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) * 2 % 1
     hsv.T[0][:] = H % 1
-    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
+    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float32)
     sat = np.clip(alpha - 1, 0, 1)
     np.subtract(1, sat, out=sat)
     hsv.T[1][:] = sat
@@ -350,7 +350,7 @@ def schlafli(symbol):
             edges.append(e)
     verts, dims = normalise_verts(verts)
     verts = tuple(itertools.chain(*((verts[i], verts[j]) for i, j in edges)))
-    verts = np.asanyarray(verts, dtype=np.float16)
+    verts = np.asanyarray(verts, dtype=np.float32)
     return verts, dims
 
 def verify_vert(v):
@@ -360,7 +360,7 @@ def verify_vert(v):
     return v
 
 def normalise_verts(verts):
-    verts = np.asanyarray(verts, dtype=np.float16)
+    verts = np.asanyarray(verts, dtype=np.float32)
     centre = np.mean(verts, axis=0)
     verts -= centre
     verts *= 1 / sqrt(sum(x ** 2 for x in centre))
@@ -396,7 +396,7 @@ def load_model(fn):
                 edges.append((e[0], e[-1]))
     verts, dims = normalise_verts(verts)
     verts = tuple(itertools.chain(*((verts[i], verts[j]) for i, j in edges)))
-    verts = np.asanyarray(verts, dtype=np.float16)
+    verts = np.asanyarray(verts, dtype=np.float32)
     return verts, dims
 
 found_polytopes = {}
@@ -501,13 +501,13 @@ def animate_polytope(changed=False):
     try:
         radii = globals()["poly-r"]
     except KeyError:
-        r = np.array([bar.x / len(bars) for bar in bars], dtype=np.float16)
+        r = np.array([bar.x / len(bars) for bar in bars], dtype=np.float32)
         radii = globals()["poly-r"] = r
 
     try:
         hsv = globals()["poly-hsv"]
     except KeyError:
-        hsv = globals()["poly-hsv"] = np.empty((len(bars), 4), dtype=np.float16)
+        hsv = globals()["poly-hsv"] = np.empty((len(bars), 4), dtype=np.float32)
     try:
         rgba = globals()["poly-rgba"]
     except KeyError:
@@ -516,10 +516,10 @@ def animate_polytope(changed=False):
         hue = globals()["poly-h"]
     except KeyError:
         hh = [1 - bar.x / len(bars) for bar in bars]
-        hue = globals()["poly-h"] = np.array(hh, dtype=np.float16)
+        hue = globals()["poly-h"] = np.array(hh, dtype=np.float32)
     H = hue + (pc_ / 4 + sin(pc_ * tau / 12) / 6) % 1
     hsv.T[0][:] = H % 1
-    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
+    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float32)
     sat = np.clip(alpha - 1, 0, 1)
     np.subtract(1, sat, out=sat)
     hsv.T[1][:] = sat
@@ -541,7 +541,7 @@ def animate_polytope(changed=False):
     if bari:
         radiii = radii[bari]
         colours = np.tile(colours[bari], (1, len(poly))).reshape((len(bari), len(poly), 4))
-        verts = np.stack([poly.astype(np.float32)] * len(bari))
+        verts = np.stack([np.asanyarray(poly, np.float32)] * len(bari))
         for v, r in zip(verts, radiii):
             v *= r
         glColorPointer(4, GL_FLOAT, 0, colours.ravel())
@@ -610,14 +610,14 @@ def animate_ripple(changed=False):
     try:
         radii = globals()["ripple-r"]
     except KeyError:
-        r = np.array([bar.x / len(bars) for bar in bars], dtype=np.float16)
+        r = np.array([bar.x / len(bars) for bar in bars], dtype=np.float32)
         r.T[-1] = 1
         radii = globals()["ripple-r"] = np.repeat(r, 3).reshape((len(bars), 3))
 
     try:
         hsv = globals()["ripple-hsv"]
     except KeyError:
-        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 4), dtype=np.float16)
+        hsv = globals()["ripple-hsv"] = np.empty((len(bars), 4), dtype=np.float32)
     try:
         rgba = globals()["ripple-rgba"]
     except KeyError:
@@ -626,13 +626,13 @@ def animate_ripple(changed=False):
         hue = globals()["ripple-h"]
     except KeyError:
         hh = [1 - bar.x / len(bars) for bar in bars]
-        hue = globals()["ripple-h"] = np.array(hh, dtype=np.float16)
+        hue = globals()["ripple-h"] = np.array(hh, dtype=np.float32)
     if R:
         H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
     else:
         H = hue - (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
     hsv.T[0][:] = H % 1
-    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float16)
+    alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float32)
     sat = np.clip(alpha - 1, 0, 1)
     np.subtract(1, sat, out=sat)
     hsv.T[1][:] = sat
@@ -654,7 +654,7 @@ def animate_ripple(changed=False):
     hi *= -tau
     np.sin(hi, out=hi)
     hi *= 0.25
-    hi = np.repeat(hi.astype(np.float32), 2, axis=0)[1:-1]
+    hi = np.repeat(np.asanyarray(hi, np.float32), 2, axis=0)[1:-1]
     hi = np.tile(hi, (V * depth, 1)).T
     maxlen = ceil(360 / V) - 1
     vertarray = None
@@ -663,7 +663,7 @@ def animate_ripple(changed=False):
     elif len(linearray) > maxlen:
         vertarray = linearray.popleft()[-1].swapaxes(0, 1)[:len(bars)].swapaxes(0, 1)
     if vertarray is None:
-        vertarray = np.empty((depth * V, len(bars), 3), dtype=np.float16)
+        vertarray = np.empty((depth * V, len(bars), 3), dtype=np.float32)
     linearray.append([colours, None])
     angle = spec.angle + tau - tau / V
     zs = np.linspace(spec.angle, angle, V)
@@ -681,7 +681,7 @@ def animate_ripple(changed=False):
         if rva32.shape != vertarray.shape:
             raise KeyError
     except KeyError:
-        rva32 = globals()["rva32"] = vertarray.astype(np.float32)
+        rva32 = globals()["rva32"] = np.asanyarray(vertarray, np.float32)
     else:
         rva32[:] = vertarray
     rva = np.repeat(rva32, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
@@ -836,7 +836,7 @@ while True:
         elif line == b"~e":
             b = sys.stdin.buffer.readline()
             b = sys.stdin.buffer.read(int(b))
-            amp = np.frombuffer(b, dtype=np.float16)
+            amp = np.frombuffer(b, dtype=np.float32)
             if specs == 2:
                 bi = bars3
             elif specs == 4:

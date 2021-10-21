@@ -134,8 +134,8 @@ def blinds_render(self):
 
 def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
     if amplitude == 0 or shrink == 1:
-        return np.zeros(4096, dtype=np.float16)
-    linspout = lambda *args: np.linspace(*args, endpoint=False, dtype=np.float16)
+        return np.zeros(4096, dtype=np.float32)
+    linspout = lambda *args: np.linspace(*args, endpoint=False, dtype=np.float32)
     if shape < 1:
         x = linspout(0, tau, 4096)
         x = np.sin(x, out=x)
@@ -162,7 +162,7 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
             np.clip(x, -m, m, out=x)
     elif shape < 3:
         x = linspout(0, tau, 4096)
-        x = (np.sin(x, out=x) >= 0).astype(np.float16)
+        x = np.asanyarray((np.sin(x, out=x) >= 0), np.float32)
         x -= 0.5
         if shape != 2:
             shape -= 2
@@ -190,7 +190,7 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
         x = np.interp(indices, range(4096), x)
     if shrink != 0:
         r = round(4096 * (1 - shrink))
-        y = np.zeros(4096, dtype=np.float16)
+        y = np.zeros(4096, dtype=np.float32)
         indices = linspout(0, 4096, r)
         x = np.interp(indices, range(4096), x)
         y[2048 - r // 2:2048 + (r + 1) // 2] = x
@@ -200,7 +200,7 @@ def synth_gen(shape, amplitude, phase, pulse, shrink, exponent, **void):
         np.abs(x, out=x)
         x **= exponent
         x[msk] *= -1
-    return np.asanyarray(x, dtype=np.float16)
+    return np.asanyarray(x, dtype=np.float32)
 
 pattern_end = lambda pattern: max(k + v / pattern.timesig[0] for k, v in pattern.ends.items()) if pattern.measures else 0
 

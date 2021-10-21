@@ -1225,7 +1225,7 @@ def play(pos):
                 else:
                     s = synthesize()
                 if s is None:
-                    if settings.silenceremove and np.mean(np.abs(sample)) < channel.peak / 512:
+                    if settings.silenceremove and np.mean(np.abs(sample)) < 64:
                         if quiet >= 15:
                             raise StopIteration
                         quiet += 1

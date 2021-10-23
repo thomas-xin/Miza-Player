@@ -531,8 +531,8 @@ def animate_polytope(changed=False):
     colours = rgba
     colours.T[:3] *= 1 / 255
     mult = np.linspace(alpha_mult, 0, len(alpha))
-    alpha *= mult
-    colours.T[-1][:] = alpha
+    mult *= alpha
+    colours.T[-1][:] = mult
 
     maxb = sqrt(max(bar.height for bar in bars))
     ratio = min(48, max(8, 36864 / (len(poly) + 2 >> 1)))
@@ -664,7 +664,6 @@ def animate_ripple(changed=False):
         vertarray = linearray.popleft()[-1].swapaxes(0, 1)[:len(bars)].swapaxes(0, 1)
     if vertarray is None:
         vertarray = np.empty((depth * V, len(bars), 3), dtype=np.float32)
-    linearray.append([colours, None])
     angle = spec.angle + tau - tau / V
     zs = np.linspace(spec.angle, angle, V)
     i = 0
@@ -676,16 +675,8 @@ def animate_ripple(changed=False):
         x = tau / 360 / depth
         spec.angle = (spec.angle + x) % tau
         zs += x
-    try:
-        rva32 = globals()["rva32"]
-        if rva32.shape != vertarray.shape:
-            raise KeyError
-    except KeyError:
-        rva32 = globals()["rva32"] = np.asanyarray(vertarray, np.float32)
-    else:
-        rva32[:] = vertarray
-    rva = np.repeat(rva32, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
-    linearray[-1][-1] = rva
+    rva = np.repeat(vertarray, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
+    linearray.append([colours, rva])
     r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
     for c, verts in linearray:
         glColorPointer(4, GL_FLOAT, 0, c.ravel())

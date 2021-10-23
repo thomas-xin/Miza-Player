@@ -1435,55 +1435,59 @@ class AudioDownloader:
                         results.append(entry)
         return sorted(results, key=lambda entry: entry.views, reverse=True)
 
-    def search_yt(self, query):
+    def search_yt(self, query, skip=False):
         out = None
-        try:
-            resp = self.extract_info(query)
-            if resp.get("_type", None) == "url":
-                resp = self.extract_from(resp["url"])
-            if resp.get("_type", None) == "playlist":
-                entries = list(resp["entries"])
-            else:
-                entries = [resp]
-            out = []
-            for entry in entries:
-                try:
-                    found = True
-                    if "title" in entry:
-                        title = entry["title"]
-                    else:
-                        title = entry["url"].rsplit("/", 1)[-1]
-                        if "." in title:
-                            title = title[:title.rindex(".")]
-                        found = False
-                    if "duration" in entry:
-                        dur = float(entry["duration"])
-                    else:
-                        dur = None
-                    url = entry.get("webpage_url", entry.get("url", entry.get("id")))
-                    if not url:
-                        continue
-                    temp = cdict(name=title, url=url, duration=dur)
-                    if not is_url(url):
-                        if entry.get("ie_key", "").casefold() == "youtube":
-                            temp["url"] = f"https://www.youtube.com/watch?v={url}"
-                    temp["research"] = True
-                    out.append(temp)
-                except:
-                    print_exc()
-        except:
-            print_exc()
+        if not skip:
+            try:
+                resp = self.extract_info(query)
+                if resp.get("_type", None) == "url":
+                    resp = self.extract_from(resp["url"])
+                if resp.get("_type", None) == "playlist":
+                    entries = list(resp["entries"])
+                else:
+                    entries = [resp]
+                out = []
+                for entry in entries:
+                    try:
+                        found = True
+                        if "title" in entry:
+                            title = entry["title"]
+                        else:
+                            title = entry["url"].rsplit("/", 1)[-1]
+                            if "." in title:
+                                title = title[:title.rindex(".")]
+                            found = False
+                        if "duration" in entry:
+                            dur = float(entry["duration"])
+                        else:
+                            dur = None
+                        url = entry.get("webpage_url", entry.get("url", entry.get("id")))
+                        if not url:
+                            continue
+                        temp = cdict(name=title, url=url, duration=dur)
+                        if not is_url(url):
+                            if entry.get("ie_key", "").casefold() == "youtube":
+                                temp["url"] = f"https://www.youtube.com/watch?v={url}"
+                        temp["research"] = True
+                        out.append(temp)
+                    except:
+                        print_exc()
+            except:
+                print_exc()
         if not out:
             url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
             self.youtube_x += 1
             resp = requests.get(url, headers=self.youtube_header()).content
             result = None
+            s = resp
             with suppress(ValueError):
-                s = resp[resp.index(b"// scraper_data_begin") + 21:resp.rindex(b"// scraper_data_end")]
-                s = s[s.index(b"var ytInitialData = ") + 20:s.rindex(b";")]
+                with suppress(ValueError):
+                    s = s[s.index(b"// scraper_data_begin") + 21:s.rindex(b"// scraper_data_end")]
+                s = s[s.index(b"var ytInitialData = ") + 20:]
+                s = s[:s.index(b";</script>")]
                 result = self.parse_yt(s)
             with suppress(ValueError):
-                s = resp[resp.index(b'window["ytInitialData"] = ') + 26:]
+                s = s[s.index(b'window["ytInitialData"] = ') + 26:]
                 s = s[:s.index(b'window["ytInitialPlayerResponse"] = null;')]
                 s = s[:s.rindex(b";")]
                 result = self.parse_yt(s)

@@ -143,7 +143,7 @@ def render_sidebar(dur=0):
             4,
         )
     if offs > 4 - sidebar_width:
-        if queue and (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_s]:
+        if queue and CTRL(kheld) and kc2[K_s]:
             name = None
             entries = deque()
             for entry in queue:
@@ -168,20 +168,21 @@ def render_sidebar(dur=0):
         sub = (sidebar.rect2[2] - 4, sidebar.rect2[3] - 52 - 16)
         subp = (screensize[0] - sidebar_width + 4, 52 + 16)
         DISP2 = DISP.subsurface(subp + sub)
-        if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_v]:
+        if CTRL(kheld) and kc2[K_v]:
             submit(enqueue_auto, *pyperclip.paste().split())
-        if in_rect(mpos, sidebar.rect) and mc2[0] or not mheld[0]:
+        if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
             sidebar.pop("dragging", None)
-        if sidebar.get("last_selected") and not any(entry.get("selected") for entry in queue if entry):
-            sidebar.pop("last_selected")
         copies = deque()
         pops = set()
         try:
             if not sidebar.last_selected.selected:
                 raise ValueError
-            lq = queue.index(sidebar.last_selected)
+            if sidebar.last_selected is not queue[sidebar.lastsel]:
+                raise ValueError
+            lq = sidebar.lastsel
         except (AttributeError, ValueError, IndexError):
             sidebar.pop("last_selected", None)
+            sidebar.pop("lastsel", None)
             lq = nan
         lq2 = lq
         swap = None
@@ -191,7 +192,7 @@ def render_sidebar(dur=0):
         if isfinite(etarget) and not in_rect(mpos, (screensize[0] - sidebar_width + 8, 52 + 16, sidebar_width - 32, screensize[1] - toolbar_height - 52 - 16)):
             etarget = nan
         target = min(max(0, round((mpos2[1] - Z - 52 - 16 - 16) / 32)), len(queue) - 1)
-        if mc2[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
+        if mclick[0] and not sidebar.scrolling and in_rect(mpos, sidebar.rect) and not in_rect(mpos, sidebar.scroll.rect) and not SHIFT(kheld) and not CTRL(kheld):
             if not isfinite(etarget) or not queue[etarget].get("selected"):
                 for entry in queue:
                     entry.pop("selected", None)
@@ -224,13 +225,14 @@ def render_sidebar(dur=0):
                     alpha=round_random(255 / (1 + abs(entry.get("pos", 0) - i) / 16)),
                     filled=False,
                 )
-                if not swap and not mc2[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
+                if not swap and not mclick[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
                     if target != i:
                         swap = target - i
         if CTRL(kheld) and kc2[K_a]:
             for entry in queue:
                 entry.selected = True
             sidebar.last_selected = queue[-1]
+            sidebar.lastsel = len(queue) - 1
             lq = len(queue) - 1
         if isfinite(lq) and CTRL(kheld) and (kc2[K_c] or kc2[K_x]):
             for entry in (e for e in queue if e.get("selected")):
@@ -245,7 +247,7 @@ def render_sidebar(dur=0):
             sidebar.pop("last_selected", None)
         selectables = ()
         if isfinite(etarget):
-            if mc2[0]:
+            if mclick[0]:
                 entry = queue[target]
                 if isfinite(lq) and SHIFT(kheld):
                     a, b = sorted((target, lq))
@@ -255,8 +257,9 @@ def render_sidebar(dur=0):
                     entry.selected = not entry.get("selected")
                 else:
                     entry.selected = True
-                sidebar.dragging = True
+                    sidebar.dragging = True
                 sidebar.last_selected = entry
+                sidebar.lastsel = target
                 lq2 = target
                 x = 4 + offs
                 y = round(Z + entry.get("pos", 0) * 32)
@@ -278,8 +281,9 @@ def render_sidebar(dur=0):
             rect = (x, y, sidebar_width - 32, 32)
             selectable = i in selectables
             if selectable or entry.get("selected"):
-                if mc2[1] and i == etarget:
+                if mclick[1] and i == etarget:
                     sidebar.last_selected = entry
+                    sidebar.lastsel = i
                     sidebar.menu = cdict(
                         buttons=(
                             ("Copy URL (CTRL+C)", copy_queue, entry),
@@ -500,16 +504,23 @@ def render_sidebar(dur=0):
                 dest.extend(targets.values())
                 for entry in targets.values():
                     entry.pop("moved", None)
-            queue[swap_start:swap_end] = dest
+            try:
+                queue.view[swap_start:swap_end] = dest
+            except ValueError:
+                temp = queue[:swap_start]
+                temp.extend(dest)
+                temp.extend(queue[swap_end:].view)
+                queue.fill(temp)
             if queue[0] is not orig:
                 submit(enqueue, queue[0])
             try:
                 if not sidebar.last_selected.selected:
                     raise ValueError
-                lq2 = queue.index(sidebar.last_selected)
+                lq = sidebar.lastsel = queue.index(sidebar.last_selected)
             except (AttributeError, ValueError, IndexError):
                 sidebar.pop("last_selected", None)
-                lq2 = nan
+                sidebar.pop("lastsel", None)
+                lq = nan
     if offs <= -4:
         render_settings(dur)
 def copy_queue(entry):

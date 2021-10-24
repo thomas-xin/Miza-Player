@@ -1401,9 +1401,13 @@ poly_names = dict(
 poly_names.update((fn.rsplit("/", 1)[-1].rsplit(".", 1)[0].lower(), os.path.abspath("misc/default/" + fn)) for fn in os.listdir("misc/default") if fn.endswith(".obj"))
 poly_inv = {v: k for k, v in poly_names.items()}
 
-def custom_scale(source, size, dest=None, antialias=False):
-    dsize = list(map(round, size))
+def custom_scale(source, size, dest=None, antialias=False, hwany=False):
+    if hwany and not dest:
+        dest = HWSURFACE.any(size)
+    dsize = tuple(map(round, size))
     ssize = source.get_size()
+    if ssize == dsize:
+        return source
     if antialias > 1 or (ssize[0] >= dsize[0] and ssize[1] >= dsize[1]):
         if dest:
             return pygame.transform.smoothscale(source, dsize, dest)
@@ -1420,7 +1424,7 @@ def custom_scale(source, size, dest=None, antialias=False):
         return scalef(source, dsize, dest)
     return scalef(source, dsize)
 
-cblit_cache = weakref.WeakKeyDictionary()
+cb_cache = weakref.WeakKeyDictionary()
 
 def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True, cache=True):
     pos = position
@@ -1438,7 +1442,7 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
             try:
                 if not cache:
                     raise KeyError
-                for s, c, a in cblit_cache[source]:
+                for s, c, a in cb_cache[source]:
                     if a == alpha and c == colour:
                         break
                 else:
@@ -1449,10 +1453,11 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
                 except:
                     s = source.copy()
                 try:
-                    cblit_cache[source].append((s, colour, alpha))
+                    cb_cache[source].append((s, colour, alpha))
                 except KeyError:
                     L = min(1024, max(12, 1048576 // s.get_width() // s.get_height()))
-                    cblit_cache[source] = deque([(s, colour, alpha)], maxlen=L)
+                    cb_cache[source] = deque([(s, colour, alpha)], maxlen=L)
+                # print(sum(len(c) for c in cb_cache.values()))
                 if alpha != 255:
                     s.fill(tuple(colour) + (alpha,), special_flags=BLEND_RGBA_MULT)
                 elif any(i != 255 for i in colour):
@@ -1468,7 +1473,7 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
         s3 = s.get_size()
         pos = [z - (y - x >> 1) for x, y, z in zip(s1, s3, pos)]
     if scale != 1:
-        s = custom_scale(s, list(map(lambda i: round(i * scale), s.get_size())))
+        s = custom_scale(s, list(map(lambda i: round(i * scale), s.get_size())), hwany=True)
     if area is not None:
         area = list(map(lambda i: round(i * scale), area))
     if dest:
@@ -1700,7 +1705,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
 
 reg_polygon_cache = {}
 
-def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4, alpha=255, thickness=0, repetition=1, filled=False, rotation=0, soft=False, attempts=128, cache=False):
+def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4, alpha=255, thickness=0, repetition=1, filled=False, rotation=0, soft=False, attempts=128, cache=True):
     width = max(round(width), 0)
     height = max(round(height), 0)
     repetition = int(repetition)
@@ -1710,8 +1715,9 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
         angle = 0
     cache |= angle % (pi / 4) == 0
     if cache:
-        colour = tuple(min(255, round(i / 9) * 9) for i in colour)
-        h = (colour, sides, width, height, round(angle / tau * 256), thickness, repetition, filled, soft)
+        colour = tuple(min(255, round_random(i / 5) * 5) for i in colour)
+        angle = round_random(angle / tau * 144) * tau / 144
+        h = (colour, sides, width, height, angle, thickness, repetition, filled, soft)
         try:
             newS = reg_polygon_cache[h]
         except KeyError:
@@ -2109,35 +2115,36 @@ def get_duration_2(filename):
     if filename:
         dur, bps, cdc = _get_duration_2(filename, 4)
         if not dur and is_url(filename):
-            with requests.get(filename, stream=True) as resp:
+            with requests.head(filename, stream=True) as resp:
                 head = fcdict(resp.headers)
-                if "content-length" not in head:
-                    dur, bps, cdc = _get_duration_2(filename, 20)
-                    return dur, cdc
-                if bps:
-                    return (int(head["content-length"]) << 3) / bps, cdc
-                ctype = [e.strip() for e in head.get("content-type", "").split(";") if "/" in e][0]
-                if ctype.split("/", 1)[0] not in ("audio", "video"):
-                    return nan, cdc
-                if ctype == "audio/midi":
-                    return nan, cdc
-                it = resp.iter_content(65536)
-                data = next(it)
-            ident = str(magic.from_buffer(data))
-            try:
-                bitrate = re.findall("[0-9]+\\s.bps", ident)[0].casefold()
-            except IndexError:
-                dur, bps, cdc = _get_duration_2(filename, 16)
+            if "content-length" not in head:
+                dur, bps, cdc = _get_duration_2(filename, 20)
                 return dur, cdc
-            bps, key = bitrate.split(None, 1)
-            bps = float(bps)
-            if key.startswith("k"):
-                bps *= 1e3
-            elif key.startswith("m"):
-                bps *= 1e6
-            elif key.startswith("g"):
-                bps *= 1e9
-            return (int(head["content-length"]) << 3) / bps, cdc
+            if bps:
+                return (int(head["content-length"]) << 3) / bps, cdc
+            ctype = [e.strip() for e in head.get("content-type", "").split(";") if "/" in e][0]
+            if ctype.split("/", 1)[0] not in ("audio", "video"):
+                return nan, cdc
+            if ctype == "audio/midi":
+                return nan, cdc
+            return None, "N/A"
+            #     it = resp.iter_content(65536)
+            #     data = next(it)
+            # ident = str(magic.from_buffer(data))
+            # try:
+            #     bitrate = re.findall("[0-9]+\\s.bps", ident)[0].casefold()
+            # except IndexError:
+            #     dur, bps, cdc = _get_duration_2(filename, 16)
+            #     return dur, cdc
+            # bps, key = bitrate.split(None, 1)
+            # bps = float(bps)
+            # if key.startswith("k"):
+            #     bps *= 1e3
+            # elif key.startswith("m"):
+            #     bps *= 1e6
+            # elif key.startswith("g"):
+            #     bps *= 1e9
+            # return (int(head["content-length"]) << 3) / bps, cdc
         return dur, cdc
 
 def construct_options(full=True):

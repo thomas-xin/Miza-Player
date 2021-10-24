@@ -2694,18 +2694,20 @@ def draw_menu():
         cond = False
     elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scrolling or not is_unfocused() and mpos != mpprev and in_rect(mpos2, sidebar.rect) or sidebar.abspos:
         cond = True
-    elif CTRL(kheld) and (kc2[K_a] or kc2[K_s]):
+    elif CTRL(kheld) and (kc2[K_a] or kc2[K_s] or mc2[0]) or sidebar.get("last_selected") is not None:
         cond = True
     else:
         if toolbar.editor:
             q = sidebar.instruments
         else:
             q = queue
-        cond = any(i != e.get("pos", 0) or e.get("selected") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
+        cond = any(i != e.get("pos", 0) or e.get("selected") or e.get("flash") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
     if cond:
         globals()["last-cond"] = True
     elif not tick & 7 and globals().get("last-cond"):
         cond = globals().pop("last-cond", None)
+        if cond and any(i != e.get("pos", 0) or e.get("selected") or e.get("flash") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base)):
+            globals()["last-cond"] = True
     elif not tick % 240:
         cond = True
     sidebar_rendered = False
@@ -3164,7 +3166,7 @@ def draw_menu():
                 if not p:
                     continue
                 col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-                a = round_random(min(255, (p.life - 2.5) * 12))
+                a = round(min(255, (p.life - 2.5) * 12))
                 for j in shuffle(range(3)):
                     point = [cos(p.angle + j * tau / 3) * p.rad, sin(p.angle + j * tau / 3) * p.rad]
                     pos = [round_random(x) for x in (p.centre[0] + point[0], p.centre[1] + point[1])]

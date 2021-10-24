@@ -834,6 +834,7 @@ while True:
                 bi = bars2
             else:
                 bi = bars
+            amp = amp[:len(bi)]
             for i, pwr in enumerate(amp):
                 bi[i].ensure(pwr / 4)
         elif not line:

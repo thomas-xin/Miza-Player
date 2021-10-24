@@ -2692,7 +2692,7 @@ def draw_menu():
                     sidebar.menu.buttons = (("Paste", paste_queue),) + sidebar.menu.buttons
     if tick & 7:
         cond = False
-    elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scrolling or not is_unfocused() and mpos != mpprev and in_rect(mpos2, sidebar.rect) or sidebar.abspos:
+    elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scroll.pos != sidebar.scroll.target or not is_unfocused() and mpos != mpprev and in_rect(mpos2, sidebar.rect) or sidebar.abspos:
         cond = True
     elif CTRL(kheld) and (kc2[K_a] or kc2[K_s] or mc2[0]) or sidebar.get("last_selected") is not None:
         cond = True

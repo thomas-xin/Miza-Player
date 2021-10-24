@@ -1424,6 +1424,13 @@ def custom_scale(source, size, dest=None, antialias=False, hwany=False):
         return scalef(source, dsize, dest)
     return scalef(source, dsize)
 
+def garbage_collect(cache, lim=4096):
+    while len(cache) >= lim:
+        try:
+            del cache[next(iter(cache))]
+        except:
+            return
+
 cb_cache = weakref.WeakKeyDictionary()
 
 def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True, cache=True):
@@ -1560,6 +1567,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
                     gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
             rect = r
             if data:
+                garbage_collect(br_surf, 64)
                 br_surf[data] = surf
         if dest:
             dest.blit(surf, rect[:2], special_flags=BLEND_ALPHA_SDL2)
@@ -1594,6 +1602,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
             else:
                 gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
         if cache:
+            garbage_collect(br_surf, 64)
             br_surf[data] = s
     if ctr > 0:
         colour = tuple(round(i * 255 / ctr) for i in colour)
@@ -1655,6 +1664,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
                     gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
             rect = r
             if data:
+                garbage_collect(rb_surf, 256)
                 rb_surf[data] = surf
         if dest:
             dest.blit(surf, rect[:2], special_flags=BLEND_ALPHA_SDL2)
@@ -1696,6 +1706,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
             else:
                 gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
         if cache:
+            garbage_collect(rb_surf, 256)
             rb_surf[data] = s
     if ctr > 0:
         colour = tuple(round_random(i * 255 / ctr) for i in colour)
@@ -1784,6 +1795,7 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
         loop += draw_direction
     pos = [centre[0] - width, centre[1] - height]
     if cache:
+        garbage_collect(reg_polygon_cache, 16384)
         reg_polygon_cache[h] = newS
         # print(len(reg_polygon_cache), h)
     return blit_complex(dest, newS, pos, alpha, rotation, copy=cache, cache=False)

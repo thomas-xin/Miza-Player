@@ -94,22 +94,6 @@ traceback.force()
 from traceback import print_exc
 
 
-try:
-    with open("auth.json", "rb") as f:
-        AUTH = eval(f.read())
-except FileNotFoundError:
-    AUTH = {}
-
-google_api_key = AUTH.get("google_api_key")
-if not google_api_key:
-    print("WARNING: google_api_key not found. Unable to use API to efficiently scrape playlists.")
-    with open("auth.json", "w") as f:
-        f.write("""{
-	"google_api_key": ""
-}
-# Please create an api key at https://developers.google.com/maps/documentation/javascript/get-api-key to improve YouTube playlist scrape efficiency.""")
-
-
 class cdict(dict):
 
     __slots__ = ()
@@ -771,17 +755,10 @@ class AudioDownloader:
         self.downloading = cdict()
         self.cache = cdict()
         self.searched = cdict()
-        self.paging = create_future_ex(self.setup_pages)
         self.waiting = create_future_ex(self.update_dl)
         self.youtube_base = "CONSENT=YES+cb.20210328-17-p0.en+FX"
         self.cookie = create_future_ex(self.set_cookie)
         self.downloader = youtube_dl.YoutubeDL(self.ydl_opts)
-
-    # Fetches youtube playlist page codes, split into pages of 10 items
-    def setup_pages(self):
-        with open("misc/page_tokens.txt", "r", encoding="utf-8") as f:
-            page10 = f.readlines()
-        self.yt_pages = {i * 10: page10[i] for i in range(len(page10))}
 
     def set_cookie(self):
         resp = requests.get("https://www.youtube.com").text
@@ -940,30 +917,6 @@ class AudioDownloader:
             out.append(temp)
         return out, total
 
-    # Returns part of a youtube playlist.
-    def get_youtube_part(self, url):
-        out = deque()
-        self.youtube_x += 1
-        resp = requests.get(url).content
-        d = orjson.loads(resp)
-        items = d["items"]
-        total = d.get("pageInfo", {}).get("totalResults", 0)
-        for item in items:
-            try:
-                snip = item["snippet"]
-                v_id = snip["resourceId"]["videoId"]
-            except KeyError:
-                continue
-            name = snip.get("title", v_id)
-            url = f"https://www.youtube.com/watch?v={v_id}"
-            temp = cdict(
-                name=name,
-                url=url,
-                duration=None,
-            )
-            out.append(temp)
-        return out, total
-
     # Returns a list of formatted queue entries from a YouTube playlist renderer.
     def extract_playlist_items(self, items):
         token = None
@@ -1000,6 +953,7 @@ class AudioDownloader:
 
     # Returns a subsequent page of a youtube playlist from a page token.
     def get_youtube_continuation(self, token, ctx):
+        self.youtube_x += 1
         data = requests.post(
             "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
             data=orjson.dumps(dict(
@@ -1010,9 +964,41 @@ class AudioDownloader:
         items = data["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]
         return self.extract_playlist_items(items)
 
+    # Generates a playlist continuation token purely from ID and page number.
+    def produce_continuation(self, p, i):
+        if not isinstance(p, (bytes, bytearray, memoryview)):
+            p = str(p).encode("ascii")
+        parts = []
+        if i == 1:
+            parts.append(b"\xe2\xa9\x85\xb2\x02a\x12$VL")
+        else:
+            parts.append(b"\xe2\xa9\x85\xb2\x02_\x12$VL")
+        parts.append(p)
+        if i == 1:
+            parts.append(b"\x1a\x14")
+        else:
+            parts.append(b"\x1a\x12")
+        import base64
+        def base128(n):
+            data = bytearray()
+            while n:
+                data.append(n & 127)
+                n >>= 7
+                if n:
+                    data[-1] |= 128
+            if not data:
+                data = b"\x00"
+            return data
+        key = bytes((8, i, 0x7a, (i != 1) + 6)) + b"PT:" + base64.b64encode(b"\x08" + base128(i * 100)).rstrip(b"=")
+        obj = base64.b64encode(key).replace(b"=", b"%3D")
+        parts.append(obj)
+        parts.append(b"\x9a\x02\x22")
+        parts.append(p)
+        code = b"".join(parts)
+        return base64.b64encode(code).replace(b"=", b"%3D").decode("ascii")
+
     # Returns a full youtube playlist.
     def get_youtube_playlist(self, p_id):
-        out = deque()
         self.youtube_x += 1
         resp = requests.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header()).content
         client = {}
@@ -1051,23 +1037,21 @@ class AudioDownloader:
         count = int(data["sidebar"]["playlistSidebarRenderer"]["items"][0]["playlistSidebarPrimaryInfoRenderer"]["stats"][0]["runs"][0]["text"].replace(",", ""))
         items = data["contents"]["twoColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"]["sectionListRenderer"]["contents"][0]["itemSectionRenderer"]["contents"][0]["playlistVideoListRenderer"]["contents"]
         entries, token = self.extract_playlist_items(items)
-        out.extend(entries)
         if count > 100:
             futs = deque()
-            if token:
-                after = 200
+            if not token:
+                token = self.produce_continuation(p_id, 1)
+            for page in range(1, ceil(count / 100)):
                 futs.append(create_future_ex(self.get_youtube_continuation, token, context))
-            else:
-                after = 100
-            if count > after:
-                page = 50
-                url = f"https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults={page}&key={google_api_key}&playlistId={p_id}"
-                self.paging.result()
-                for curr in range(after, page * ceil(count / page), page):
-                    search = f"{url}&pageToken={self.yt_pages[curr]}"
-                    futs.append(create_future_ex(self.get_youtube_part, search))
+                token = self.produce_continuation(p_id, page + 1)
             for fut in futs:
-                out.extend(fut.result()[0])
+                entries.extend(fut.result()[0])
+        out = deque()
+        urls = set()
+        for entry in entries:
+            if entry.url not in urls:
+                urls.add(entry.url)
+                out.append(entry)
         return out
 
     def ydl_errors(self, s):
@@ -1237,24 +1221,24 @@ class AudioDownloader:
                     p_id = p_id.split("&", 1)[0]
                     break
             if p_id:
-                if google_api_key and self.cache:
-                    try:
-                        output.extend(self.get_youtube_playlist(p_id))
-                        # Scroll to highlighted entry if possible
-                        v_id = None
-                        for x in ("?v=", "&v="):
-                            if x in item:
-                                v_id = item[item.index(x) + len(x):]
-                                v_id = v_id.split("&", 1)[0]
+                try:
+                    output.extend(self.get_youtube_playlist(p_id))
+                    # Scroll to highlighted entry if possible
+                    v_id = None
+                    for x in ("?v=", "&v="):
+                        if x in item:
+                            v_id = item[item.index(x) + len(x):]
+                            v_id = v_id.split("&", 1)[0]
+                            break
+                    if v_id:
+                        for i, e in enumerate(output):
+                            if v_id in e.url:
+                                output.rotate(-i)
                                 break
-                        if v_id:
-                            for i, e in enumerate(output):
-                                if v_id in e.url:
-                                    output.rotate(-i)
-                                    break
-                        return output
-                    except:
-                        print_exc()
+                    return output
+                except:
+                    output.clear()
+                    print_exc()
                 try:
                     entries = list(map(cdict, requests.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
                     if not entries:

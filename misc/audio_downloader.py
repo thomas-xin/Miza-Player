@@ -1017,8 +1017,8 @@ class AudioDownloader:
         resp = requests.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header()).content
         client = {}
         try:
-            resp = resp[resp.index(b"ytcfg.set"):]
-            ytcfg = resp[:resp.index(b";")]
+            ytcfg = resp[resp.index(b"ytcfg.set"):]
+            ytcfg = ytcfg[:ytcfg.index(b";")]
             ytcfg = eval(ytcfg.split(b"(", 1)[-1].rsplit(b")", 1)[0], {}, {})[-1] + "&"
             end = "&"
             start = "client.name="

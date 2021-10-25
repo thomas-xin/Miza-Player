@@ -554,7 +554,7 @@ def play_next():
     queue.extendleft(temp[::-1])
     queue.appendleft(s)
 def add_to_playlist():
-    entries = list(dict(name=e.name, url=e.url) for e in queue if e.get("selected"))
+    entries = list(copy_entry(e) for e in queue if e.get("selected"))
     if not entries:
         entries = (entry,)
     url = entries[0]["url"]

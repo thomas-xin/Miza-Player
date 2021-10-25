@@ -1086,6 +1086,20 @@ def ensure_duration(e):
     e.duration = e.get("duration")
     return e
 
+def copy_entry(e):
+    d = cdict(url=e["url"])
+    try:
+        d.name = e["name"]
+    except AttributeError:
+        d.name = e["url"].rsplit("/", 1)[1].split("?", 1)[0].rsplit(".", 1)[0]
+    try:
+        if not e["duration"]:
+            raise KeyError
+        d.duration = e["duration"]
+    except KeyError:
+        pass
+    return d
+
 lyrics_cache = {}
 lyrics_renders = {}
 def render_lyrics(entry):

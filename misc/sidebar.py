@@ -228,7 +228,7 @@ def render_sidebar(dur=0):
                 if not swap and not mclick[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
                     if target != i:
                         swap = target - i
-        if CTRL(kheld) and kc2[K_a]:
+        if CTRL(kheld) and kc2[K_a] and queue:
             for entry in queue:
                 entry.selected = True
             sidebar.last_selected = queue[-1]

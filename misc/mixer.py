@@ -685,6 +685,8 @@ def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
                 pos += rsize
             p = proc
             try:
+                if isinstance(b, memoryview) and not b.c_contiguous:
+                    b = bytes(b)
                 fut = submit(proc.stdin.write, b)
                 try:
                     fut.result(timeout=12)

@@ -2505,7 +2505,7 @@ def render_settings(dur, ignore=False):
             ("ripples", "Ripples", "Clicking anywhere on the sidebar or toolbar produces a visual ripple effect."),
             ("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
         )
-        mrect = (offs2 + 8, 376, min(192, sidebar_width - 16), 192)
+        mrect = (offs2 + 8, 376, sidebar_width - 16, 192)
         surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
         surf.fill((0, 0, 0, 0))
         for i, t in enumerate(more):
@@ -2555,47 +2555,47 @@ def render_settings(dur, ignore=False):
                 font="Comic Sans MS",
                 cache=True,
             )
+        if sidebar_width >= 192:
+            r = (sidebar_width - 80, 160, 64, 32)
+            r2 = (screensize[0] - 68 + offs + sidebar_width, 589, 64, 32)
+            if in_rect(mpos, r2):
+                if mclick[0]:
+                    submit(update_collections2)
+                    common.repo_fut = submit(update_repo, force=True)
+                    if common.repo_fut.result():
+                        easygui.show_message(
+                            "No new updates found.",
+                            "Miza Player",
+                        )
+                c = (112, 127, 64, 223)
+            else:
+                c = (96, 112, 80, 127)
+            fut = common.__dict__.get("repo-update")
+            if fut and not isinstance(fut, bool):
+                c2 = verify_colour(x * sin(pc() * tau / 4) for x in c[:3])
+                c2.append(c[-1])
+                c = c2
+            bevel_rectangle(surf, c, r, bevel=4)
+            message_display(
+                "Update",
+                16,
+                rect_centre(r),
+                colour=(255,) * 3,
+                alpha=c[-1] + 32,
+                surface=surf,
+                font="Comic Sans MS",
+                cache=True,
+            )
         if sidebar.more_angle < 63 / 64:
-            im = pyg2pil(surf)
-            a = im.getchannel("A")
             arr = np.linspace(sidebar.more_angle * 510, sidebar.more_angle * 510 - 255, mrect[3])
             np.clip(arr, 0, 255, out=arr)
             arr = arr.astype(np.uint8)
+            im = pyg2pil(surf)
+            a = im.getchannel("A")
             a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Image.NEAREST)
             A = ImageChops.multiply(a, a2)
             im.putalpha(A)
             surf = pil2pyg(im, convert=False)
-        else:
-            if sidebar_width >= 192:
-                r = (screensize[0] - 68 + offs + sidebar_width, 589, 64, 32)
-                if in_rect(mpos, r):
-                    if mclick[0]:
-                        submit(update_collections2)
-                        common.repo_fut = submit(update_repo, force=True)
-                        if common.repo_fut.result():
-                            easygui.show_message(
-                                "No new updates found.",
-                                "Miza Player",
-                            )
-                    c = (112, 127, 64, 223)
-                else:
-                    c = (96, 112, 80, 127)
-                fut = common.__dict__.get("repo-update")
-                if fut and not isinstance(fut, bool):
-                    c2 = verify_colour(x * sin(pc() * tau / 4) for x in c[:3])
-                    c2.append(c[-1])
-                    c = c2
-                bevel_rectangle(DISP, c, r, bevel=4)
-                message_display(
-                    "Update",
-                    16,
-                    rect_centre(r),
-                    colour=(255,) * 3,
-                    alpha=c[-1] + 32,
-                    surface=DISP,
-                    font="Comic Sans MS",
-                    cache=True,
-                )
         DISP2.blit(
             surf,
             mrect[:2],
@@ -3157,6 +3157,7 @@ def draw_menu():
         if not toolbar.editor:
             bsize = min(40, toolbar_height // 3)
             s = f"{time_disp(player.pos)}/{time_disp(player.end)}"
+            c = high_colour(toolbar.colour)
             message_display(
                 s,
                 min(24, toolbar_height // 3),
@@ -3164,6 +3165,7 @@ def draw_menu():
                 surface=DISP,
                 align=2,
                 font="Comic Sans MS",
+                colour=c,
             )
             x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
             x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))

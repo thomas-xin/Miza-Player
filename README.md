@@ -5,4 +5,7 @@ Based on the audio features of the discord bot https://github.com/thomas-xin/Miz
 
 See https://mizabot.xyz/mpinsights for live insights charts on the current usage of the program!
 
-![Collage](https://repository-images.githubusercontent.com/311979675/324f2a80-b739-11eb-9103-31a8555e6296)
+<img src="https://cdn.discordapp.com/attachments/706059022574551050/902553179881897984/unknown.png" alt="Lyrics" width="480"/><img src="https://cdn.discordapp.com/attachments/706059022574551050/902547250843099247/unknown.png" alt="Bar" width="480"/>
+<img src="https://cdn.discordapp.com/attachments/706059022574551050/902548077364277258/unknown.png" alt="Tesseract" width="480"/><img src="https://cdn.discordapp.com/attachments/706059022574551050/902548816325148793/unknown.png" alt="Star" width="480"/>
+<img src="https://cdn.discordapp.com/attachments/706059022574551050/902551533424619520/unknown.png" alt="Ripple" width="480"/><img src="https://cdn.discordapp.com/attachments/731709481863479436/902545943818293288/unknown.png" alt="Spiral" width="480"/>
+<img src="https://cdn.discordapp.com/attachments/731709481863479436/902544653860085780/unknown.png" alt="Hexacomb" width="960"/>

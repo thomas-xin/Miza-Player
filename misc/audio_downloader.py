@@ -662,9 +662,9 @@ def get_duration(filename):
 # Gets the best icon/thumbnail for a queue entry.
 def get_best_icon(entry):
     with suppress(KeyError):
-        return entry["icon"]
-    with suppress(KeyError):
         return entry["thumbnail"]
+    with suppress(KeyError):
+        return entry["icon"]
     try:
         thumbnails = entry["thumbnails"]
     except KeyError:
@@ -672,9 +672,18 @@ def get_best_icon(entry):
             url = entry["webpage_url"]
         except KeyError:
             url = entry["url"]
+        if not url:
+            return ""
         if is_discord_url(url):
             if not is_image(url):
                 return "https://cdn.discordapp.com/embed/avatars/0.png"
+        if is_youtube_url(url):
+            if "?v=" in url:
+                vid = url.split("?v=", 1)[-1]
+            else:
+                vid = url.rsplit("/", 1)[-1].split("?", 1)[0]
+            entry["thumbnail"] = f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg"
+            return entry["thumbnail"]
         return url
     return sorted(thumbnails, key=lambda x: float(x.get("width", x.get("preference", 0) * 4096)), reverse=True)[0]["url"]
 
@@ -773,7 +782,12 @@ class AudioDownloader:
             self.cookie.result()
         except:
             pass
-        return dict(cookie=self.youtube_base + "%03d" % random.randint(0, 999) + ";")
+        return {
+            "Cookie": self.youtube_base + "%03d" % random.randint(0, 999) + ";",
+            "User-Agent": f"Mozilla/5.{random.randint(1, 9)}",
+            "DNT": "1",
+            "X-Forwarded-For": ".".join(str(random.randint(1, 254)) for _ in range(4)),
+        }
 
     # Initializes youtube_dl object as well as spotify tokens, every 720 seconds.
     def update_dl(self):
@@ -956,6 +970,7 @@ class AudioDownloader:
         self.youtube_x += 1
         data = requests.post(
             "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+            headers=self.youtube_header(),
             data=orjson.dumps(dict(
                 context=ctx,
                 continuation=token,
@@ -979,7 +994,7 @@ class AudioDownloader:
         else:
             parts.append(b"\x1a\x12")
         import base64
-        def base128(n):
+        def leb128(n):
             data = bytearray()
             while n:
                 data.append(n & 127)
@@ -989,7 +1004,7 @@ class AudioDownloader:
             if not data:
                 data = b"\x00"
             return data
-        key = bytes((8, i, 0x7a, (i != 1) + 6)) + b"PT:" + base64.b64encode(b"\x08" + base128(i * 100)).rstrip(b"=")
+        key = bytes((8, i, 0x7a, (i != 1) + 6)) + b"PT:" + base64.b64encode(b"\x08" + leb128(i * 100)).rstrip(b"=")
         obj = base64.b64encode(key).replace(b"=", b"%3D")
         parts.append(obj)
         parts.append(b"\x9a\x02\x22")

@@ -1086,7 +1086,7 @@ class HWSurface:
 
     @classmethod
     def copy(cls, surf):
-        self = HWSurface.any(surf.get_size(), pygame.SRCALPHA if "A" in surf.get_flags() else 0)
+        self = HWSurface.any(surf.get_size(), pygame.SRCALPHA if surf.get_flags() & pygame.SRCALPHA else 0)
         self.fill((0, 0, 0, 0))
         self.blit(surf, (0, 0))
         return self

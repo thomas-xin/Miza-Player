@@ -1528,7 +1528,7 @@ def play():
             if b[0] == "o":
                 b = b[1:]
                 osize = list(map(int, b.split("~")))
-                req = int(np.prod(osize) * 3)
+                req = int(np.prod(osize) * 4)
                 b = mixer.stderr.read(req)
                 while len(b) < req:
                     if not b:
@@ -1537,8 +1537,7 @@ def play():
                             restart_mixer()
                         continue
                     b += mixer.stderr.read(req - len(b))
-                osci = pygame.image.frombuffer(b, osize, "RGB")
-                osci.set_colorkey((0,) * 3)
+                osci = pygame.image.frombuffer(b, osize, "RGBA")
                 player.osci = osci
             else:
                 b = b[1:]
@@ -2958,10 +2957,11 @@ def draw_menu():
                 else:
                     val = -1
                 if val == 2:
+                    size = button.sprite.get_size()
                     if i > 1:
-                        sprite = quadratic_gradient(button.sprite.get_size(), pc())
+                        sprite = quadratic_gradient(size, pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
                     else:
-                        sprite = radial_gradient(button.sprite.get_size(), -pc())
+                        sprite = radial_gradient(size, -pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
                     sprite.blit(
                         button.sprite,
                         (0, 0),

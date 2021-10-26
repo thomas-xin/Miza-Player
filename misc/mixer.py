@@ -889,7 +889,7 @@ def oscilloscope(buffer):
             osci = np.clip(osci, -1, 1, out=osci)
             if packet:
                 size = osize
-                OSCI = HWSurface.any(size)
+                OSCI = HWSurface.any(size, pygame.SRCALPHA)
                 OSCI.fill((0, 0, 0, 0))
                 if packet:
                     point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
@@ -905,7 +905,7 @@ def oscilloscope(buffer):
                             prev,
                         )
                     if packet:
-                        b = pygame.image.tostring(OSCI, "RGB")
+                        b = pygame.image.tostring(OSCI, "RGBA")
                         while stderr_lock:
                             stderr_lock.result()
                         stderr_lock = concurrent.futures.Future()

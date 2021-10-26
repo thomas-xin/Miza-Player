@@ -1043,10 +1043,7 @@ def pil2pyg(im, convert=None):
             return surf.convert_alpha()
         return surf.convert()
     elif convert is not None:
-        s2 = HWSurface.any(im.size, pygame.SRCALPHA if "A" in mode else 0)
-        s2.fill((0, 0, 0, 0))
-        s2.blit(surf, (0, 0))
-        return s2
+        return HWSurface.copy(surf)
     return surf
 
 def as_pyg(hws):
@@ -1085,6 +1082,13 @@ class HWSurface:
                 cls.anyque.append(t)
         if colour is not None:
             self.fill(colour)
+        return self
+
+    @classmethod
+    def copy(cls, surf):
+        self = HWSurface.any(surf.get_size(), pygame.SRCALPHA if "A" in surf.get_flags() else 0)
+        self.fill((0, 0, 0, 0))
+        self.blit(surf, (0, 0))
         return self
 
     # v1 = np.empty(8, dtype=np.float32)
@@ -1257,23 +1261,31 @@ def adj_colour(colour, brightness=0, intensity=1, hue=0):
     return verify_colour(c)
 
 gsize = (1920, 1)
-gradient = ((np.arange(1, 0, -1 / gsize[0], dtype=np.float64)) ** 2 * 256).astype(np.uint8).reshape(tuple(reversed(gsize)))
+gradient = ((np.arange(1, 0, -1 / gsize[0], dtype=np.float32)) ** 2 * 256).astype(np.uint8).reshape(tuple(reversed(gsize)))
 qhue = Image.fromarray(gradient, "L")
 qsat = qval = Image.new("L", gsize, 255)
-quadratics = [None] * 256
+QUADS = {}
 
-def quadratic_gradient(size=gsize, t=None, curve=None):
+def quadratic_gradient(size=gsize, t=None, curve=None, flags=None, copy=False):
+    if flags is None:
+        flags = FLAGS
     size = tuple(size)
     if t is None:
         t = pc()
+    quadratics = QUADS.get(flags & pygame.SRCALPHA)
+    if not quadratics:
+        quadratics = QUADS[flags & pygame.SRCALPHA] = [None] * 256
     x = int(t * 128) & 255
     if not quadratics[x]:
         hue = qhue.point(lambda i: i + x & 255)
         img = Image.merge("HSV", (hue, qsat, qval)).convert("RGB")
-        quadratics[x] = pil2pyg(img, convert=True)
+        if flags & pygame.SRCALPHA:
+            quadratics[x] = pil2pyg(img).convert_alpha()
+        else:
+            quadratics[x] = pil2pyg(img, convert=True)
     surf = quadratics[x]
-    if surf.get_size() != size:
-        s2 = HWSurface.any(size, FLAGS)
+    if surf.get_size() != size or surf.get_flags() != flags or curve:
+        s2 = HWSurface.any(size, flags)
         surf = pygame.transform.scale(surf, size, s2)
         if curve:
             h = size[1]
@@ -1285,11 +1297,13 @@ def quadratic_gradient(size=gsize, t=None, curve=None):
                 surf.blit(g, (0, y - i))
                 y = h // 2
                 surf.blit(g, (0, y + i))
+    elif copy:
+        return HWSurface.copy(surf)
     return surf
 
 rgw = 256
 mid = (rgw - 1) / 2
-row = np.arange(rgw, dtype=np.float64)
+row = np.arange(rgw, dtype=np.float32)
 row -= mid
 data = [None] * rgw
 for i in range(rgw):
@@ -1298,21 +1312,31 @@ for i in range(rgw):
 data = np.uint8(data)
 rhue = Image.fromarray(data, "L")
 rsat = rval = Image.new("L", (rgw,) * 2, 255)
-radials = [None] * 256
+RADS = {}
 
-def radial_gradient(size=(rgw,) * 2, t=None):
+def radial_gradient(size=(rgw,) * 2, t=None, flags=None, copy=False):
+    if flags is None:
+        flags = FLAGS
     size = tuple(size)
     if t is None:
         t = pc()
+    radials = RADS.get(flags & pygame.SRCALPHA)
+    if not radials:
+        radials = RADS[flags & pygame.SRCALPHA] = [None] * 256
     x = int(t * 128) & 255
     if not radials[x]:
         hue = rhue.point(lambda i: i + x & 255)
         img = Image.merge("HSV", (hue, rsat, rval)).convert("RGB")
-        radials[x] = pil2pyg(img, convert=True)
+        if flags & pygame.SRCALPHA:
+            radials[x] = pil2pyg(img).convert_alpha()
+        else:
+            radials[x] = pil2pyg(img, convert=True)
     surf = radials[x]
-    if surf.get_size() != size:
-        s2 = HWSurface.any(size, FLAGS)
+    if surf.get_size() != size or surf.get_flags() != flags:
+        s2 = HWSurface.any(size, flags)
         surf = pygame.transform.scale(surf, size, s2)
+    elif copy:
+        return HWSurface.copy(surf)
     return surf
 
 draw_line = pygame.draw.line

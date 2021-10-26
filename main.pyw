@@ -1361,7 +1361,8 @@ def start_player(pos=None, force=False):
         entry = queue[0]
     except IndexError:
         return skip()
-    ensure_next(int(len(queue) > 1 and control.loop < 2))
+    if len(queue) > 1 and control.loop < 2:
+        ensure_next(1)
     duration = entry.duration or 300
     if pos is None:
         if audio.speed >= 0:

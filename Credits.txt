@@ -22,6 +22,10 @@ Fabrice Bellard, Michael Niedermayer and others
 -FFmpeg: A complete, cross-platform solution to record, convert and stream audio and video. {https://ffmpeg.org}
 -Used by almost all video/audio features
 
+Don Hatch
+- Schläfli regular polytope interpreter {https://codegolf.stackexchange.com/a/167896}
+- Used by the polytope visualisation
+
 https://www.onlineconverter.com/midi-to-mp3
 -Used by the midi to mp3 converter
 

@@ -1,0 +1,42 @@
+﻿Python:
+
+Harris, C.R., Millman, K.J., van der Walt, S.J. et al.
+- Array programming with NumPy. Nature 585, 357–362 (2020). DOI: 10.1038/s41586-020-2649-2. (Publisher link)
+{https://github.com/numpy/numpy}
+
+Sergey M. and others
+-youtube_dl: Command-line program to download videos from YouTube.com and other video sites
+{https://github.com/ytdl-org/youtube-dl}
+
+-Pillow: Python Imaging Library
+{https://github.com/python-pillow/Pillow}
+
+
+OTHERS:
+
+Gregot Hennig and others
+-STUDIO NORTH BREMEN: The ideal space for the sound of the present. {http://www.studio-nord.net}
+-Used by the reverb filter
+
+Fabrice Bellard, Michael Niedermayer and others
+-FFmpeg: A complete, cross-platform solution to record, convert and stream audio and video. {https://ffmpeg.org}
+-Used by almost all video/audio features
+
+https://www.onlineconverter.com/midi-to-mp3
+-Used by the midi to mp3 converter
+
+https://yt-download.org/
+-Used for the backup youtube downloader
+
+MISC:
+
+smudgedpasta (https://github.com/smudgedpasta)
+-Art, testing, ideas
+
+Gabriel Ravier (https://github.com/GabrielRavier)
+-Testing
+
+pachuco (https://github.com/pachuco)
+Clownacy (https://github.com/Clownacy)
+Bombchu Link (https://github.com/BombchuLink)
+-Making and updating the org2xm program for converting org files to xm tracked music

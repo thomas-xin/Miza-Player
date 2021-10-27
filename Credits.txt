@@ -31,10 +31,10 @@ https://yt-download.org/
 MISC:
 
 smudgedpasta (https://github.com/smudgedpasta)
--Art, testing, ideas
+-Created all the art, helped with testing and idea recommendations
 
 Gabriel Ravier (https://github.com/GabrielRavier)
--Testing
+-Helped with testing
 
 pachuco (https://github.com/pachuco)
 Clownacy (https://github.com/Clownacy)

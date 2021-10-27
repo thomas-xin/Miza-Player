@@ -1480,7 +1480,10 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
                     raise KeyError
             except KeyError:
                 try:
-                    s = source.convert_alpha()
+                    if alpha == 255 and not s.get_flags() & pygame.SRCALPHA:
+                        s = source.convert()
+                    else:
+                        s = source.convert_alpha()
                 except:
                     s = source.copy()
                 try:
@@ -1508,7 +1511,9 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
     if area is not None:
         area = list(map(lambda i: round(i * scale), area))
     if dest:
-        return dest.blit(s, pos, area, special_flags=BLEND_ALPHA_SDL2)
+        if s.get_flags() & pygame.SRCALPHA:
+            return dest.blit(s, pos, area, special_flags=BLEND_ALPHA_SDL2)
+        return dest.blit(s, pos, area)
     return s
 
 def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
@@ -1654,9 +1659,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
         try:
             surf = rb_surf[data]
         except KeyError:
-            surf = pygame.Surface(rect[2:], FLAGS)
-            surf.fill((1, 2, 3))
-            surf.set_colorkey((1, 2, 3))
+            surf = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)
             r = rect
             rect = [0] * 2 + rect[2:]
             s = surf
@@ -1700,9 +1703,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
     s = rb_surf.get(data)
     if s is None:
         colour2 = (contrast,) * 3
-        s = pygame.Surface(rect[2:], FLAGS)
-        s.fill((1, 2, 3))
-        s.set_colorkey((1, 2, 3))
+        s = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)
         for c in range(bevel):
             p = [c, c]
             q = [i - c - 1 for i in rect[2:]]
@@ -1760,8 +1761,6 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
         else:
             pos = [centre[0] - width, centre[1] - height]
             return blit_complex(dest, newS, pos, alpha, rotation, copy=True)
-    # newS = HWSurface.any((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
-    # newS.fill((0, 0, 0, 0))
     try:
         newS = pygame.Surface((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
     except:
@@ -1846,7 +1845,6 @@ def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=25
             data2 = tuple(colour2) + (radius2 * 2, wr, cr, gradient, filled)
             s2 = cc_surf.get(data2)
             if not s2:
-                # print(str(data2) + " concircle created!")
                 width2 = round(width2)
                 size = [radius2 * 2] * 2
                 size2 = [round(radius2 * 4), round(radius2 * 4) + 1]
@@ -1871,7 +1869,6 @@ def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=25
             s = custom_scale(s2, size3, antialias=1)
             if cache:
                 cc_surf[data] = s
-            # print(str(data2) + " concircle copied to " + str(data) + " concircle!")
         p = [i - radius for i in pos]
         return blit_complex(dest, s, p, alpha=alpha, colour=colour)
 

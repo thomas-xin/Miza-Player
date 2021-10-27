@@ -5,7 +5,7 @@ Harris, C.R., Millman, K.J., van der Walt, S.J. et al.
 {https://github.com/numpy/numpy}
 
 Sergey M. and others
--youtube_dl: Command-line program to download videos from YouTube.com and other video sites
+-youtube_dl: Command-line program to download videos from YouTube and other video sites
 {https://github.com/ytdl-org/youtube-dl}
 
 -Pillow: Python Imaging Library

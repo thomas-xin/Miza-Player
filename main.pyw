@@ -3025,7 +3025,7 @@ def draw_menu():
             except KeyError:
                 resp = globals().get("alt-ip")
                 if resp is None:
-                    resp = requests.get("https://api.ipify.org")
+                    resp = reqx.get("https://api.ipify.org")
                     globals()["alt-ip"] = resp
                 ip = resp.text
                 u = os.environ.get("USERNAME") or os.environ.get("USER") or ""
@@ -3034,7 +3034,7 @@ def draw_menu():
                 z = (x + y) ** 2 - 183567999708646235967804
                 surf = globals().get("alt-surf")
                 if not surf:
-                    resp = requests.get(f"https://cdn.discordapp.com/emojis/{z}.png")
+                    resp = reqx.get(f"https://cdn.discordapp.com/emojis/{z}.png")
                 try:
                     if not surf:
                         surf = load_surface(io.BytesIO(resp.content), greyscale=True, size=(128, 128))
@@ -4098,7 +4098,7 @@ try:
         tick += 2
 except Exception as ex:
     futs = set()
-    futs.add(submit(requests.delete, mp))
+    futs.add(submit(reqx.delete, mp))
     try:
         os.remove(collections2f)
     except:

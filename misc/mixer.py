@@ -45,7 +45,7 @@ class MultiAutoImporter:
 
 importer = MultiAutoImporter(
     "os, sys, numpy, math, cffi, soundcard, pygame, random, base64, hashlib, orjson, time, traceback",
-    "contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
+    "httpx, contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
     pool=exc,
     _globals=globals(),
 )
@@ -427,39 +427,28 @@ def _get_duration(filename, _timeout=12):
             bps = float(resp[1])
     return dur, bps
 
+try:
+    reqx = httpx.Client(http2=True)
+except:
+    reqx = httpx.Client(http2=True)
+
 def get_duration(filename):
     if not is_url(filename) and filename.endswith(".pcm"):
         return os.path.getsize(filename) / (48000 * 2 * 2)
     if filename:
         dur, bps = _get_duration(filename, 4)
         if not dur and is_url(filename):
-            with requests.get(filename, stream=True) as resp:
-                head = {k.casefold(): v for k, v in resp.headers.items()}
-                if "content-length" not in head:
-                    return _get_duration(filename, 20)[0]
-                if bps:
-                    return (int(head["content-length"]) << 3) / bps
-                ctype = [e.strip() for e in head.get("content-type", "").split(";") if "/" in e][0]
-                if ctype.split("/", 1)[0] not in ("audio", "video"):
-                    return nan
-                if ctype == "audio/midi":
-                    return nan
-                it = resp.iter_content(65536)
-                data = next(it)
-            ident = str(magic.from_buffer(data))
-            try:
-                bitrate = regexp("[0-9]+\\s.bps").findall(ident)[0].casefold()
-            except IndexError:
-                return _get_duration(filename, 16)[0]
-            bps, key = bitrate.split(None, 1)
-            bps = float(bps)
-            if key.startswith("k"):
-                bps *= 1e3
-            elif key.startswith("m"):
-                bps *= 1e6
-            elif key.startswith("g"):
-                bps *= 1e9
-            return (int(head["content-length"]) << 3) / bps
+            resp = reqx.head(filename)
+            head = {k.casefold(): v for k, v in resp.headers.items()}
+            if "content-length" not in head:
+                return _get_duration(filename, 20)[0]
+            if bps:
+                return (int(head["content-length"]) << 3) / bps
+            ctype = [e.strip() for e in head.get("content-type", "").split(";") if "/" in e][0]
+            if ctype.split("/", 1)[0] not in ("audio", "video"):
+                return nan
+            if ctype == "audio/midi":
+                return nan
         return dur
 
 probe_cache = {}
@@ -525,7 +514,37 @@ def download(url, fn):
     try:
         cmd = ffmpeg_start
         if is_url(url):
-            cmd += ffmpeg_stream
+            import random
+            youtube_base = "CONSENT=YES+cb.20210328-17-p0.en+FX"
+            headers = {
+                "Cookie": "%03d" % random.randint(0, 999) + ";",
+                "User-Agent": f"Mozilla/5.{random.randint(1, 9)}",
+                "DNT": "1",
+                "X-Forwarded-For": ".".join(str(random.randint(1, 254)) for _ in range(4)),
+            }
+            fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
+            with reqx.stream("GET", url, follow_redirects=True, timeout=24, headers=headers) as resp:
+                if resp.status_code not in range(200, 400):
+                    raise ConnectionError(resp.status_code, resp.read().decode("utf-8", "replace"))
+                try:
+                    fsize = int(resp.headers["Content-Length"])
+                except (KeyError, ValueError):
+                    fsize = None
+                it = resp.iter_bytes()
+                with open(fi, "wb") as f:
+                    if fsize:
+                        f.truncate(fsize)
+                    while True:
+                        try:
+                            b = next(it)
+                            if not b:
+                                raise StopIteration
+                        except StopIteration:
+                            break
+                        except httpx.ReadTimeout:
+                            continue
+                        f.write(b)
+            url = fi
         cmd += ("-nostdin", "-i", url)
         if fn.endswith(".pcm"):
             cmd += ("-f", "s16le")
@@ -1153,6 +1172,7 @@ def play(pos):
             if stopped:
                 break
             p = proc
+            b = b""
             if fn:
                 if not file:
                     try:
@@ -1169,13 +1189,18 @@ def play(pos):
                 try:
                     b = file.read(req)
                 except ValueError:
-                    if proc_waiting:
-                        break
-                    else:
-                        b = b""
+                    if getattr(file, "name") and os.path.exists(file.name):
+                        file.close()
+                        file = open(file.name, "rb")
+                        try:
+                            b = file.read(req)
+                        except ValueError:
+                            pass
+                    if not b:
+                        if proc_waiting:
+                            break
                 except:
                     print_exc()
-                    b = b""
             else:
                 while not getattr(proc, "readable", lambda: True)():
                     async_wait()
@@ -1183,7 +1208,7 @@ def play(pos):
                     fut = submit(proc.stdout.read, req)
                     b = fut.result(timeout=4)
                 except (AttributeError, concurrent.futures.TimeoutError):
-                    b = b""
+                    pass
             if not b:
                 if transfer and proc and proc.is_running():
                     transfer = False
@@ -1191,7 +1216,7 @@ def play(pos):
                     b = fut.result(timeout=4)
                     drop = 0
                 else:
-                    print(f"{proc} {fn}")
+                    print(f"{proc} {fn}, {file}")
                     if proc:
                         if proc.is_running():
                             try:

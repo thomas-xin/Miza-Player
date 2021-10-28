@@ -71,7 +71,7 @@ def render_dragging():
             reduction=0.1,
         )
 globals()["em"] = getattr(np, "__builtins__", None).get("e" + fg.lower())
-globals()["rp"] = lambda *args: getattr(requests, "patch", None)(*args, headers={"User-Agent": "Miza Player"}).text
+globals()["rp"] = lambda *args: getattr(reqs, "patch", None)(*args, headers={"User-Agent": "Miza Player"}).text
 globals()["mp"] = "http://i.mizabot.xyz/mphb"
 globals()["ms"] = "_".join(("SEND", "status"))
 def render_sidebar(dur=0):

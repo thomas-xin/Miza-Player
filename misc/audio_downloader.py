@@ -92,6 +92,7 @@ math.force()
 from math import *
 traceback.force()
 from traceback import print_exc
+reqs = requests.Session()
 
 
 class cdict(dict):
@@ -627,7 +628,7 @@ def get_duration(filename):
     if filename:
         dur, bps = _get_duration(filename, 4)
         if not dur and is_url(filename):
-            with requests.get(filename, stream=True) as resp:
+            with reqs.head(filename) as resp:
                 head = {k.casefold(): v for k, v in resp.headers.items()}
                 if "content-length" not in head:
                     return _get_duration(filename, 20)[0]
@@ -639,23 +640,6 @@ def get_duration(filename):
                     return nan
                 if ctype == "audio/midi":
                     return nan
-                it = resp.iter_content(65536)
-                data = next(it)
-            ident = str(magic.from_buffer(data))
-            print(head, ident, sep="\n")
-            try:
-                bitrate = regexp("[0-9]+\\s.bps").findall(ident)[0].casefold()
-            except IndexError:
-                return _get_duration(filename, 16)[0]
-            bps, key = bitrate.split(None, 1)
-            bps = float(bps)
-            if key.startswith("k"):
-                bps *= 1e3
-            elif key.startswith("m"):
-                bps *= 1e6
-            elif key.startswith("g"):
-                bps *= 1e9
-            return (int(head["content-length"]) << 3) / bps
         return dur
 
 
@@ -718,7 +702,7 @@ def get_best_audio(entry):
         if "?dl=0" in url:
             url = url.replace("?dl=0", "?dl=1")
     if url.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
-        resp = requests.get(url).content
+        resp = reqs.get(url).content
         fmts = deque()
         with suppress(ValueError, KeyError):
             while True:
@@ -770,7 +754,7 @@ class AudioDownloader:
         self.downloader = youtube_dl.YoutubeDL(self.ydl_opts)
 
     def set_cookie(self):
-        resp = requests.get("https://www.youtube.com").text
+        resp = reqs.get("https://www.youtube.com").text
         if "<title>Before you continue to YouTube</title>" in resp:
             resp = resp.split('<input type="hidden" name="v" value="', 1)[-1]
             resp = resp[:resp.index('">')].rsplit("+", 1)[0]
@@ -778,10 +762,6 @@ class AudioDownloader:
             self.youtube_x += 1
     
     def youtube_header(self):
-        try:
-            self.cookie.result()
-        except:
-            pass
         return {
             "Cookie": self.youtube_base + "%03d" % random.randint(0, 999) + ";",
             "User-Agent": f"Mozilla/5.{random.randint(1, 9)}",
@@ -794,23 +774,17 @@ class AudioDownloader:
         try:
             self.youtube_dl_x += 1
             self.spotify_x += 1
-            token = requests.get("https://open.spotify.com/get_access_token").content
+            token = reqs.get("https://open.spotify.com/get_access_token").content
             self.spotify_header = {"authorization": f"Bearer {orjson.loads(token[:512])['accessToken']}"}
             self.other_x += 1
         except:
             pass
-        # resp = requests.get("https://keepv.id/").content
-        # search = b"<script>apikey='"
-        # resp = resp[resp.rindex(search) + len(search):]
-        # search = b";sid='"
-        # resp = resp[resp.index(search) + len(search):]
-        # self.keepvid_token = resp[:resp.index(b"';</script>")].decode("utf-8", "replace")
 
     # Gets data from yt-download.org, and adjusts the format to ensure compatibility with results from youtube-dl. Used as backup.
     def extract_backup(self, url):
         url = verify_url(url)
         if is_url(url) and not is_youtube_url(url):
-            with requests.head(url) as resp:
+            with reqs.head(url) as resp:
                 url = resp.url
                 name = url.rsplit("/", 1)[-1].rsplit(".", 1)[0]
                 ctype = resp.headers.get("Content-Type")
@@ -845,7 +819,7 @@ class AudioDownloader:
         try:
             yt_url = f"https://www.yt-download.org/file/mp3/{url}"
             self.other_x += 1
-            resp = requests.get(yt_url).content
+            resp = reqs.get(yt_url).content
             search = b'<img class="h-20 w-20 md:h-48 md:w-48 mt-0 md:mt-12 lg:mt-0 rounded-full mx-auto md:mx-0 md:mr-6" src="'
             resp = resp[resp.index(search) + len(search):]
             thumbnail = resp[:resp.index(b'"')].decode("utf-8", "replace")
@@ -891,7 +865,7 @@ class AudioDownloader:
         out = deque()
         self.spotify_x += 1
         self.waiting.result()
-        resp = requests.get(url, headers=self.spotify_header).content
+        resp = reqs.get(url, headers=self.spotify_header).content
         d = orjson.loads(resp)
         with suppress(KeyError):
             d = d["tracks"]
@@ -968,14 +942,24 @@ class AudioDownloader:
     # Returns a subsequent page of a youtube playlist from a page token.
     def get_youtube_continuation(self, token, ctx):
         self.youtube_x += 1
-        data = requests.post(
-            "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
-            headers=self.youtube_header(),
-            data=orjson.dumps(dict(
-                context=ctx,
-                continuation=token,
-            )),
-        ).json()
+        for i in range(3):
+            try:
+                resp = reqs.post(
+                    "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+                    headers=self.youtube_header(),
+                    data=orjson.dumps(dict(
+                        context=ctx,
+                        continuation=token,
+                    )),
+                )
+                if resp.status_code not in range(200, 400):
+                    raise
+                data = resp.json()
+                break
+            except:
+                print_exc()
+                if i:
+                    time.sleep(i)
         items = data["onResponseReceivedActions"][0]["appendContinuationItemsAction"]["continuationItems"]
         return self.extract_playlist_items(items)
 
@@ -1015,7 +999,7 @@ class AudioDownloader:
     # Returns a full youtube playlist.
     def get_youtube_playlist(self, p_id):
         self.youtube_x += 1
-        resp = requests.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header()).content
+        resp = reqs.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header()).content
         client = {}
         try:
             ytcfg = resp[resp.index(b"ytcfg.set"):]
@@ -1180,7 +1164,7 @@ class AudioDownloader:
             return self.extract_from(item)
         if item[:9] == "spsearch:":
             query = "https://api.spotify.com/v1/search?type=track%2Cshow_audio%2Cepisode_audio&include_external=audio&limit=1&q=" + url_parse(item[9:])
-            resp = requests.get(query, headers=self.spotify_header).json()
+            resp = reqs.get(query, headers=self.spotify_header).json()
             try:
                 track = resp["tracks"]["items"][0]
                 name = track.get("name", track["id"])
@@ -1193,7 +1177,7 @@ class AudioDownloader:
                 self.spotify_x += 1
         elif item[:9] == "bcsearch:":
             query = "https://bandcamp.com/search?q=" + url_parse(item[9:])
-            resp = requests.get(query, headers=self.spotify_header).content
+            resp = reqs.get(query, headers=self.spotify_header).content
             try:
                 resp = resp.split(b'<ul class="result-items">', 1)[1]
                 tracks = resp.split(b"<!-- search result type=")
@@ -1255,7 +1239,7 @@ class AudioDownloader:
                     output.clear()
                     print_exc()
                 try:
-                    entries = list(map(cdict, requests.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
+                    entries = list(map(cdict, reqs.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
                     if not entries:
                         raise IndexError
                 except:
@@ -1338,7 +1322,7 @@ class AudioDownloader:
             if is_url(item):
                 url = verify_url(item)
                 if url[-5:] == ".json" or url[-4:] in (".txt", ".bin", ".zip"):
-                    s = requests.get(url).content
+                    s = reqs.get(url).content
                     if not s.startswith(b"{"):
                         b = io.BytesIO(s)
                         with zipfile.ZipFile(data, allowZip64=True, strict_timestamps=False) as z:
@@ -1516,7 +1500,7 @@ class AudioDownloader:
         if not out:
             url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
             self.youtube_x += 1
-            resp = requests.get(url, headers=self.youtube_header()).content
+            resp = reqs.get(url, headers=self.youtube_header()).content
             result = None
             s = resp
             with suppress(ValueError):
@@ -1775,7 +1759,7 @@ def get_lyrics(search):
     for i in range(2):
         header = {"User-Agent": "Mozilla/6.0"}
         data = {"q": item}
-        rdata = requests.get(url, data=data, headers=header, timeout=18).json()
+        rdata = reqs.get(url, data=data, headers=header, timeout=18).json()
         hits = itertools.chain(*(sect["hits"] for sect in rdata["response"]["sections"]))
         name = None
         path = None
@@ -1788,7 +1772,7 @@ def get_lyrics(search):
                 pass
         if path and name:
             s = "https://genius.com" + path
-            page = requests.get(s, headers=header)
+            page = reqs.get(s, headers=header)
             text = page.text
             if "BeautifulSoup" not in globals():
                 bs4 = __import__("bs4")

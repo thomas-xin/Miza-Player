@@ -755,11 +755,18 @@ if not os.path.exists(commitf):
 elif os.path.exists(commitr):
     os.remove(commitr)
 
+reqs = requests.Session()
+import httpx
+try:
+    reqx = httpx.Client(http2=True)
+except:
+    reqx = httpx.Client(http2=False)
+
 def update_repo(force=False):
     print("Checking for updates...")
     try:
-        with requests.get("https://github.com/thomas-xin/Miza-Player") as resp:
-            s = resp.text
+        resp = reqx.get("https://github.com/thomas-xin/Miza-Player")
+        s = resp.text
         try:
             search = '<include-fragment src="/thomas-xin/Miza-Player/tree-commit/'
             s = s[s.index(search) + len(search):]
@@ -791,8 +798,8 @@ def update_repo(force=False):
                     subprocess.run(["git"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     b = None
                 except FileNotFoundError:
-                    with requests.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main") as resp:
-                        b = resp.content
+                    resp = reqx.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main")
+                    b = resp.content
                 if not options.control.autoupdate:
                     r = fut.result()
                 else:
@@ -845,8 +852,8 @@ def update_repo(force=False):
         print_exc()
 
 def update_collections2():
-    with requests.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py") as resp:
-        b = resp.content
+    resp = reqx.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py")
+    b = resp.content
     with open(collections2f, "wb") as f:
         f.write(b)
     print("collections2.tmp updated.")
@@ -1956,19 +1963,19 @@ def get_font(font):
     try:
         fn = "misc/" + font + ".ttf"
         if font == "OpenSansEmoji":
-            with requests.get("https://drive.google.com/u/0/uc?id=1OZs0gQ4J3vm9rEKzECatlgh5z3wfbNcZ&export=download") as resp:
-                g = io.BytesIO(resp.content)
-                with open(fn, "wb") as f:
-                    with zipfile.ZipFile(g) as z:
-                        content = z.read(font + ".ttf")
-                        f.write(content)
+            resp = reqx.get("https://drive.google.com/u/0/uc?id=1OZs0gQ4J3vm9rEKzECatlgh5z3wfbNcZ&export=download")
+            g = io.BytesIO(resp.content)
+            with open(fn, "wb") as f:
+                with zipfile.ZipFile(g) as z:
+                    content = z.read(font + ".ttf")
+                    f.write(content)
         elif font == "Rockwell":
-            with requests.get("https://drive.google.com/u/0/uc?id=1Lxr25oC003hfgjyzkVAjKUGuaEw9MCSf&export=download") as resp:
-                g = io.BytesIO(resp.content)
-                with open(fn, "wb") as f:
-                    with zipfile.ZipFile(g) as z:
-                        content = z.read(font + ".ttf")
-                        f.write(content)
+            resp = reqx.get("https://drive.google.com/u/0/uc?id=1Lxr25oC003hfgjyzkVAjKUGuaEw9MCSf&export=download")
+            g = io.BytesIO(resp.content)
+            with open(fn, "wb") as f:
+                with zipfile.ZipFile(g) as z:
+                    content = z.read(font + ".ttf")
+                    f.write(content)
         if "ct_font" in globals():
             ct_font.clear()
         if "ft_font" in globals():
@@ -2148,8 +2155,8 @@ def get_duration_2(filename):
     if filename:
         dur, bps, cdc = _get_duration_2(filename, 4)
         if not dur and is_url(filename):
-            with requests.head(filename, stream=True) as resp:
-                head = fcdict(resp.headers)
+            resp = reqx.head(filename)
+            head = fcdict(resp.headers)
             if "content-length" not in head:
                 dur, bps, cdc = _get_duration_2(filename, 20)
                 return dur, cdc
@@ -2160,24 +2167,6 @@ def get_duration_2(filename):
                 return nan, cdc
             if ctype == "audio/midi":
                 return nan, cdc
-            return None, "N/A"
-            #     it = resp.iter_content(65536)
-            #     data = next(it)
-            # ident = str(magic.from_buffer(data))
-            # try:
-            #     bitrate = re.findall("[0-9]+\\s.bps", ident)[0].casefold()
-            # except IndexError:
-            #     dur, bps, cdc = _get_duration_2(filename, 16)
-            #     return dur, cdc
-            # bps, key = bitrate.split(None, 1)
-            # bps = float(bps)
-            # if key.startswith("k"):
-            #     bps *= 1e3
-            # elif key.startswith("m"):
-            #     bps *= 1e6
-            # elif key.startswith("g"):
-            #     bps *= 1e9
-            # return (int(head["content-length"]) << 3) / bps, cdc
         return dur, cdc
 
 def construct_options(full=True):
@@ -2325,8 +2314,8 @@ def org2xm(org, dat=None):
     r_org = None
     if not org or type(org) is not bytes:
         if is_url(org):
-            with requests.get(org) as r:
-                data = r.content
+            r = reqx.get(org)
+            data = r.content
         else:
             r_org = org
             with open(r_org, "rb") as f:
@@ -2350,8 +2339,8 @@ def org2xm(org, dat=None):
     # Load custom sample bank if specified
     if dat is not None and is_url(dat):
         with open(r_dat, "wb") as f:
-            with requests.get(dat) as r:
-                f.write(r.content)
+            r = reqx.get(dat)
+            f.write(r.content)
     else:
         if type(dat) is bytes and dat:
             with open(r_dat, "wb") as f:
@@ -2360,9 +2349,9 @@ def org2xm(org, dat=None):
             r_dat = "sndlib/ORG210EN.DAT"
             orig = True
             if not os.path.exists(r_dat):
-                with requests.get("https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true", stream=True) as resp:
-                    with open(r_dat, "wb") as f:
-                        f.write(resp.content)
+                resp = reqx.get("https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true")
+                with open(r_dat, "wb") as f:
+                    f.write(resp.content)
     args = ["org2xm.exe", r_org, r_dat]
     if compat:
         args.append("c")
@@ -2379,7 +2368,7 @@ def org2xm(org, dat=None):
     return r_xm
 
 def mid2mp3(mid):
-    url = requests.post(
+    url = reqx.post(
         "https://hostfast.onlineconverter.com/file/send",
         files={
             "class": (None, "audio"),
@@ -2393,7 +2382,7 @@ def mid2mp3(mid):
     fn = url.rsplit("/", 1)[-1].strip("\x00")
     for i in range(360):
         t = utc()
-        test = requests.get(f"https://hostfast.onlineconverter.com/file/{fn}").content
+        test = reqx.get(f"https://hostfast.onlineconverter.com/file/{fn}").content
         if test == b"d":
             break
         delay = utc() - t
@@ -2402,7 +2391,7 @@ def mid2mp3(mid):
     ts = ts_us()
     r_mp3 = f"cache/{ts}.mp3"
     with open(r_mp3, "wb") as f:
-        f.write(requests.get(f"https://hostfast.onlineconverter.com/file/{fn}/download").content)
+        f.write(reqx.get(f"https://hostfast.onlineconverter.com/file/{fn}/download").content)
     return r_mp3
 
 def png2wav(png):
@@ -2424,8 +2413,8 @@ CONVERTERS = {
 
 def select_and_convert(stream):
     if is_url(stream):
-        with requests.get(stream, timeout=8, stream=True) as resp:
-            it = resp.iter_content(4096)
+        with reqs.get(stream, timeout=8, stream=True) as resp:
+            it = resp.iter_content(65536)
             b = bytes()
             while len(b) < 4:
                 b += next(it)
@@ -2436,7 +2425,7 @@ def select_and_convert(stream):
             b += resp.content
     else:
         with open(stream, "rb") as file:
-            b = file.read(4096)
+            b = file.read(65536)
             try:
                 convert = CONVERTERS[b[:4]]
             except KeyError:

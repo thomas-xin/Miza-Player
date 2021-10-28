@@ -430,7 +430,7 @@ def _get_duration(filename, _timeout=12):
 try:
     reqx = httpx.Client(http2=True)
 except:
-    reqx = httpx.Client(http2=True)
+    reqx = httpx.Client(http2=False)
 
 def get_duration(filename):
     if not is_url(filename) and filename.endswith(".pcm"):

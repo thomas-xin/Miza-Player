@@ -3973,28 +3973,28 @@ try:
 						font="Comic Sans MS",
 						cache=True,
 					)
-					aps = common.ALPHA
-					common.ALPHA = 0
-					bps = common.BASIC
-					common.BASIC = 0
-					message_display(
-						f"Alpha: {aps}",
-						14,
-						(4, 70),
-						align=0,
-						surface=DISP,
-						font="Comic Sans MS",
-						cache=True,
-					)
-					message_display(
-						f"Basic: {bps}",
-						14,
-						(4, 84),
-						align=0,
-						surface=DISP,
-						font="Comic Sans MS",
-						cache=True,
-					)
+					# aps = common.ALPHA
+					# common.ALPHA = 0
+					# bps = common.BASIC
+					# common.BASIC = 0
+					# message_display(
+						# f"Alpha: {aps}",
+						# 14,
+						# (4, 70),
+						# align=0,
+						# surface=DISP,
+						# font="Comic Sans MS",
+						# cache=True,
+					# )
+					# message_display(
+						# f"Basic: {bps}",
+						# 14,
+						# (4, 84),
+						# align=0,
+						# surface=DISP,
+						# font="Comic Sans MS",
+						# cache=True,
+					# )
 				modified.add(player.rect)
 				if len(modified) > 1:
 					modified.clear()

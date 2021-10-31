@@ -724,13 +724,17 @@ last = None
 #	 s, 0, r, 0,
 # )
 
+clearing = 0
 def spectrogram_render(bars):
 	global ssize2, specs, dur, last, sp_changed
 	try:
 		if specs == 1:
 			sfx = HWSurface.any((barcount - 2, barheight))
-			if not random.randint(0, 7):
+			if clearing >= 3:
 				sfx.fill(0)
+				globals()["clearing"] = 0
+			else:
+				globals()["clearing"] += 1
 			futs = set()
 			for bar in bars:
 				futs.add(submit(bar.render, sfx=sfx))

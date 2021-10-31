@@ -729,6 +729,8 @@ def spectrogram_render(bars):
 	try:
 		if specs == 1:
 			sfx = HWSurface.any((barcount - 2, barheight))
+			if not random.randint(0, 7):
+				sfx.fill(0)
 			futs = set()
 			for bar in bars:
 				futs.add(submit(bar.render, sfx=sfx))

@@ -1,5 +1,6 @@
 def render_dragging():
 	base, maxitems = sidebar.base, sidebar.maxitems
+	lq2 = sidebar.lastsel
 	for i, entry in enumerate(queue[base:base + maxitems], base):
 		if not entry.get("selected"):
 			continue
@@ -35,7 +36,7 @@ def render_dragging():
 			4,
 			alpha=255,
 			filled=False,
-			background=sc,
+			background=sidebar.colour,
 		)
 		if not entry.get("surf"):
 			entry.surf = message_display(

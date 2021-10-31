@@ -2800,14 +2800,12 @@ def draw_menu():
 			globals()["last-cond"] = True
 	elif not tick % 240:
 		cond = True
-	fut = None
-	sidebar_rendered = False
+	sidebar_rendered = None
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
-		sidebar_rendered = True
 		if toolbar.editor:
-			fut = submit(render_sidebar_2, dur)
+			sidebar_rendered = submit(render_sidebar_2, dur)
 		else:
-			fut = submit(render_sidebar, dur)
+			sidebar_rendered = submit(render_sidebar, dur)
 		offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
 		Z = -sidebar.scroll.pos
 		maxb = (sidebar_width - 12) // 44
@@ -3351,8 +3349,8 @@ def draw_menu():
 					submit(render_lyrics, queue[0])
 					player.spec = None
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
-		if fut:
-			fut.result()
+		if sidebar_rendered:
+			sidebar_rendered.result()
 		for i, button in enumerate(sidebar.buttons[:maxb]):
 			if button.get("rect"):
 				if in_rect(mpos, button.rect):
@@ -3414,10 +3412,12 @@ def draw_menu():
 	if toolbar.editor:
 		editor_toolbar()
 	if sidebar_rendered and sidebar.get("dragging"):
+		sidebar_rendered.result()
 		if toolbar.editor:
-			render_dragging_2()
+			Enqueue(render_dragging_2)
 		else:
-			render_dragging()
+			Enqueue(render_dragging)
+		return
 	if not tick & 7 or toolbar.rect in modified:
 		if toolbar.resizing:
 			pygame.draw.rect(DISP, (255, 0, 0), toolbar.rect[:3] + (4,))
@@ -3926,7 +3926,7 @@ try:
 						filled=False,
 					)
 					modified.add(player.rect)
-				elif in_rect(mpos, player.rect):
+				elif not sidebar.get("dragging") and in_rect(mpos, player.rect):
 					Enqueue(
 						bevel_rectangle,
 						DISP,
@@ -4038,54 +4038,56 @@ try:
 					if r[1] + r[3] > screensize[1]:
 						r[1] = screensize[1] - r[3]
 					sidebar.menu.rect = r
-				try:
-					c = DISP.get_at(sidebar.menu.pos)
-				except IndexError:
-					c = (0,) * 3
-				if sidebar.menu.get("colour"):
-					rat = min(1, delay)
-					c = [x * (1 - rat) + y * rat for x, y in zip(sidebar.menu.colour, c)]
-				c = colorsys.rgb_to_hsv(*(i / 255 for i in c[:3]))
-				sidebar.menu.colour = tuple(round(i * 255) for i in colorsys.hls_to_rgb(c[0], 0.875, 1))
-				rect = sidebar.menu.rect = astype(sidebar.menu.rect, tuple)
-				if sidebar.menu.selected:
-					alpha = round(223 * sidebar.menu.scale)
-				else:
-					alpha = round(191 * sidebar.menu.scale)
-				c = sidebar.menu.colour + (alpha,)
 				Finish()
-				rounded_bev_rect(
-					DISP,
-					c,
-					rect,
-					4,
-				)
-				for i, surf in enumerate(sidebar.menu.get("lines", ())):
-					text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
-					if sidebar.menu.scale >= 1 and i == sidebar.menu.selected:
-						sidebar.menu.glow[i] = min(1, sidebar.menu.glow[i] + dur * 5)
-					if sidebar.menu.glow[i]:
-						c = round(255 * sidebar.menu.glow[i])
-						rounded_bev_rect(
-							DISP,
-							tuple(max(0, i - 64 >> 1) for i in sidebar.menu.colour),
-							text_rect,
-							4,
-							alpha=c,
-						)
-						col = (c,) * 3
-						sidebar.menu.glow[i] = max(0, sidebar.menu.glow[i] - dur * 2.5)
+				lines = sidebar.menu.get("lines")
+				if lines:
+					try:
+						c = DISP.get_at(sidebar.menu.pos)
+					except IndexError:
+						c = (0,) * 3
+					if sidebar.menu.get("colour"):
+						rat = min(1, delay)
+						c = [x * (1 - rat) + y * rat for x, y in zip(sidebar.menu.colour, c)]
+					c = colorsys.rgb_to_hsv(*(i / 255 for i in c[:3]))
+					sidebar.menu.colour = tuple(round(i * 255) for i in colorsys.hls_to_rgb(c[0], 0.875, 1))
+					rect = sidebar.menu.rect = astype(sidebar.menu.rect, tuple)
+					if sidebar.menu.selected:
+						alpha = round(223 * sidebar.menu.scale)
 					else:
-						col = (0,) * 3
-					Enqueue(
-						blit_complex,
+						alpha = round(191 * sidebar.menu.scale)
+					c = sidebar.menu.colour + (alpha,)
+					rounded_bev_rect(
 						DISP,
-						surf,
-						(text_rect[0] + 3, text_rect[1]),
-						alpha,
-						colour=col,
+						c,
+						rect,
+						4,
 					)
-				modified.add(rect)
+					for i, surf in enumerate(lines):
+						text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
+						if sidebar.menu.scale >= 1 and i == sidebar.menu.selected:
+							sidebar.menu.glow[i] = min(1, sidebar.menu.glow[i] + dur * 5)
+						if sidebar.menu.glow[i]:
+							c = round(255 * sidebar.menu.glow[i])
+							rounded_bev_rect(
+								DISP,
+								tuple(max(0, i - 64 >> 1) for i in sidebar.menu.colour),
+								text_rect,
+								4,
+								alpha=c,
+							)
+							col = (c,) * 3
+							sidebar.menu.glow[i] = max(0, sidebar.menu.glow[i] - dur * 2.5)
+						else:
+							col = (0,) * 3
+						Enqueue(
+							blit_complex,
+							DISP,
+							surf,
+							(text_rect[0] + 3, text_rect[1]),
+							alpha,
+							colour=col,
+						)
+					modified.add(rect)
 			if modified:
 				if not tick + 6 & 7:
 					Finish()

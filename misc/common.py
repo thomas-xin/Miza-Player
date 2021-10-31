@@ -1733,7 +1733,10 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
 		except KeyError:
 			if background:
 				surf = pygame.Surface(rect[2:], FLAGS)
-				if any(background):
+				if not filled:
+					surf.fill((1, 2, 3))
+					surf.set_colorkey((1, 2, 3))
+				elif any(background):
 					surf.fill(background)
 			else:
 				surf = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)

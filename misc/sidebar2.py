@@ -36,7 +36,7 @@ def render_dragging_2():
 			4,
 			alpha=255,
 			filled=False,
-			background=sc,
+			background=sidebar.colour,
 		)
 		if not entry.get("surf"):
 			entry.surf = message_display(

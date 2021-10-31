@@ -1548,6 +1548,7 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
 			globals()["ALPHA"] += 1
 			return dest.blit(s, pos, area, special_flags=BLEND_ALPHA_SDL2)
 		globals()["BASIC"] += 1
+		return dest.blit(s, pos, area)
 		if not area:
 			area = [0, 0]
 			area.extend(source.get_size())

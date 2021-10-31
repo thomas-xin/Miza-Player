@@ -4060,7 +4060,7 @@ try:
 					rect,
 					4,
 				)
-				for i, surf in enumerate(sidebar.menu.lines):
+				for i, surf in enumerate(sidebar.menu.get("lines", ())):
 					text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
 					if sidebar.menu.scale >= 1 and i == sidebar.menu.selected:
 						sidebar.menu.glow[i] = min(1, sidebar.menu.glow[i] + dur * 5)

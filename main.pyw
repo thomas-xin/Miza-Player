@@ -2700,6 +2700,9 @@ def render_settings(dur, ignore=False):
 		rect,
 		4,
 	)
+	kwargs = {}
+	if not toolbar.ripples:
+		kwargs["soft"] = sidebar.colour
 	reg_polygon_complex(
 		DISP2,
 		(offs2 + sidebar_width // 2 - 48, 357 + sidebar.more_angle * 6),
@@ -2711,7 +2714,8 @@ def render_settings(dur, ignore=False):
 		255,
 		2,
 		9,
-		True,
+		filled=True,
+		**kwargs,
 	)
 	text = "More" if not sidebar.get("more") else "Less"
 	message_display(
@@ -3069,6 +3073,9 @@ def draw_menu():
 					colour=c,
 				)
 		else:
+			kwargs = {}
+			if not toolbar.ripples:
+				kwargs["soft"] = toolbar.colour
 			reg_polygon_complex(
 				DISP,
 				pos,
@@ -3079,6 +3086,7 @@ def draw_menu():
 				thickness=2,
 				repetition=spl,
 				angle=toolbar.pause.angle,
+				**kwargs,
 			)
 			if player.paused:
 				c = (toolbar.pause.inner, lum, lum)

@@ -2782,7 +2782,7 @@ def draw_menu():
 					sidebar.menu.buttons = (("Paste", paste_queue),) + sidebar.menu.buttons
 	if tick & 7:
 		cond = False
-	elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scroll.pos != sidebar.scroll.target or not is_unfocused() and mpos != mpprev and in_rect(mpos2, sidebar.rect) or sidebar.abspos:
+	elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scroll.pos != sidebar.scroll.target or not is_unfocused() and mpos != mpprev and in_rect(mpos2, sidebar.rect) or sidebar.abspos or sidebar.menu:
 		cond = True
 	elif CTRL(kheld) and (kc2[K_a] or kc2[K_s] or mc2[0]) or sidebar.get("last_selected") is not None:
 		cond = True
@@ -4003,7 +4003,7 @@ try:
 				if len(modified) > 1:
 					modified.clear()
 					modified.add(tuple(screensize))
-			if sidebar.menu and not tick & 3:
+			if sidebar.menu and not tick + 2 & 3:
 				dur = last_ratio * 4
 				if sidebar.menu.get("scale", 0) < 1:
 					sidebar.menu.buttons = astype(sidebar.menu.buttons, list)

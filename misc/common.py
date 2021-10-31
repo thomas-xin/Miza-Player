@@ -1474,6 +1474,19 @@ def garbage_collect(cache, lim=4096):
 cb_cache = weakref.WeakKeyDictionary()
 
 QUEUED = deque()
+
+def Enqueue(func, *args, **kwargs):
+	fut = submit(func, *args, **kwargs)
+	QUEUED.append(fut)
+	return fut
+
+def Finish():
+	while QUEUED:
+		try:
+			QUEUED.popleft().result()
+		except:
+			print_exc()
+
 ALPHA = BASIC = 0
 def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True, cache=True):
 	pos = position

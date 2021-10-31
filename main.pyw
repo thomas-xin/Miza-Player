@@ -2575,8 +2575,11 @@ def render_settings(dur, ignore=False):
 			("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
 		)
 		mrect = (offs2 + 8, 376, sidebar_width - 16, 192)
-		surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
-		surf.fill((0, 0, 0, 0))
+		if sidebar.more_angle < 63 / 64:
+			surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
+			surf.fill((0, 0, 0, 0))
+		else:
+			surf = DISP2.subsurface(mrect)
 		for i, t in enumerate(more):
 			s, name, description = t
 			apos = (screensize[0] - sidebar_width + offs2 + 24, 427 + i * 32 + 16)
@@ -2665,10 +2668,10 @@ def render_settings(dur, ignore=False):
 			A = ImageChops.multiply(a, a2)
 			im.putalpha(A)
 			surf = pil2pyg(im, convert=False)
-		DISP2.blit(
-			surf,
-			mrect[:2],
-		)
+			DISP2.blit(
+				surf,
+				mrect[:2],
+			)
 	rect = (offs2 + sidebar_width // 2 - 32, 344, 64, 32)
 	crect = (screensize[0] - sidebar_width // 2 - 32, 395) + rect[2:]
 	hovered = in_rect(mpos, crect)
@@ -3435,7 +3438,7 @@ def draw_menu():
 		if crosshair & 1:
 			p = max(0, min(1, (mpos2[0] - progress.pos[0] + progress.width // 2) / progress.length) * player.end)
 			s = time_disp(p)
-			QUEUED.append(submit(
+			Enqueue(
 				message_display,
 				s,
 				min(20, toolbar_height // 3),
@@ -3443,9 +3446,9 @@ def draw_menu():
 				(255, 255, 127),
 				surface=DISP,
 				font="Comic Sans MS",
-			))
+			)
 		if hovertext:
-			QUEUED.append(submit(
+			Enqueue(
 				message_display,
 				hovertext.text,
 				hovertext.size,
@@ -3454,7 +3457,7 @@ def draw_menu():
 				surface=DISP,
 				font=hovertext.get("font", "Comic Sans MS"),
 				cache=True,
-			))
+			)
 
 pdata = None
 def save_settings():
@@ -3667,6 +3670,7 @@ try:
 			addp.result()
 			lpos = mpos
 			if not tick & 3:
+				Finish()
 				mprev = mheld
 				mheld = get_pressed()
 				mc4 = astype(mc3, list)
@@ -3789,19 +3793,19 @@ try:
 									DISP.fill(0, rect)
 							if player.get("spec_used", None):
 								player.spec = surf
-							QUEUED.append(submit(
+							Enqueue(
 								blit_complex,
 								DISP,
 								surf,
 								prect,
-							))
+							)
 							modified.add(player.rect)
 			if not tick & 3:
 				try:
 					update_menu()
 				except:
 					print_exc()
-				QUEUED.append(submit(draw_menu))
+				Enqueue(draw_menu)
 			if not queue and not is_active() and not any(kheld):
 				player.pos = 0
 				player.end = inf
@@ -3809,7 +3813,7 @@ try:
 				progress.num = 0
 				progress.alpha = 0
 			if not tick + 6 & 7 and toolbar.editor:
-				QUEUED.append(submit(render_piano))
+				Enqueue(render_piano)
 				if modified:
 					modified.add(tuple(screensize))
 				else:
@@ -3823,7 +3827,7 @@ try:
 							col = (255,) * 3
 						else:
 							col = (255, 0, 0)
-						QUEUED.append(submit(
+						Enqueue(
 							message_display,
 							f"Loading lyrics for {entry.name}...",
 							size,
@@ -3833,19 +3837,19 @@ try:
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
-						))
+						)
 					elif entry.lyrics:
 						rect = (player.rect[2] - 8, player.rect[3] - 92)
 						if not entry.get("lyrics_loading") and rect != entry.lyrics[1].get_size():
 							entry.lyrics_loading = True
 							submit(render_lyrics, entry)
-						QUEUED.append(submit(
+						Enqueue(
 							blit_complex,
 							DISP,
 							entry.lyrics[1],
 							(8, 92),
-						))
-						QUEUED.append(submit(
+						)
+						Enqueue(
 							message_display,
 							entry.lyrics[0],
 							size,
@@ -3855,7 +3859,7 @@ try:
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
-						))
+						)
 					else:
 						try:
 							no_lyrics_source = no_lyrics_fut.result()
@@ -3867,15 +3871,15 @@ try:
 							if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
 								no_lyrics = HWSurface.any(no_lyrics_size, FLAGS)
 								no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size, no_lyrics)
-							QUEUED.append(submit(
+							Enqueue(
 								blit_complex,
 								DISP,
 								no_lyrics,
 								(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
-							))
+							)
 						if entry.lyrics == "":
 							title = f"No lyrics found for {entry.name}."
-						QUEUED.append(submit(
+						Enqueue(
 							message_display,
 							title,
 							size,
@@ -3885,17 +3889,17 @@ try:
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
-						))
+						)
 			if not tick + 6 & 7 and not toolbar.editor:
 				if player.get("flash_s", 0) > 0:
-					QUEUED.append(submit(
+					Enqueue(
 						bevel_rectangle,
 						DISP,
 						(191,) * 3,
 						player.rect,
 						4,
 						alpha=player.flash_s * 8 - 1,
-					))
+					)
 					modified.add(player.rect)
 				text_rect = (0, 0, 192, 92)
 				if player.get("flash_i", 0) > 0:
@@ -3917,24 +3921,18 @@ try:
 					)
 					modified.add(player.rect)
 				elif in_rect(mpos, player.rect):
-					QUEUED.append(submit(
+					Enqueue(
 						bevel_rectangle,
 						DISP,
 						(191,) * 3,
 						player.rect,
 						4,
 						filled=False,
-					))
+					)
 					modified.clear()
 					modified.add(tuple(screensize))
 			if not toolbar.editor and not tick + 6 & 7:
-				if QUEUED:
-					for fut in tuple(QUEUED):
-						try:
-							fut.result()
-						except:
-							print_exc()
-						QUEUED.popleft()
+				Finish()
 				if options.get("insights", True):
 					message_display(
 						f"FPS: {round(fps, 2)}",
@@ -4049,20 +4047,14 @@ try:
 				else:
 					alpha = round(191 * sidebar.menu.scale)
 				c = sidebar.menu.colour + (alpha,)
-				if QUEUED:
-					for fut in tuple(QUEUED):
-						try:
-							fut.result()
-						except:
-							print_exc()
-						QUEUED.popleft()
-				QUEUED.append(submit(
+				Finish()
+				Enqueue(
 					rounded_bev_rect,
 					DISP,
 					c,
 					rect,
 					4,
-				))
+				)
 				for i, surf in enumerate(sidebar.menu.lines):
 					text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
 					if sidebar.menu.scale >= 1 and i == sidebar.menu.selected:
@@ -4080,24 +4072,18 @@ try:
 						sidebar.menu.glow[i] = max(0, sidebar.menu.glow[i] - dur * 2.5)
 					else:
 						col = (0,) * 3
-					QUEUED.append(submit(
+					Enqueue(
 						blit_complex,
 						DISP,
 						surf,
 						(text_rect[0] + 3, text_rect[1]),
 						alpha,
 						colour=col,
-					))
+					)
 				modified.add(rect)
 			if modified:
 				if not tick + 6 & 7:
-					if QUEUED:
-						for fut in tuple(QUEUED):
-							try:
-								fut.result()
-							except:
-								print_exc()
-							QUEUED.popleft()
+					Finish()
 					if tuple(screensize) in modified:
 						pygame.display.flip()
 					else:

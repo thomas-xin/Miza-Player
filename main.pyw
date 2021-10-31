@@ -2712,7 +2712,6 @@ def render_settings(dur, ignore=False):
 		2,
 		9,
 		True,
-		soft=sc,
 	)
 	text = "More" if not sidebar.get("more") else "Less"
 	message_display(
@@ -2880,7 +2879,7 @@ def draw_menu():
 					pos=(ripple.pos[0], ripple.pos[1] - screensize[1] + toolbar_height),
 					radius=ripple.radius,
 					fill_ratio=1 / 3,
-					alpha=max(0, ripple.alpha / 255) ** 0.75 * 255,
+					alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
 				)
 		elif not sidebar.ripples and pc() - globals()["h-timer"] >= 8:
 			globals()["h-cache"].clear()
@@ -3080,7 +3079,6 @@ def draw_menu():
 				thickness=2,
 				repetition=spl,
 				angle=toolbar.pause.angle,
-				soft=tc,
 			)
 			if player.paused:
 				c = (toolbar.pause.inner, lum, lum)

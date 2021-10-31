@@ -96,7 +96,7 @@ def render_sidebar(dur=0):
 				pos=(ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
 				radius=ripple.radius,
 				fill_ratio=1 / 3,
-				alpha=max(0, ripple.alpha / 255) ** 0.75 * 255,
+				alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
 			)
 		if offs > -sidebar_width + 4:
 			n = len(queue)

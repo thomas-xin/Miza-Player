@@ -1090,6 +1090,8 @@ class HWSurface:
 				cls.anyque.append(t)
 		if colour is not None:
 			self.fill(colour)
+		if self.get_colorkey():
+			self.set_colorkey(None)
 		return self
 
 	@classmethod
@@ -1838,10 +1840,15 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
 		else:
 			pos = [centre[0] - width, centre[1] - height]
 			return blit_complex(dest, newS, pos, alpha, rotation, copy=True)
-	if not soft or soft is True:
-		newS = pygame.Surface((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
+	construct = pygame.Surface if cache else HWSurface.any
+	if not soft:
+		newS = construct((width << 1, height << 1), FLAGS)
+		newS.set_colorkey((1, 2, 3))
+		newS.fill((1, 2, 3))
+	elif soft is True:
+		newS = construct((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
 	else:
-		newS = pygame.Surface((width << 1, height << 1), FLAGS)
+		newS = construct((width << 1, height << 1), FLAGS)
 		if any(soft):
 			newS.fill(soft)
 	draw_direction = 1 if repetition >= 0 else -1

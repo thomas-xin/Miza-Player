@@ -4054,8 +4054,7 @@ try:
 					alpha = round(191 * sidebar.menu.scale)
 				c = sidebar.menu.colour + (alpha,)
 				Finish()
-				Enqueue(
-					rounded_bev_rect,
+				rounded_bev_rect(
 					DISP,
 					c,
 					rect,

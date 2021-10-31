@@ -3,7 +3,8 @@ import os, sys, subprocess, time, concurrent.futures
 if os.name != "nt":
 	raise NotImplementedError("This program is currently implemented to use Windows API and filesystem only.")
 
-async_wait = lambda: time.sleep(0.004)
+async_wait = lambda: time.sleep(0.01)
+sys.setswitchinterval(0.01)
 utc = time.time
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 from concurrent.futures import thread
@@ -1473,15 +1474,11 @@ def garbage_collect(cache, lim=4096):
 		except:
 			return
 
-cb_cache = weakref.WeakKeyDictionary()
-
 QUEUED = deque()
-
 def Enqueue(func, *args, **kwargs):
 	fut = submit(func, *args, **kwargs)
 	QUEUED.append(fut)
 	return fut
-
 def Finish():
 	while QUEUED:
 		try:
@@ -1489,6 +1486,7 @@ def Finish():
 		except:
 			print_exc()
 
+cb_cache = weakref.WeakKeyDictionary()
 ALPHA = BASIC = 0
 def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True, cache=True):
 	pos = position

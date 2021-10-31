@@ -61,7 +61,8 @@ try:
 except ValueError:
 	hwnd = 0
 
-async_wait = lambda: time.sleep(0.004)
+async_wait = lambda: time.sleep(0.01)
+sys.setswitchinterval(0.01)
 
 is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 globals()["unfocus-time"] = 0

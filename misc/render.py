@@ -1,13 +1,12 @@
-import sys
-write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
-import pygame
-sys.stdout.write = write
 import time, numpy, math, random, orjson, collections, colorsys, traceback, subprocess, itertools, weakref
 from math import *
 from traceback import print_exc
 np = numpy
 deque = collections.deque
 from PIL import Image
+import concurrent.futures
+exc = concurrent.futures.ThreadPoolExecutor()
+submit = exc.submit
 
 def pyg2pil(surf):
 	mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
@@ -37,7 +36,7 @@ class HWSurface:
 			if len(cls.anyque) >= cls.maxlen:
 				cls.anys.pop(cls.anyque.pop(0))
 			cls.anyque.append(t)
-			self = cls.anys[t] = pygame.Surface(size, flags)
+			self = cls.anys[t] = pygame.Surface(size, flags, m << 3)
 		else:
 			if t != cls.anyque[-1]:
 				cls.anyque.remove(t)
@@ -46,7 +45,10 @@ class HWSurface:
 			self.fill(colour)
 		return self
 
-import pygame.gfxdraw as gfxdraw
+import sys
+write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
+import pygame
+sys.stdout.write = write
 pygame.font.init()
 FONTS = {}
 
@@ -167,9 +169,16 @@ class Bar(Particle):
 		surf.fill(self.colour)
 		surf.set_at((0, 0), 0)
 		self.surf = surf
+		x = barcount - 2 - self.x
+		y = barheight - size
+		if x >= sfx.get_width():
+			return
+		if y >= 0:
+			dest = sfx.subsurface((x, y, 1, size))
+			return pygame.transform.smoothscale(self.surf, (1, size), dest)
 		surf = HWSurface.any((1, size))
 		surf = pygame.transform.smoothscale(self.surf, (1, size), surf)
-		sfx.blit(surf, (barcount - 2 - self.x, barheight - size))
+		sfx.blit(surf, (x, y))
 
 	def post_render(self, sfx, scale, **void):
 		size = self.height2
@@ -719,9 +728,12 @@ def spectrogram_render(bars):
 	global ssize2, specs, dur, last, sp_changed
 	try:
 		if specs == 1:
-			sfx = pygame.Surface((barcount - 2, barheight))
+			sfx = HWSurface.any((barcount - 2, barheight))
+			futs = set()
 			for bar in bars:
-				bar.render(sfx=sfx)
+				futs.add(submit(bar.render, sfx=sfx))
+			for fut in futs:
+				fut.result()
 			func = None
 		elif specs == 2:
 			func = animate_prism
@@ -760,7 +772,10 @@ def spectrogram_render(bars):
 			try:
 				spectrobytes = sfx.tobytes()
 			except AttributeError:
+				# spectrobytes = sfx.get_buffer()
+				# print(spectrobytes.length)
 				spectrobytes = pygame.image.tostring(sfx, "RGB")
+				# print(len(spectrobytes))
 
 		if specs == 2:
 			dur *= 3
@@ -786,9 +801,21 @@ def spectrogram_render(bars):
 			sys.stdout.buffer.write(spectrobytes)
 		else:
 			sys.stdout.write("~s\n")
-		sys.stdout.flush()
+		return sys.stdout.flush()
 	except:
 		print_exc()
+
+def ensure_bars(b):
+	amp = np.frombuffer(b, dtype=np.float32)
+	if specs == 2:
+		bi = bars3
+	elif specs == 4:
+		bi = bars2
+	else:
+		bi = bars
+	amp = amp[:len(bi)]
+	for i, pwr in enumerate(amp):
+		bi[i].ensure(pwr / 4)
 
 ssize2 = (0, 0)
 specs = 0
@@ -837,16 +864,7 @@ while True:
 		elif line == b"~e":
 			b = sys.stdin.buffer.readline()
 			b = sys.stdin.buffer.read(int(b))
-			amp = np.frombuffer(b, dtype=np.float32)
-			if specs == 2:
-				bi = bars3
-			elif specs == 4:
-				bi = bars2
-			else:
-				bi = bars
-			amp = amp[:len(bi)]
-			for i, pwr in enumerate(amp):
-				bi[i].ensure(pwr / 4)
+			submit(ensure_bars, b)
 		elif not line:
 			break
 		glfwPollEvents()

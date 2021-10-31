@@ -1025,7 +1025,7 @@ def reset_menu(full=True, reset=False):
 	sidebar.colour = None
 	sidebar.updated = False
 	sidebar.rect = (screensize[0] - sidebar_width, 0, sidebar_width, screensize[1] - toolbar_height)
-	sidebar.rect2 = (screensize[0] - sidebar_width, 0, sidebar_width, screensize[1] - toolbar_height + 4)
+	sidebar.rect2 = sidebar.rect #(screensize[0] - sidebar_width, 0, sidebar_width, screensize[1] - toolbar_height + 4)
 	for i, button in enumerate(sidebar.buttons, -1):
 		if i < 0:
 			button.pos = (screensize[0] - 48, sidebar.rect[1] + 8)
@@ -1553,7 +1553,7 @@ def play():
 					b += mixer.stderr.read(req - len(b))
 				if not options.spectrogram:
 					continue
-				spec = pygame.image.frombuffer(b, ssize, "RGB")
+				spec = pygame.image.frombuffer(b, ssize, "RGB").convert()
 				player.spec = spec
 				player.pop("spec_used", None)
 	except:
@@ -2340,8 +2340,72 @@ def spinnies():
 			t = max(t + d, pc() - 0.5)
 		except:
 			print_exc()
-
 submit(spinnies)
+
+def render_spinnies():
+	length = progress.length
+	width = progress.width
+	x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
+	x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
+	r = progress.spread * toolbar.pause.radius
+	if r:
+		ripple_f = globals().get("s-ripple", concentric_circle)
+		ripple_f(
+			DISP,
+			colour=(127, 127, 255),
+			pos=(x, progress.pos[1]),
+			radius=r,
+			fill_ratio=0.5,
+		)
+	for i, p in sorted(enumerate(progress.particles), key=get_spinny_life):
+		if not p:
+			continue
+		col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
+		a = round(min(255, (p.life - 2.5) * 12))
+		for j in shuffle(range(3)):
+			point = [cos(p.angle + j * tau / 3) * p.rad, sin(p.angle + j * tau / 3) * p.rad]
+			pos = [round_random(x) for x in (p.centre[0] + point[0], p.centre[1] + point[1])]
+			ri = max(1, round_random(p.life ** 1.2 * toolbar.pause.radius / 72))
+			if ri > 2:
+				reg_polygon_complex(
+					DISP,
+					pos,
+					col,
+					0,
+					ri,
+					ri,
+					alpha=a,
+					thickness=2,
+					repetition=ri - 2,
+					soft=True,
+				)
+			else:
+				gfxdraw.aacircle(
+					DISP,
+					*pos,
+					1,
+					col + [a],
+				)
+	d = abs(pc() % 2 - 1)
+	hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
+	col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
+	for i in shuffle(range(3)):
+		a = progress.angle + i / 3 * tau
+		point = [cos(a) * r, sin(a) * r]
+		p = (x + point[0], progress.pos[1] + point[1])
+		ri = max(7, progress.width // 2 + 2)
+		reg_polygon_complex(
+			DISP,
+			p,
+			col,
+			0,
+			ri,
+			ri,
+			alpha=159 if r else 255,
+			thickness=2,
+			repetition=ri - 2,
+			soft=True,
+		)
 
 
 def change_bubble():
@@ -2539,7 +2603,7 @@ def render_settings(dur, ignore=False):
 				2,
 				9,
 				True,
-				soft=True
+				soft=True,
 			)
 			ripple_f(
 				surf,
@@ -2645,7 +2709,7 @@ def render_settings(dur, ignore=False):
 		2,
 		9,
 		True,
-		soft=False
+		soft=sc,
 	)
 	text = "More" if not sidebar.get("more") else "Less"
 	message_display(
@@ -2730,70 +2794,17 @@ def draw_menu():
 			globals()["last-cond"] = True
 	elif not tick % 240:
 		cond = True
+	fut = None
 	sidebar_rendered = False
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
 		sidebar_rendered = True
 		if toolbar.editor:
-			render_sidebar_2(dur)
+			fut = submit(render_sidebar_2, dur)
 		else:
-			render_sidebar(dur)
+			fut = submit(render_sidebar, dur)
 		offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
 		Z = -sidebar.scroll.pos
 		maxb = (sidebar_width - 12) // 44
-		for i, button in enumerate(sidebar.buttons[:maxb]):
-			if button.get("rect"):
-				if in_rect(mpos, button.rect):
-					lum = 239
-					cm = abs(pc() % 1 - 0.5) * 0.328125
-					c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
-					name = button.name if not toolbar.editor else button.get("name2") or button.name
-					hovertext = cdict(
-						text=name,
-						size=15,
-						colour=c,
-						offset=19,
-						font="Rockwell",
-					)
-					crosshair |= 4
-				else:
-					lum = 175
-				c = options.get("sidebar_colour", (64, 0, 96))
-				hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c)))
-				light = 1 - (1 - hls[1]) / 4
-				if hls[2]:
-					sat = 1 - (1 - hls[2]) / 2
-				else:
-					sat = 0
-				hls[1] = lum / 255 * light
-				hls[2] = sat
-				lum += button.get("flash", 0)
-				if not i and not sidebar.abspos:
-					lum -= 48
-					lum += button.get("flash", 0)
-					fut = common.__dict__.get("repo-update")
-					if fut and not isinstance(fut, bool):
-						hls[1] = sin(pc() * tau / 4)
-				col = [round(i * 255) for i in colorsys.hls_to_rgb(*hls)]
-				bevel_rectangle(
-					DISP,
-					col,
-					button.rect,
-					4,
-				)
-				sprite = button.sprite if not toolbar.editor else button.get("sprite2") or button.sprite
-				if button.name == "Audio output":
-					if not button.get("sprite-1"):
-						button["sprite-1"] = sprite.copy()
-						button["sprite-1"].fill((255, 0, 0), special_flags=BLEND_RGB_MULT)
-						button.sprite.fill((0,) * 3, special_flags=BLEND_RGB_MULT)
-					sprite = button.sprite if not sidebar.get("recording") else button["sprite-1"]
-				if type(sprite) in (tuple, list, alist):
-					sprite = sprite[bool(sidebar.abspos)]
-				DISP.blit(
-					sprite,
-					(button.rect[0] + 5, button.rect[1] + 5),
-					special_flags=BLEND_ALPHA_SDL2,
-				)
 		if offs > -sidebar_width + 4:
 			pops = set()
 			for i, entry in enumerate(sidebar.particles):
@@ -2845,6 +2856,7 @@ def draw_menu():
 	highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
 	crosshair |= highlighted
 	osci_rect = (screensize[0] - 4 - progress.box, screensize[1] - toolbar_height + 4) + osize
+	sfut = None
 	if (toolbar.updated or not tick & 7) and toolbar.colour:
 		bevel_rectangle(
 			DISP,
@@ -2854,8 +2866,9 @@ def draw_menu():
 		)
 		modified.add(toolbar.rect)
 		if toolbar.ripples:
-			DISP2 = HWSurface.any(toolbar.rect[2:], FLAGS | SRCALPHA)
-			DISP2.fill((0, 0, 0, 0))
+			subp = toolbar.rect[:2]
+			sub = toolbar.rect[2:]
+			DISP2 = DISP.subsurface(subp + sub)
 			ripple_f = globals().get("h-ripple", concentric_circle)
 			for ripple in toolbar.ripples:
 				ripple_f(
@@ -2866,10 +2879,6 @@ def draw_menu():
 					fill_ratio=1 / 3,
 					alpha=max(0, ripple.alpha / 255) ** 0.75 * 255,
 				)
-			DISP.blit(
-				as_pyg(DISP2),
-				toolbar.rect[:2],
-			)
 		elif not sidebar.ripples and pc() - globals()["h-timer"] >= 8:
 			globals()["h-cache"].clear()
 		pos = progress.pos
@@ -2923,6 +2932,7 @@ def draw_menu():
 				(0, 0, xv, width),
 				special_flags=BLEND_RGB_MULT,
 			)
+		tc = options.get("toolbar_colour", (64, 0, 96))
 		for i, button in enumerate(toolbar.buttons):
 			if i and toolbar.editor:
 				break
@@ -2942,8 +2952,7 @@ def draw_menu():
 				else:
 					lum = 96
 				lum += button.get("flash", 0)
-				c = options.get("toolbar_colour", (64, 0, 96))
-				hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+				hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
 				light = 1 - (1 - hls[1]) / 4
 				if hls[2]:
 					sat = 1 - (1 - hls[2]) / 2
@@ -2955,6 +2964,7 @@ def draw_menu():
 					col,
 					button.rect,
 					3,
+					background=toolbar.colour,
 				)
 				if i == 2:
 					val = control.shuffle
@@ -2979,10 +2989,10 @@ def draw_menu():
 					sprite = button.off
 				else:
 					sprite = button.sprite
-				DISP.blit(
+				blit_complex(
+					DISP,
 					sprite,
 					(button.rect[0] + 3, button.rect[1] + 3),
-					special_flags=BLEND_ALPHA_SDL2,
 				)
 				if val == 2:
 					message_display(
@@ -3067,6 +3077,7 @@ def draw_menu():
 				thickness=2,
 				repetition=spl,
 				angle=toolbar.pause.angle,
+				soft=tc,
 			)
 			if player.paused:
 				c = (toolbar.pause.inner, lum, lum)
@@ -3128,7 +3139,8 @@ def draw_menu():
 			if tuple(osci_rect[2:]) != surf.get_size():
 				s2 = HWSurface.any(osci_rect[2:], FLAGS | SRCALPHA)
 				player.osci = surf = pygame.transform.scale(surf, osci_rect[2:], s2)
-			DISP.blit(
+			blit_complex(
+				DISP,
 				surf,
 				osci_rect[:2],
 			)
@@ -3173,67 +3185,8 @@ def draw_menu():
 				font="Comic Sans MS",
 				colour=c,
 			)
-			x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
-			x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
-			r = progress.spread * toolbar.pause.radius
-			if r:
-				ripple_f = globals().get("s-ripple", concentric_circle)
-				ripple_f(
-					DISP,
-					colour=(127, 127, 255),
-					pos=(x, progress.pos[1]),
-					radius=r,
-					fill_ratio=0.5,
-				)
-			for i, p in sorted(enumerate(progress.particles), key=get_spinny_life):
-				if not p:
-					continue
-				col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-				a = round(min(255, (p.life - 2.5) * 12))
-				for j in shuffle(range(3)):
-					point = [cos(p.angle + j * tau / 3) * p.rad, sin(p.angle + j * tau / 3) * p.rad]
-					pos = [round_random(x) for x in (p.centre[0] + point[0], p.centre[1] + point[1])]
-					ri = max(1, round_random(p.life ** 1.2 * toolbar.pause.radius / 72))
-					if ri > 2:
-						reg_polygon_complex(
-							DISP,
-							pos,
-							col,
-							0,
-							ri,
-							ri,
-							alpha=a,
-							thickness=2,
-							repetition=ri - 2,
-							soft=True,
-						)
-					else:
-						gfxdraw.aacircle(
-							DISP,
-							*pos,
-							1,
-							col + [a],
-						)
-			d = abs(pc() % 2 - 1)
-			hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
-			col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
-			for i in shuffle(range(3)):
-				a = progress.angle + i / 3 * tau
-				point = [cos(a) * r, sin(a) * r]
-				p = (x + point[0], progress.pos[1] + point[1])
-				ri = max(7, progress.width // 2 + 2)
-				reg_polygon_complex(
-					DISP,
-					p,
-					col,
-					0,
-					ri,
-					ri,
-					alpha=159 if r else 255,
-					thickness=2,
-					repetition=ri - 2,
-					soft=True,
-				)
+			sfut = submit(render_spinnies)
+			QUEUED.append(sfut)
 			a = int(progress.alpha)
 			if a >= 16:
 				n = round(progress.num)
@@ -3388,6 +3341,63 @@ def draw_menu():
 				if not options.spectrogram and queue:
 					submit(render_lyrics, queue[0])
 					player.spec = None
+	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
+		if fut:
+			fut.result()
+		for i, button in enumerate(sidebar.buttons[:maxb]):
+			if button.get("rect"):
+				if in_rect(mpos, button.rect):
+					lum = 239
+					cm = abs(pc() % 1 - 0.5) * 0.328125
+					c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
+					name = button.name if not toolbar.editor else button.get("name2") or button.name
+					hovertext = cdict(
+						text=name,
+						size=15,
+						colour=c,
+						offset=19,
+						font="Rockwell",
+					)
+					crosshair |= 4
+				else:
+					lum = 175
+				c = options.get("sidebar_colour", (64, 0, 96))
+				hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c)))
+				light = 1 - (1 - hls[1]) / 4
+				if hls[2]:
+					sat = 1 - (1 - hls[2]) / 2
+				else:
+					sat = 0
+				hls[1] = lum / 255 * light
+				hls[2] = sat
+				lum += button.get("flash", 0)
+				if not i and not sidebar.abspos:
+					lum -= 48
+					lum += button.get("flash", 0)
+					fut = common.__dict__.get("repo-update")
+					if fut and not isinstance(fut, bool):
+						hls[1] = sin(pc() * tau / 4)
+				col = [round(i * 255) for i in colorsys.hls_to_rgb(*hls)]
+				bevel_rectangle(
+					DISP,
+					col,
+					button.rect,
+					4,
+				)
+				sprite = button.sprite if not toolbar.editor else button.get("sprite2") or button.sprite
+				if button.name == "Audio output":
+					if not button.get("sprite-1"):
+						button["sprite-1"] = sprite.copy()
+						button["sprite-1"].fill((255, 0, 0), special_flags=BLEND_RGB_MULT)
+						button.sprite.fill((0,) * 3, special_flags=BLEND_RGB_MULT)
+					sprite = button.sprite if not sidebar.get("recording") else button["sprite-1"]
+				if type(sprite) in (tuple, list, alist):
+					sprite = sprite[bool(sidebar.abspos)]
+				blit_complex(
+					DISP,
+					sprite,
+					(button.rect[0] + 5, button.rect[1] + 5),
+				)
 	if mclick[0] and in_rect(mpos, osci_rect) and not toolbar.resizer:
 		player.flash_o = 32
 		options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
@@ -3416,6 +3426,8 @@ def draw_menu():
 			pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
 			sidebar.resizer = False
 	if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
+		if sfut:
+			sfut.result()
 		if crosshair & 3:
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
@@ -3423,16 +3435,18 @@ def draw_menu():
 		if crosshair & 1:
 			p = max(0, min(1, (mpos2[0] - progress.pos[0] + progress.width // 2) / progress.length) * player.end)
 			s = time_disp(p)
-			message_display(
+			QUEUED.append(submit(
+				message_display,
 				s,
 				min(20, toolbar_height // 3),
 				(mpos2[0], mpos2[1] - 17),
 				(255, 255, 127),
 				surface=DISP,
 				font="Comic Sans MS",
-			)
+			))
 		if hovertext:
-			message_display(
+			QUEUED.append(submit(
+				message_display,
 				hovertext.text,
 				hovertext.size,
 				(mpos2[0], mpos2[1] + hovertext.get("offset", -17)),
@@ -3440,7 +3454,7 @@ def draw_menu():
 				surface=DISP,
 				font=hovertext.get("font", "Comic Sans MS"),
 				cache=True,
-			)
+			))
 
 pdata = None
 def save_settings():
@@ -3713,6 +3727,7 @@ try:
 						"Miza Player",
 						code or "",
 					)
+				kclick[K_BACKQUOTE] = False
 			if not tick & 3 and (any(kclick) or any(krelease) or player.editor.held_notes):
 				alphakeys[:] = [False] * len(alphakeys)
 				if not CTRL[kheld] and not SHIFT[kheld] and not ALT[kheld]:
@@ -3774,17 +3789,19 @@ try:
 									DISP.fill(0, rect)
 							if player.get("spec_used", None):
 								player.spec = surf
-							DISP.blit(
+							QUEUED.append(submit(
+								blit_complex,
+								DISP,
 								surf,
 								prect,
-							)
+							))
 							modified.add(player.rect)
 			if not tick & 3:
 				try:
 					update_menu()
 				except:
 					print_exc()
-				draw_menu()
+				QUEUED.append(submit(draw_menu))
 			if not queue and not is_active() and not any(kheld):
 				player.pos = 0
 				player.end = inf
@@ -3792,7 +3809,7 @@ try:
 				progress.num = 0
 				progress.alpha = 0
 			if not tick + 6 & 7 and toolbar.editor:
-				render_piano()
+				QUEUED.append(submit(render_piano))
 				if modified:
 					modified.add(tuple(screensize))
 				else:
@@ -3806,7 +3823,8 @@ try:
 							col = (255,) * 3
 						else:
 							col = (255, 0, 0)
-						message_display(
+						QUEUED.append(submit(
+							message_display,
 							f"Loading lyrics for {entry.name}...",
 							size,
 							(player.rect[2] >> 1, size),
@@ -3815,17 +3833,20 @@ try:
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
-						)
+						))
 					elif entry.lyrics:
 						rect = (player.rect[2] - 8, player.rect[3] - 92)
 						if not entry.get("lyrics_loading") and rect != entry.lyrics[1].get_size():
 							entry.lyrics_loading = True
 							submit(render_lyrics, entry)
-						DISP.blit(
+						QUEUED.append(submit(
+							blit_complex,
+							DISP,
 							entry.lyrics[1],
 							(8, 92),
-						)
-						message_display(
+						))
+						QUEUED.append(submit(
+							message_display,
 							entry.lyrics[0],
 							size,
 							(player.rect[2] >> 1, size),
@@ -3834,7 +3855,7 @@ try:
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
-						)
+						))
 					else:
 						try:
 							no_lyrics_source = no_lyrics_fut.result()
@@ -3846,15 +3867,16 @@ try:
 							if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
 								no_lyrics = HWSurface.any(no_lyrics_size, FLAGS)
 								no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size, no_lyrics)
-							DISP.blit(
+							QUEUED.append(submit(
+								blit_complex,
+								DISP,
 								no_lyrics,
 								(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
-							)
+							))
 						if entry.lyrics == "":
 							title = f"No lyrics found for {entry.name}."
-						else:
-							title = 'No genius.com API key found. Please view "auth.json" for more information.'
-						message_display(
+						QUEUED.append(submit(
+							message_display,
 							title,
 							size,
 							(player.rect[2] >> 1, size),
@@ -3863,16 +3885,17 @@ try:
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
-						)
+						))
 			if not tick + 6 & 7 and not toolbar.editor:
 				if player.get("flash_s", 0) > 0:
-					bevel_rectangle(
+					QUEUED.append(submit(
+						bevel_rectangle,
 						DISP,
 						(191,) * 3,
 						player.rect,
 						4,
 						alpha=player.flash_s * 8 - 1,
-					)
+					))
 					modified.add(player.rect)
 				text_rect = (0, 0, 192, 92)
 				if player.get("flash_i", 0) > 0:
@@ -3894,16 +3917,24 @@ try:
 					)
 					modified.add(player.rect)
 				elif in_rect(mpos, player.rect):
-					bevel_rectangle(
+					QUEUED.append(submit(
+						bevel_rectangle,
 						DISP,
 						(191,) * 3,
 						player.rect,
 						4,
 						filled=False,
-					)
+					))
 					modified.clear()
 					modified.add(tuple(screensize))
 			if not toolbar.editor and not tick + 6 & 7:
+				if QUEUED:
+					for fut in tuple(QUEUED):
+						try:
+							fut.result()
+						except:
+							print_exc()
+						QUEUED.popleft()
 				if options.get("insights", True):
 					message_display(
 						f"FPS: {round(fps, 2)}",
@@ -3937,6 +3968,28 @@ try:
 						f"Frequency: {note}",
 						14,
 						(4, 56),
+						align=0,
+						surface=DISP,
+						font="Comic Sans MS",
+						cache=True,
+					)
+					aps = common.ALPHA
+					common.ALPHA = 0
+					bps = common.BASIC
+					common.BASIC = 0
+					message_display(
+						f"Alpha: {aps}",
+						14,
+						(4, 70),
+						align=0,
+						surface=DISP,
+						font="Comic Sans MS",
+						cache=True,
+					)
+					message_display(
+						f"Basic: {bps}",
+						14,
+						(4, 84),
 						align=0,
 						surface=DISP,
 						font="Comic Sans MS",
@@ -3996,12 +4049,20 @@ try:
 				else:
 					alpha = round(191 * sidebar.menu.scale)
 				c = sidebar.menu.colour + (alpha,)
-				rounded_bev_rect(
+				if QUEUED:
+					for fut in tuple(QUEUED):
+						try:
+							fut.result()
+						except:
+							print_exc()
+						QUEUED.popleft()
+				QUEUED.append(submit(
+					rounded_bev_rect,
 					DISP,
 					c,
 					rect,
 					4,
-				)
+				))
 				for i, surf in enumerate(sidebar.menu.lines):
 					text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
 					if sidebar.menu.scale >= 1 and i == sidebar.menu.selected:
@@ -4019,16 +4080,24 @@ try:
 						sidebar.menu.glow[i] = max(0, sidebar.menu.glow[i] - dur * 2.5)
 					else:
 						col = (0,) * 3
-					blit_complex(
+					QUEUED.append(submit(
+						blit_complex,
 						DISP,
 						surf,
 						(text_rect[0] + 3, text_rect[1]),
 						alpha,
 						colour=col,
-					)
+					))
 				modified.add(rect)
 			if modified:
 				if not tick + 6 & 7:
+					if QUEUED:
+						for fut in tuple(QUEUED):
+							try:
+								fut.result()
+							except:
+								print_exc()
+							QUEUED.popleft()
 					if tuple(screensize) in modified:
 						pygame.display.flip()
 					else:

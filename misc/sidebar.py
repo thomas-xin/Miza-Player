@@ -35,6 +35,7 @@ def render_dragging():
 			4,
 			alpha=255,
 			filled=False,
+			background=sc,
 		)
 		if not entry.get("surf"):
 			entry.surf = message_display(
@@ -224,6 +225,7 @@ def render_sidebar(dur=0):
 					4,
 					alpha=round_random(255 / (1 + abs(entry.get("pos", 0) - i) / 16)),
 					filled=False,
+					background=sc,
 				)
 				if not swap and not mclick[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
 					if target != i:
@@ -328,6 +330,7 @@ def render_sidebar(dur=0):
 				4,
 				alpha=255 if secondary else round_random(255 / (1 + abs(entry.get("pos", 0) - i) / 16)),
 				filled=not secondary,
+				background=sc,
 			)
 			if secondary:
 				sat = 0.875
@@ -405,6 +408,7 @@ def render_sidebar(dur=0):
 					4,
 					alpha=255,
 					filled=False,
+					background=sc,
 				)
 				if not entry.get("surf"):
 					entry.surf = message_display(
@@ -450,6 +454,7 @@ def render_sidebar(dur=0):
 				rect,
 				4,
 				alpha=255,
+				background=sc,
 			)
 			anima_rectangle(
 				DISP2,

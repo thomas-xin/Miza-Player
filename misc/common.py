@@ -1038,6 +1038,7 @@ globals()["fg"] = "xEC"
 
 def pyg2pil(surf):
 	mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
+	# b = surf.getbuffer()
 	b = pygame.image.tostring(surf, mode)
 	return Image.frombuffer(mode, surf.get_size(), b)
 
@@ -1093,8 +1094,10 @@ class HWSurface:
 
 	@classmethod
 	def copy(cls, surf):
-		self = HWSurface.any(surf.get_size(), pygame.SRCALPHA if surf.get_flags() & pygame.SRCALPHA else 0)
-		self.fill((0, 0, 0, 0))
+		flags = pygame.SRCALPHA if surf.get_flags() & pygame.SRCALPHA else 0
+		self = HWSurface.any(surf.get_size(), flags)
+		if flags & pygame.SRCALPHA:
+			self.fill((0, 0, 0, 0))
 		self.blit(surf, (0, 0))
 		return self
 
@@ -1301,9 +1304,15 @@ def quadratic_gradient(size=gsize, t=None, curve=None, flags=None, copy=False):
 				tx = t - curve * (i / (m - 1))
 				g = quadratic_gradient((size[0], 1), tx)
 				y = h // 2 - (not h & 1)
-				surf.blit(g, (0, y - i))
+				try:
+					surf.blit(g, (0, y - i))
+				except pygame.error:
+					continue
 				y = h // 2
-				surf.blit(g, (0, y + i))
+				try:
+					surf.blit(g, (0, y + i))
+				except pygame.error:
+					continue
 	elif copy:
 		return HWSurface.copy(surf)
 	return surf
@@ -1464,8 +1473,12 @@ def garbage_collect(cache, lim=4096):
 
 cb_cache = weakref.WeakKeyDictionary()
 
+QUEUED = deque()
+ALPHA = BASIC = 0
 def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True, cache=True):
 	pos = position
+	if len(pos) > 2:
+		pos = pos[:2]
 	s1 = source.get_size()
 	if dest:
 		s2 = dest.get_size()
@@ -1518,9 +1531,46 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
 	if area is not None:
 		area = list(map(lambda i: round(i * scale), area))
 	if dest:
-		if s.get_flags() & pygame.SRCALPHA:
+		if s.get_flags() & pygame.SRCALPHA or s.get_colorkey():
+			globals()["ALPHA"] += 1
 			return dest.blit(s, pos, area, special_flags=BLEND_ALPHA_SDL2)
-		return dest.blit(s, pos, area)
+		globals()["BASIC"] += 1
+		if not area:
+			area = [0, 0]
+			area.extend(source.get_size())
+		size = dest.get_size()
+		if pos[0] < 0:
+			area = astype(area, list)
+			area[2] += pos[0]
+			area[0] -= pos[0]
+			pos = astype(pos, list)
+			pos[0] = 0
+		if pos[1] < 0:
+			area = astype(area, list)
+			area[3] += pos[1]
+			area[1] -= pos[1]
+			pos = astype(pos, list)
+			pos[1] = 0
+		if area[2] - area[0] + pos[0] > size[0]:
+			area = astype(area, list)
+			area[2] = size[0] - pos[0] + area[0]
+		if area[3] - area[1] + pos[1] > size[1]:
+			area = astype(area, list)
+			area[3] = size[1] - pos[1] + area[1]
+		pos = astype(pos, tuple)
+		area = astype(area, tuple)
+		try:
+			dss = pos + area[2:]
+			srs = area
+			dst = dest.subsurface(dss)
+			src = s.subsurface(srs)
+			# pygame.PixelArray(dst)[:] = pygame.PixelArray(src)
+			pygame.transform.scale(src, area[2:], dst)
+			return pos + dss
+		except (ValueError, TypeError):
+			print(dss[2:], srs[2:])
+			print_exc()
+			return dest.blit(s, pos, area)
 	return s
 
 def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
@@ -1606,8 +1656,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
 				garbage_collect(br_surf, 64)
 				br_surf[data] = surf
 		if dest:
-			dest.blit(surf, rect[:2], special_flags=BLEND_ALPHA_SDL2)
-			return rect
+			return blit_complex(dest, surf, rect[:2])
 		return surf.convert() if copy else surf
 	ctr = max(colour)
 	contrast = min(round(ctr) + 2 >> 2 << 2, 255)
@@ -1646,7 +1695,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
 		colour = (0,) * 3
 	return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
 
-def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True, copy=True):
+def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, background=None, cache=True, copy=True):
 	rect = list(map(round, rect))
 	if len(colour) > 3:
 		colour, alpha = colour[:-1], colour[-1]
@@ -1658,15 +1707,22 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
 		return
 	rb_surf = globals().setdefault("rb_surf", {})
 	colour = list(map(lambda i: min(i, 255), colour))
-	if alpha == 255 and angle == 0 and (any(i > 160 for i in colour) or all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour)):
+	if alpha == 255 and angle == 0:
 		if cache:
-			data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)
+			if background:
+				background = astype(background, tuple)
+			data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled, background)
 		else:
 			data = None
 		try:
 			surf = rb_surf[data]
 		except KeyError:
-			surf = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)
+			if background:
+				surf = pygame.Surface(rect[2:], FLAGS)
+				if any(background):
+					surf.fill(background)
+			else:
+				surf = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)
 			r = rect
 			rect = [0] * 2 + rect[2:]
 			s = surf
@@ -1701,8 +1757,7 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
 				garbage_collect(rb_surf, 256)
 				rb_surf[data] = surf
 		if dest:
-			dest.blit(surf, rect[:2], special_flags=BLEND_ALPHA_SDL2)
-			return rect
+			return blit_complex(dest, surf, rect[:2])
 		return surf.convert() if copy else surf
 	ctr = max(colour)
 	contrast = min(round(ctr) + 2 >> 2 << 2, 255)
@@ -1760,6 +1815,8 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
 	if cache:
 		colour = tuple(min(255, round_random(i / 5) * 5) for i in colour)
 		angle = round_random(angle / tau * 144) * tau / 144
+		if soft and soft is not True:
+			soft = astype(soft, tuple)
 		h = (colour, sides, width, height, angle, thickness, repetition, filled, soft)
 		try:
 			newS = reg_polygon_cache[h]
@@ -1768,11 +1825,12 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
 		else:
 			pos = [centre[0] - width, centre[1] - height]
 			return blit_complex(dest, newS, pos, alpha, rotation, copy=True)
-	try:
+	if not soft or soft is True:
 		newS = pygame.Surface((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
-	except:
-		print_exc()
-		return
+	else:
+		newS = pygame.Surface((width << 1, height << 1), FLAGS)
+		if any(soft):
+			newS.fill(soft)
 	draw_direction = 1 if repetition >= 0 else -1
 	if draw_direction >= 0:
 		a = draw_direction
@@ -1796,7 +1854,7 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
 			loop = b
 		move_direction = loop / repetition + 0.2
 		points = []
-		if soft:
+		if soft is True:
 			colourU = tuple(colour) + (min(round(255 * move_direction + 8), 255),)
 		else:
 			colourU = (colour[0] * move_direction + 8, colour[1] * move_direction + 8, colour[2] * move_direction + 8)
@@ -2051,12 +2109,8 @@ def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, 
 		resp = surface_font(*data)
 	TextSurf, TextRect = resp
 	if cache:
+		garbage_collect(md_font, 4096)
 		md_font[data] = resp
-		while len(md_font) > 4096:
-			try:
-				md_font.pop(next(iter(md_font)))
-			except (KeyError, RuntimeError):
-				pass
 	if surface:
 		if align == 1:
 			TextRect.center = pos

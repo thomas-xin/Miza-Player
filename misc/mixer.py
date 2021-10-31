@@ -244,8 +244,8 @@ def point(s):
 	sys.__stdout__.flush()
 
 def bsend(*args):
-	for s in args:
-		b = str(s).encode("utf-8") if type(s) is not bytes else s
+	for b in args:
+		# b = str(s).encode("utf-8") if type(s) is not bytes else s
 		sys.__stderr__.buffer.write(b)
 	sys.__stderr__.flush()
 
@@ -915,8 +915,8 @@ def oscilloscope(buffer):
 					for i in range(1, len(osci)):
 						prev = point
 						point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
-						hue = ((osci[i] + osci[i - 1]) / 4) % 1
-						col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(1 - hue, 1, 1)]
+						hue = ((osci[i] + osci[i - 1]) / 4 - 1 / 3) % 1
+						col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(hue, 1, 1)]
 						pygame.draw.aaline(
 							OSCI,
 							col,
@@ -924,7 +924,8 @@ def oscilloscope(buffer):
 							prev,
 						)
 					if packet:
-						b = pygame.image.tostring(OSCI, "RGBA")
+						b = OSCI.get_buffer()
+						# b = pygame.image.tostring(OSCI, "RGBA")
 						while stderr_lock:
 							stderr_lock.result()
 						stderr_lock = concurrent.futures.Future()

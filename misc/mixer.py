@@ -1109,8 +1109,8 @@ def render():
 		while True:
 			t = pc()
 			sleep = 0.005
-			if lastpacket != packet and sbuffer is not None:
-				lastpacket = packet
+			if lastpacket != id(packet) and sbuffer is not None:
+				lastpacket = id(packet)
 				if len(sbuffer) > 3200:
 					buffer = sbuffer[:3200]
 					sbuffer = sbuffer[3200:]
@@ -1269,9 +1269,14 @@ def play(pos):
 					sample *= 1 / 32767
 				if settings.volume != 1 or s is not None:
 					if settings.volume != 1:
-						sample = np.asanyarray(sample, dtype=np.float32)
+						if sample.dtype != np.float32:
+							try:
+								globals()["s-temp32"][:] = sample
+							except KeyError:
+								globals()["s-temp32"] = sample.astype(np.float32)
+							sample = globals()["s-temp32"]
 						try:
-							np.multiply(sample, settings.volume, out=sample, casting="unsafe")
+							np.multiply(sample, settings.volume, out=sample)
 						except:
 							sample = sample * settings.volume
 					if s is not None:
@@ -1290,12 +1295,12 @@ def play(pos):
 				if sample.dtype == np.float32:
 					np.clip(sample, -channel.peak, channel.peak, out=sample)
 				sbuffer = sample
-				if sbuffer.dtype != np.float32:
+				if channel.dtype != np.float32:
 					try:
-						globals()["s-temp32"][:] = sample
+						globals()["s-buf32"][:] = sample
 					except KeyError:
-						globals()["s-temp32"] = sample.astype(np.float32)
-					sbuffer = globals()["s-temp32"]
+						globals()["s-buf32"] = sample.astype(np.float32)
+					sbuffer = globals()["s-buf32"]
 					sbuffer *= 1 / channel.peak
 				if sample.dtype != channel.dtype:
 					try:
@@ -1305,7 +1310,7 @@ def play(pos):
 					except KeyError:
 						globals()["s-tempc"] = sample.astype(channel.dtype)
 					sample = globals()["s-tempc"]
-				lastpacket = packet
+				lastpacket = None
 				packet = sample.data
 				packet_advanced = True
 				packet_advanced2 = True
@@ -1533,7 +1538,7 @@ def piano_player():
 					sample = np.asanyarray(np.clip(sample, -32768, 32767, out=sample), dtype=np.int16)
 				else:
 					sample = np.clip(s, -1, 1, out=s)
-				lastpacket = packet
+				lastpacket = None
 				packet = sbuffer.data
 				packet_advanced = True
 				packet_advanced2 = True

@@ -221,7 +221,7 @@ def render_project(fn):
 		"-v",
 		"error",
 		"-f",
-		"s16le",
+		"f32le",
 		"-ar",
 		"48k",
 		"-ac",
@@ -1374,7 +1374,7 @@ def render_piano():
 
 
 def editor_action(undo):
-	editor_action(undo)
+	editor.undo.append(undo)
 	globals()["pdata"] = None
 
 def undo_delete_note(deleted):

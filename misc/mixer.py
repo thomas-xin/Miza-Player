@@ -356,7 +356,7 @@ def sc_player(d):
 		player._data_ = np.concatenate((player._data_, data))
 		player.fut.set_result(None)
 		return verify()
-	player.write = write		
+	player.write = write
 	def close():
 		player.closed = True
 		if player.type == "pygame":
@@ -1260,7 +1260,11 @@ def play(pos):
 						quiet = 0
 				sfut = submit(synthesize)
 				if channel.dtype == np.float32:
-					sample = sample.astype(np.float32)
+					try:
+						globals()["s-temp32"][:] = sample
+					except KeyError:
+						globals()["s-temp32"] = sample.astype(np.float32)
+					sample = globals()["s-temp32"]
 					sample *= 1 / 32767
 				if settings.volume != 1 or s is not None:
 					if settings.volume != 1:
@@ -1284,12 +1288,22 @@ def play(pos):
 						quiet = 0
 				if sample.dtype == np.float32:
 					np.clip(sample, -channel.peak, channel.peak, out=sample)
-					# print(settings.volume, channel.dtype, sample.dtype, channel.peak, sample)
-				sample = np.asanyarray(sample, channel.dtype)
 				sbuffer = sample
 				if sbuffer.dtype != np.float32:
-					sbuffer = sbuffer.astype(np.float32)
+					try:
+						globals()["s-temp32"][:] = sample
+					except KeyError:
+						globals()["s-temp32"] = sample.astype(np.float32)
+					sbuffer = globals()["s-temp32"]
 					sbuffer *= 1 / channel.peak
+				if sample.dtype != channel.dtype:
+					try:
+						if globals()["s-tempc"].dtype != channel.dtype:
+							raise KeyError
+						globals()["s-tempc"][:] = sample
+					except KeyError:
+						globals()["s-tempc"] = sample.astype(channel.dtype)
+					sample = globals()["s-tempc"]
 				lastpacket = packet
 				packet = sample.data
 				packet_advanced = True
@@ -1298,7 +1312,11 @@ def play(pos):
 				if OUTPUT_FILE:
 					s = sample
 					if s.dtype != np.float32:
-						s = s.astype(np.float32)
+						try:
+							globals()["s-temp32"][:] = sample
+						except KeyError:
+							globals()["s-temp32"] = sample.astype(np.float32)
+						s = globals()["s-temp32"]
 						s *= 1 / 32767
 					submit(OUTPUT_FILE.write, s.data)
 				if not point_fut or point_fut.done():
@@ -1312,9 +1330,10 @@ def play(pos):
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						cc = sc.get_speaker(DEVICE.id).channels
-						if cc != channel.channels:
-							raise
+						if not random.randint(0, 7):
+							cc = sc.get_speaker(DEVICE.id).channels
+							if cc != channel.channels:
+								raise
 						fut = submit(channel.wait)
 						fut.result(timeout=0.9)
 						fut = submit(channel.write, sample)
@@ -1324,9 +1343,14 @@ def play(pos):
 						print(f"{channel.type} timed out.")
 						globals()["waiting"] = concurrent.futures.Future()
 						if i > 1:
-							channel.close()
+							try:
+								channel.close()
+							except:
+								print_exc()
 							import importlib
+							print("Reloading soundcard...")
 							importlib.reload(soundcard)
+							time.sleep(0.5)
 						else:
 							submit(channel.close)
 						globals()["channel"] = get_channel()
@@ -1525,9 +1549,10 @@ def piano_player():
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						cc = sc.get_speaker(DEVICE.id).channels
-						if cc != channel.channels:
-							raise
+						if not random.randint(0, 7):
+							cc = sc.get_speaker(DEVICE.id).channels
+							if cc != channel.channels:
+								raise
 						fut = submit(channel.wait)
 						fut.result(timeout=0.9)
 						fut = submit(channel.write, sample)
@@ -1537,9 +1562,14 @@ def piano_player():
 						print(f"{channel.type} timed out.")
 						globals()["waiting"] = concurrent.futures.Future()
 						if i > 1:
-							channel.close()
+							try:
+								channel.close()
+							except:
+								print_exc()
 							import importlib
+							print("Reloading soundcard...")
 							importlib.reload(soundcard)
+							time.sleep(0.5)
 						else:
 							submit(channel.close)
 						globals()["channel"] = get_channel()

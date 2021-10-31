@@ -70,7 +70,7 @@ def render_sidebar_2(dur=0):
 	offs = round_random(sidebar.setdefault("relpos", 0) * -sidebar_width)
 	sc = sidebar.colour or (64, 0, 96)
 	if sidebar.ripples or offs > -sidebar_width + 4:
-		DISP = DISP.subsurface(sidebar.rect)
+		DISP2 = DISP.subsurface(sidebar.rect)
 		bevel_rectangle(
 			DISP2,
 			sc,

@@ -1601,11 +1601,11 @@ def sc_player(d):
 		if PG_USED:
 			pygame.mixer.Channel(0).stop()
 		else:
-			pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
+			pygame.mixer.init(SR, 32, cc, 512, devicename=d.name)
 		globals()["PG_USED"] = (d.name, cc)
 		player = pygame.mixer
 		player.type = "pygame"
-		player.dtype = np.int16
+		player.dtype = np.float32
 		player.peak = 32767
 	else:
 		player.__enter__()
@@ -3160,7 +3160,7 @@ def draw_menu():
 				4,
 				filled=False,
 			)
-		if not toolbar.editor:
+		if not toolbar.editor and toolbar.colour:
 			bsize = min(40, toolbar_height // 3)
 			s = f"{time_disp(player.pos)}/{time_disp(player.end)}"
 			c = high_colour(toolbar.colour)

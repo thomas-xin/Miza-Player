@@ -351,7 +351,12 @@ def schlafli(symbol):
 	verts, dims = normalise_verts(verts)
 	verts = tuple(itertools.chain(*((verts[i], verts[j]) for i, j in edges)))
 	verts = np.asanyarray(verts, dtype=np.float32)
-	return verts, dims
+	dist = verts[1::2] - verts[::2]
+	dist *= dist
+	dist = np.sum(dist, axis=1, out=dist.ravel()[:len(dist)])
+	np.sqrt(dist, out=dist)
+	complexity = np.sum(dist)
+	return verts, dims, complexity
 
 def verify_vert(v):
 	v = astype(v, list)
@@ -397,7 +402,12 @@ def load_model(fn):
 	verts, dims = normalise_verts(verts)
 	verts = tuple(itertools.chain(*((verts[i], verts[j]) for i, j in edges)))
 	verts = np.asanyarray(verts, dtype=np.float32)
-	return verts, dims
+	dist = verts[1::2] - verts[::2]
+	dist *= dist
+	dist = np.sum(dist, axis=1, out=dist.ravel()[:len(dist)])
+	np.sqrt(dist, out=dist)
+	complexity = np.sum(dist)
+	return verts, dims, complexity
 
 found_polytopes = {}
 perms = {}
@@ -427,19 +437,19 @@ def animate_polytope(changed=False):
 	try:
 		if changed:
 			raise KeyError
-		poly, dimcount = found_polytopes[s]
+		poly, dimcount, complexity = found_polytopes[s]
 	except KeyError:
 		pass
 	if poly is None:
 		try:
 			if os.path.exists(s):
-				poly, dimcount = load_model(s)
+				poly, dimcount, complexity = load_model(s)
 			else:
-				poly, dimcount = schlafli(s)
+				poly, dimcount, complexity = schlafli(s)
 		except:
 			print_exc()
-			poly, dimcount = default_poly
-		found_polytopes[s] = (poly, dimcount)
+			poly, dimcount, complexity = default_poly
+		found_polytopes[s] = (poly, dimcount, complexity)
 	# print(poly)
 	# return
 	bars = globals()["bars"][::-1]
@@ -465,11 +475,11 @@ def animate_polytope(changed=False):
 		glDisable(GL_DEPTH_TEST)
 		glDisable(GL_CULL_FACE)
 		glEnable(GL_BLEND)
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 		glEnableClientState(GL_VERTEX_ARRAY)
 		glEnableClientState(GL_COLOR_ARRAY)
 	w, h = specsize
-	thickness = specsize[0] / 64 / max(1, (len(poly) + 2 >> 1) ** 0.5)
+	thickness = specsize[0] / 64 / max(1, (complexity / 2 + 1) ** 0.5)
 	glLineWidth(max(1, thickness))
 	alpha_mult = min(1, thickness) / 2
 	angle = tau / 512

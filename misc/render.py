@@ -744,6 +744,8 @@ def spectrogram_render(bars):
 		sp_changed = False
 		if not sfx:
 			return
+		if sfx == "glReadPixels":
+			glFlush()
 
 		length = ssize2[0] * ssize2[1] * 3
 		globals()["spec-size"][0] = ssize2[0]
@@ -775,7 +777,6 @@ def spectrogram_render(bars):
 					x = specsize[0] - ssize2[0] >> 1
 				elif specsize[1] > ssize2[1]:
 					y = specsize[1] - ssize2[1] >> 1
-				glFlush()
 				glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE, array=globals()["spec-mem"].buf[:length])
 		except:
 			raise

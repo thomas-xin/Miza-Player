@@ -2330,7 +2330,7 @@ def render_spinnies():
 		for j in shuffle(range(3)):
 			point = [cos(p.angle + j * tau / 3) * p.rad, sin(p.angle + j * tau / 3) * p.rad]
 			pos = [round_random(x) for x in (p.centre[0] + point[0], p.centre[1] + point[1])]
-			ri = max(1, round_random(p.life ** 1.2 * toolbar.pause.radius / 72))
+			ri = max(1, round_random(p.life ** 1.2 * r / 32))
 			if ri > 2:
 				reg_polygon_complex(
 					DISP,
@@ -2358,7 +2358,7 @@ def render_spinnies():
 		a = progress.angle + i / 3 * tau
 		point = [cos(a) * r, sin(a) * r]
 		p = (x + point[0], progress.pos[1] + point[1])
-		ri = max(7, progress.width // 2 + 2)
+		ri = max(7, round_random(r / 2.7 + 2))
 		reg_polygon_complex(
 			DISP,
 			p,
@@ -3115,7 +3115,9 @@ def draw_menu():
 				length = osize[0] * osize[1] * 3
 				surf = player.osci = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "BGR")
 				surf.set_colorkey((0, 0, 0))
-			while globals()["spec-locks"][1] > 0:
+			for i in range(6):
+				if globals()["spec-locks"][1] <= 0:
+					break
 				async_wait()
 			globals()["spec-locks"][1] += 1
 			try:
@@ -3127,7 +3129,7 @@ def draw_menu():
 			except:
 				raise
 			finally:
-				globals()["spec-locks"][1] -= 1
+				globals()["spec-locks"][1] = 0
 		else:
 			if options.get("oscilloscope"):
 				c = (255, 0, 0)
@@ -3776,7 +3778,9 @@ try:
 							DISP.fill(0, rect)
 					if player.get("spec_used", None):
 						player.spec = surf
-					while globals()["spec-locks"][0] > 0:
+					for i in range(8):
+						if globals()["spec-locks"][0] <= 0:
+							break
 						async_wait()
 					if size[0] > rect[2]:
 						surf = surf.subsurface((0, 0, rect[2], size[1]))
@@ -3791,7 +3795,7 @@ try:
 					except:
 						raise
 					finally:
-						globals()["spec-locks"][0] -= 1
+						globals()["spec-locks"][0] = 0
 					modified.add(player.rect)
 			if not tick & 3:
 				try:
@@ -4194,13 +4198,6 @@ except Exception as ex:
 			fut.result(timeout=1)
 		except:
 			pass
-	for mem in ("spec-mem", "spec-size", "spec-locks", "osci-mem"):
-		try:
-			mem = globals()[mem]
-			mem = getattr(mem, "shm", mem)
-			mem.unlink()
-		except:
-			print_exc()
 	pygame.quit()
 	if type(ex) is not StopIteration:
 		easygui.exceptionbox()

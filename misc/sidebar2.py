@@ -447,7 +447,7 @@ def render_sidebar_2(dur=0):
 				sidebar.pop("last_selected", None)
 				lq2 = nan
 	if offs <= -4 and sidebar.abspos == 1:
-		Enqueue(render_settings, dur, ignore=True)
+		render_settings(dur, ignore=True)
 	if offs <= -4 and sidebar.abspos == 2:
 		instrument = project.instruments[project.instrument_layout[sidebar.editing]]
 		sub = (sidebar.rect2[2] - 4, sidebar.rect2[3] - 52)

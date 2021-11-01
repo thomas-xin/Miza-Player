@@ -2705,7 +2705,6 @@ def render_toolbar(sfut):
 	if not toolbar.colour:
 		return
 	highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
-	crosshair |= highlighted
 	bevel_rectangle(
 		DISP,
 		toolbar.colour,
@@ -2986,7 +2985,8 @@ def render_toolbar(sfut):
 			3,
 		)
 	osci_rect = (screensize[0] - 4 - progress.box, screensize[1] - toolbar_height + 4) + osize
-	if options.get("oscilloscope") and globals()["spec-locks"][1] != -1:
+	locks = globals()["spec-locks"]
+	if options.get("oscilloscope") and locks[1] != -1:
 		try:
 			surf = player.osci
 			if surf.get_size() != osize:
@@ -2996,12 +2996,12 @@ def render_toolbar(sfut):
 			surf = player.osci = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "BGR")
 			surf.set_colorkey((0, 0, 0))
 		for i in range(7):
-			if globals()["spec-locks"][1] <= 0:
+			if locks[1] <= 0:
 				break
 			async_wait()
 		else:
-			print(f"Oscilloscope lock expired ({i}).")
-		globals()["spec-locks"][1] += 1
+			print(f"Oscilloscope lock expired ({i + 1}).")
+		locks[1] += 1
 		try:
 			blit_complex(
 				DISP,
@@ -3011,7 +3011,7 @@ def render_toolbar(sfut):
 		except:
 			raise
 		finally:
-			globals()["spec-locks"][1] = 0
+			locks[1] = 0
 	else:
 		if options.get("oscilloscope"):
 			c = (255, 0, 0)
@@ -3148,12 +3148,14 @@ def draw_menu():
 			globals()["last-cond"] = True
 	elif not tick % 240:
 		cond = True
+	sfut = deque()
 	sidebar_rendered = None
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
 		if toolbar.editor:
-			sidebar_rendered = submit(render_sidebar_2, dur)
+			sidebar_rendered = Enqueue(render_sidebar_2, dur)
 		else:
-			sidebar_rendered = submit(render_sidebar, dur)
+			sidebar_rendered = Enqueue(render_sidebar, dur)
+		sfut.append(sidebar_rendered)
 		offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
 		Z = -sidebar.scroll.pos
 		maxb = (sidebar_width - 12) // 44
@@ -3205,8 +3207,9 @@ def draw_menu():
 					("Reset ripples", reset_bubble),
 				),
 			)
-	sfut = deque()
 	if (toolbar.updated or not tick & 7) and toolbar.colour:
+		highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
+		crosshair |= highlighted
 		fut = submit(render_toolbar, sfut)
 		sfut.append(fut)
 		QUEUED.append(fut)
@@ -3762,15 +3765,16 @@ try:
 								editor.held_update = None
 					mixer.submit("~keys " + ",".join(map(str, notekeys)))
 			if not tick + 2 & 7 and not toolbar.editor:
-				if options.get("spectrogram") and globals()["spec-locks"][0] != -1:
+				locks = globals()["spec-locks"]
+				if options.get("spectrogram") and locks[0] != -1:
 					rect = player.rect
 					for i in range(12):
-						if globals()["spec-locks"][0] <= 0:
+						if locks[0] <= 0:
 							break
 						async_wait()
 					else:
-						print(f"Spectrogram lock expired ({i}).")
-					globals()["spec-locks"][0] += 1
+						print(f"Spectrogram lock expired ({i + 1}).")
+					locks[0] += 1
 					try:
 						size = list(globals()["spec-size"])
 						if size[1] > rect[3]:
@@ -3782,8 +3786,7 @@ try:
 						except AttributeError:
 							length = size[0] * size[1] * 3
 							surf = player.spec = pygame.image.frombuffer(globals()["spec-mem"].buf[:length], size, "RGB")
-						if player.get("spec_used", None):
-							player.spec = surf
+						player.spec = surf
 						if options.spectrogram > 1:
 							srect = limit_size(*surf.get_size(), *rect[2:])
 						else:
@@ -3802,8 +3805,7 @@ try:
 								DISP.fill(0, rect)
 						if size[0] > rect[2]:
 							surf = surf.subsurface((0, 0, rect[2], size[1]))
-						Enqueue(
-							blit_complex,
+						blit_complex(
 							DISP,
 							surf,
 							prect,
@@ -3811,14 +3813,18 @@ try:
 					except:
 						raise
 					finally:
-						globals()["spec-locks"][0] = 0
+						locks[0] = 0
 					modified.add(player.rect)
 			if not tick & 3:
 				try:
 					update_menu()
 				except:
 					print_exc()
-				Enqueue(draw_menu)
+				try:
+					globals()["menu-drawer"].result()
+				except KeyError:
+					pass
+				globals()["menu-drawer"] = Enqueue(draw_menu)
 			if not queue and not is_active() and not any(kheld):
 				player.pos = 0
 				player.end = inf

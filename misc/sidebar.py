@@ -528,7 +528,7 @@ def render_sidebar(dur=0):
 				sidebar.pop("lastsel", None)
 				lq = nan
 	if offs <= -4:
-		Enqueue(render_settings, dur)
+		render_settings(dur)
 def copy_queue(entry):
 	entries = [e.url for e in queue if e.get("selected")]
 	if not entries:

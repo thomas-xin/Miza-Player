@@ -199,7 +199,12 @@ class Bar(Particle):
 		ix = barcount - 2 - self.x
 		sx = ix / (barcount - 2) * ssize2[0]
 		w = (ix + 1) / (barcount - 2) * ssize2[0] - sx
-		alpha = round_random(85 * scale) * 3
+		if scale < 7 / 255:
+			alpha = round_random(scale * 255)
+		else:
+			alpha = round_random(85 * scale) * 3
+		if not alpha:
+			return
 		t = (self.line, self.fsize)
 		if t not in TEXTS:
 			TEXTS[t] = self.font.render(self.line, True, (255,) * 3)
@@ -753,11 +758,13 @@ def spectrogram_render(bars):
 		length = ssize2[0] * ssize2[1] * 3
 		globals()["spec-size"][0] = ssize2[0]
 		globals()["spec-size"][1] = ssize2[1]
-		while globals()["spec-locks"][0] > 0:
-			time.sleep(0.005)
-		if globals()["spec-locks"][0] == -1:
-			globals()["spec-locks"][0] = 0
-		globals()["spec-locks"][0] += 1
+		locks = globals()["spec-locks"]
+		if locks[0] <= -1:
+			locks[0] = 0
+		else:
+			while locks[0] > 0:
+				time.sleep(0.005)
+		locks[0] += 1
 		try:
 			if specs == 1:
 				sfx2 = pygame.image.frombuffer(globals()["spec-mem"].buf[:length], ssize2, "RGB")
@@ -768,10 +775,15 @@ def spectrogram_render(bars):
 					Bar.font = pygame.font.Font("misc/Pacifico.ttf", bar.fsize)
 					for bar in bars:
 						bar.cache.clear()
-				highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:48]
+				highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:97]
 				high = highbars[0]
+				lowest = highbars.pop(-1).height
+				dividend = globals().get("avgheight", high.height - lowest)
 				for bar in reversed(highbars):
-					bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
+					if bar.height > 1:
+						bar.post_render(sfx=sfx, scale=(bar.height - lowest) / dividend)
+				high = max(1, high.height - lowest)
+				globals()["avgheight"] = (dividend * 0.95) + high * 0.05
 			if isinstance(sfx, bytes):
 				globals()["spec-mem"].buf[:length] = sfx
 			elif sfx == "glReadPixels":
@@ -780,8 +792,8 @@ def spectrogram_render(bars):
 		except:
 			raise
 		finally:
-			if globals()["spec-locks"][0] > 0:
-				globals()["spec-locks"][0] -= 1
+			if locks[0] > 0:
+				locks[0] -= 1
 
 		if specs == 2:
 			dur *= 3

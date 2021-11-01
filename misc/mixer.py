@@ -291,10 +291,7 @@ def sc_player(d):
 			raise RuntimeError
 		player = d.player(SR, cc, 2048)
 	except RuntimeError:
-		if PG_USED:
-			pygame.mixer.stop()
-			pygame.mixer.resume()
-		else:
+		if not PG_USED:
 			pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
 		globals()["PG_USED"] = t
 		player = pygame.mixer
@@ -302,6 +299,7 @@ def sc_player(d):
 		player.dtype = np.int16
 		player.peak = 32767
 		player.resume = player.unpause
+		player.stop = player.pause
 	else:
 		player.__enter__()
 		player.type = "soundcard"
@@ -926,11 +924,13 @@ def oscilloscope(buffer):
 			OSCI = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "RGB")
 		if not packet:
 			return
-		while globals()["spec-locks"][1] > 0:
-			time.sleep(0.005)
-		if globals()["spec-locks"][1] == -1:
-			globals()["spec-locks"][1] = 0
-		globals()["spec-locks"][1] += 1
+		locks = globals()["spec-locks"]
+		if locks[1] <= -1:
+			locks[1] = 0
+		else:
+			while locks[1] > 0:
+				time.sleep(0.005)
+		locks[1] += 1
 		try:
 			OSCI.fill((0, 0, 0))
 			point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
@@ -948,8 +948,8 @@ def oscilloscope(buffer):
 		except:
 			raise
 		finally:
-			if globals()["spec-locks"][1] > 0:
-				globals()["spec-locks"][1] -= 1
+			if locks[1] > 0:
+				locks[1] -= 1
 	except:
 		print_exc()
 
@@ -1779,6 +1779,8 @@ while not sys.stdin.closed and failed < 8:
 			fn = file = proc = None
 			synth_samples = np.zeros(0, dtype=np.float32)
 			cleared = True
+			channel.stop()
+			channel.resume()
 			continue
 		if command.startswith("~state"):
 			i = int(command[6:])

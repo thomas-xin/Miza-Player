@@ -3746,8 +3746,6 @@ try:
 				if options.get("spectrogram") and globals()["spec-locks"][0] != -1:
 					rect = player.rect
 					size = list(globals()["spec-size"])
-					if size[0] > rect[2]:
-						size[0] = rect[2]
 					if size[1] > rect[3]:
 						size[1] = rect[3]
 					try:
@@ -3763,34 +3761,35 @@ try:
 						srect = rect[2:]
 					prect = rect[:2]
 					prect += (np.array(rect[2:]) - srect) / 2
-					if surf:
-						if options.spectrogram > 1:
-							rects = deque()
-							if srect[0] < rect[2]:
-								rects.append(rect[:2] + (prect[0], rect[3]))
-								rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
-							elif srect[1] < rect[3]:
-								rects.append(rect[:2] + (rect[2], prect[1]))
-								rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
-							for rect in rects:
-								DISP.fill(0, rect)
-						if player.get("spec_used", None):
-							player.spec = surf
-						while globals()["spec-locks"][0] > 0:
-							async_wait()
-						globals()["spec-locks"][0] += 1
-						try:
-							Enqueue(
-								blit_complex,
-								DISP,
-								surf,
-								prect,
-							)
-						except:
-							raise
-						finally:
-							globals()["spec-locks"][0] -= 1
-						modified.add(player.rect)
+					if options.spectrogram > 1:
+						rects = deque()
+						if srect[0] < rect[2]:
+							rects.append(rect[:2] + (prect[0], rect[3]))
+							rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
+						elif srect[1] < rect[3]:
+							rects.append(rect[:2] + (rect[2], prect[1]))
+							rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
+						for rect in rects:
+							DISP.fill(0, rect)
+					if player.get("spec_used", None):
+						player.spec = surf
+					while globals()["spec-locks"][0] > 0:
+						async_wait()
+					if size[0] > rect[2]:
+						surf = surf.subsurface((0, 0, rect[2], size[1]))
+					globals()["spec-locks"][0] += 1
+					try:
+						Enqueue(
+							blit_complex,
+							DISP,
+							surf,
+							prect,
+						)
+					except:
+						raise
+					finally:
+						globals()["spec-locks"][0] -= 1
+					modified.add(player.rect)
 			if not tick & 3:
 				try:
 					update_menu()

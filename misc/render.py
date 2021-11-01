@@ -332,14 +332,7 @@ def animate_prism(changed=False):
 		glVertexPointer(3, GL_FLOAT, 0, v.ravel())
 		glDrawArrays(GL_TRIANGLES, 0, len(bars) * len(prism_setup))
 		v.T[1] -= sqrt(3)
-	glFlush()
-	x = y = 0
-	if specsize[0] > ssize2[0]:
-		x = specsize[0] - ssize2[0] >> 1
-	elif specsize[1] > ssize2[1]:
-		y = specsize[1] - ssize2[1] >> 1
-	sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
-	return sfx
+	return "glReadPixels"
 
 def schlafli(symbol):
 	args = (sys.executable, "misc/schlafli.py")
@@ -578,16 +571,7 @@ def animate_polytope(changed=False):
 		glColorPointer(4, GL_FLOAT, 0, colours.ravel())
 		glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
 		glDrawArrays(GL_LINES, 0, len(colours) * len(poly))
-		glFlush()
-		x = y = 0
-		if specsize[0] > ssize2[0]:
-			x = specsize[0] - ssize2[0] >> 1
-		elif specsize[1] > ssize2[1]:
-			y = specsize[1] - ssize2[1] >> 1
-		sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
-	else:
-		sfx = b"\x00" * int(np.prod(ssize2) * 3)
-	return sfx
+	return "glReadPixels"
 
 def animate_ripple(changed=False):
 	if not vertices or not vertices[0]:
@@ -715,14 +699,7 @@ def animate_ripple(changed=False):
 		glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
 		glDrawArrays(GL_LINES, 0, len(c))
 		c.T[-1] *= r
-	glFlush()
-	x = y = 0
-	if specsize[0] > ssize2[0]:
-		x = specsize[0] - ssize2[0] >> 1
-	elif specsize[1] > ssize2[1]:
-		y = specsize[1] - ssize2[1] >> 1
-	sfx = glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE)
-	return sfx
+	return "glReadPixels"
 
 bars = [Bar(i - 1, barcount) for i in range(barcount)]
 bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
@@ -792,6 +769,14 @@ def spectrogram_render(bars):
 					bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
 			if isinstance(sfx, bytes):
 				globals()["spec-mem"].buf[:length] = sfx
+			elif sfx == "glReadPixels":
+				x = y = 0
+				if specsize[0] > ssize2[0]:
+					x = specsize[0] - ssize2[0] >> 1
+				elif specsize[1] > ssize2[1]:
+					y = specsize[1] - ssize2[1] >> 1
+				glFlush()
+				glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE, array=globals()["spec-mem"].buf[:length])
 		except:
 			raise
 		finally:

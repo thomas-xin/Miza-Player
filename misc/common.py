@@ -3,7 +3,7 @@ import os, sys, subprocess, time, concurrent.futures
 if os.name != "nt":
 	raise NotImplementedError("This program is currently implemented to use Windows API and filesystem only.")
 
-async_wait = lambda: time.sleep(0.01)
+async_wait = lambda: time.sleep(0.005)
 sys.setswitchinterval(0.01)
 utc = time.time
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
@@ -382,7 +382,7 @@ def start_mixer():
 		stdin=subprocess.PIPE,
 		stdout=subprocess.PIPE,
 		stderr=subprocess.PIPE,
-		bufsize=1048576,
+		bufsize=65536,
 	)
 	if "DISP" not in globals():
 		write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
@@ -397,8 +397,30 @@ def start_mixer():
 		mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
 		hwnd = pygame.display.get_wm_info()["window"]
 		if hasmisc:
+			w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+			length = w * h * 3
+			import multiprocessing.shared_memory
+			globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
+				[128, 128],
+				name=f"Miza-Player-{hwnd}-spec-locks",
+			)
+			globals()["spec-size"] = multiprocessing.shared_memory.ShareableList(
+				[1, 1],
+				name=f"Miza-Player-{hwnd}-spec-size",
+			)
+			globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
+				name=f"Miza-Player-{hwnd}-spec-mem",
+				create=True,
+				size=length,
+			)
+			length = 65536
+			globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
+				name=f"Miza-Player-{hwnd}-osci-mem",
+				create=True,
+				size=length,
+			)
 			s = []
-			s.append(("%" + str(hwnd) + "\n"))
+			s.append((f"%{hwnd}\n"))
 			d = options.audio.copy()
 			d.update(options.control)
 			j = orjson.dumps(d).decode("utf-8")

@@ -1385,7 +1385,6 @@ def start_player(pos=None, force=False):
 			downloader.result().cache.pop(queue[0].url, None)
 		player.last = 0
 		player.amp = 0
-		player.pop("osci", None)
 		stream = prepare(queue[0], force=force + 1)
 		if not queue[0].url:
 			return skip()
@@ -1479,7 +1478,6 @@ def seek_rel(pos):
 		return
 	player.last = 0
 	player.amp = 0
-	player.pop("osci", None)
 	if pos + player.pos >= player.end:
 		if audio.speed > 0:
 			return skip()
@@ -1513,49 +1511,17 @@ def restart_mixer():
 	submit(transfer_instrument, *project.instruments.values())
 	return seek_abs(player.pos)
 
-def play():
+def mixer_stderr():
 	try:
 		while True:
 			b = as_str(mixer.stderr.readline()).rstrip()
-			if "~" not in b:
-				if b:
-					print(b)
-				else:
-					time.sleep(0.1)
-					if not mixer.is_running():
-						restart_mixer()
-				continue
-			if b[0] == "o":
-				b = b[1:]
-				osize = list(map(int, b.split("~")))
-				req = int(np.prod(osize) * 4)
-				b = mixer.stderr.read(req)
-				while len(b) < req:
-					if not b:
-						time.sleep(0.1)
-						if not mixer.is_running():
-							restart_mixer()
-						continue
-					b += mixer.stderr.read(req - len(b))
-				osci = pygame.image.frombuffer(b, osize, "RGBA")
-				player.osci = osci
+			if b:
+				print(b)
 			else:
-				b = b[1:]
-				ssize = list(map(int, b.split("~")))
-				req = int(np.prod(ssize) * 3)
-				b = mixer.stderr.read(req)
-				while len(b) < req:
-					if not b:
-						time.sleep(0.1)
-						if not mixer.is_running():
-							restart_mixer()
-						continue
-					b += mixer.stderr.read(req - len(b))
-				if not options.spectrogram:
-					continue
-				spec = pygame.image.frombuffer(b, ssize, "RGB").convert()
-				player.spec = spec
-				player.pop("spec_used", None)
+				time.sleep(0.1)
+				if not mixer.is_running():
+					restart_mixer()
+			continue
 	except:
 		if not mixer.is_running():
 			print(as_str(mixer.stderr.read()))
@@ -1696,7 +1662,7 @@ def sc_player(d):
 get_channel = lambda: sc_player(get_device(OUTPUT_DEVICE))
 channel = get_channel()
 
-def pos():
+def mixer_stdout():
 	try:
 		while True:
 			s = None
@@ -1769,8 +1735,8 @@ def pos():
 			print(mixer.stderr.read().decode("utf-8", "replace"))
 		print_exc()
 
-submit(play)
-submit(pos)
+submit(mixer_stderr)
+submit(mixer_stdout)
 
 def ensure_next(i=1):
 	if i <= 1 or all(e.done() for e in enext):
@@ -1910,7 +1876,6 @@ def update_menu():
 		player.amp = 0.5
 	elif not is_active():
 		player.amp = 0
-		player.pop("osci", None)
 	toolbar.pause.angle = (toolbar.pause.angle + (toolbar.pause.speed + 1) * duration * (-2 if player.paused else 2))
 	toolbar.pause.angle %= tau
 	toolbar.pause.speed *= 0.995 ** (duration * 480)
@@ -2701,7 +2666,7 @@ def render_settings(dur, ignore=False):
 		4,
 	)
 	kwargs = {}
-	if not toolbar.ripples:
+	if not sidebar.ripples:
 		kwargs["soft"] = sidebar.colour
 	reg_polygon_complex(
 		DISP2,
@@ -3141,11 +3106,17 @@ def draw_menu():
 				(pos[0] + (rad + 3) // 5, pos[1] - rad, rad * 4 // 5, rad << 1),
 				3,
 			)
-		if options.get("oscilloscope") and is_active() and player.get("osci"):
-			surf = player.osci
-			if tuple(osci_rect[2:]) != surf.get_size():
-				s2 = HWSurface.any(osci_rect[2:], FLAGS | SRCALPHA)
-				player.osci = surf = pygame.transform.scale(surf, osci_rect[2:], s2)
+		if options.get("oscilloscope") and globals()["spec-locks"][1] != 128:
+			try:
+				surf = player.osci
+				if surf.get_size() != osize:
+					raise AttributeError
+			except AttributeError:
+				length = osize[0] * osize[1] * 3
+				surf = player.osci = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "BGR")
+				surf.set_colorkey((0, 0, 0))
+			while globals()["osci-mem"].buf[-1] & 1:
+				async_wait()
 			blit_complex(
 				DISP,
 				surf,
@@ -3766,46 +3737,44 @@ try:
 								editor.held_update = None
 					mixer.submit("~keys " + ",".join(map(str, notekeys)))
 			if not tick + 2 & 7 and not toolbar.editor:
-				if player.get("spec"):
-					if options.get("spectrogram"):
-						rect = player.rect
+				if options.get("spectrogram") and globals()["spec-locks"][0] != 128:
+					rect = player.rect
+					size = tuple(globals()["spec-size"])
+					try:
 						surf = player.spec
+						if surf.get_size() != size:
+							raise AttributeError
+					except AttributeError:
+						length = size[0] * size[1] * 3
+						surf = player.spec = pygame.image.frombuffer(globals()["spec-mem"].buf[:length], size, "RGB")
+					if options.spectrogram > 1:
+						srect = limit_size(*surf.get_size(), *rect[2:])
+					else:
+						srect = rect[2:]
+					prect = rect[:2]
+					prect += (np.array(rect[2:]) - srect) / 2
+					if surf:
 						if options.spectrogram > 1:
-							srect = limit_size(*surf.get_size(), *rect[2:])
-						else:
-							srect = rect[2:]
-						if tuple(srect) != surf.get_size():
-							specf = True
-							s2 = HWSurface.any(srect, FLAGS)
-							try:
-								player.specr_fut = pygame.transform.scale(surf, srect, s2)
-							except ValueError:
-								player.specr_fut = pygame.transform.scale(surf.convert(), srect, s2)
-						else:
-							player.specr_fut = surf
-						prect = rect[:2]
-						prect += (np.array(rect[2:]) - srect) / 2
-						surf = player.get("specr_fut", None)
-						if surf:
-							if options.spectrogram > 1:
-								rects = deque()
-								if srect[0] < rect[2]:
-									rects.append(rect[:2] + (prect[0], rect[3]))
-									rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
-								elif srect[1] < rect[3]:
-									rects.append(rect[:2] + (rect[2], prect[1]))
-									rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
-								for rect in rects:
-									DISP.fill(0, rect)
-							if player.get("spec_used", None):
-								player.spec = surf
-							Enqueue(
-								blit_complex,
-								DISP,
-								surf,
-								prect,
-							)
-							modified.add(player.rect)
+							rects = deque()
+							if srect[0] < rect[2]:
+								rects.append(rect[:2] + (prect[0], rect[3]))
+								rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
+							elif srect[1] < rect[3]:
+								rects.append(rect[:2] + (rect[2], prect[1]))
+								rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
+							for rect in rects:
+								DISP.fill(0, rect)
+						if player.get("spec_used", None):
+							player.spec = surf
+						while globals()["spec-mem"].buf[-1] & 1:
+							async_wait()
+						Enqueue(
+							blit_complex,
+							DISP,
+							surf,
+							prect,
+						)
+						modified.add(player.rect)
 			if not tick & 3:
 				try:
 					update_menu()
@@ -4207,6 +4176,10 @@ except Exception as ex:
 			fut.result(timeout=1)
 		except:
 			pass
+	globals()["spec-mem"].unlink()
+	globals()["spec-size"].shm.unlink()
+	globals()["spec-locks"].shm.unlink()
+	globals()["osci-mem"].unlink()
 	pygame.quit()
 	if type(ex) is not StopIteration:
 		easygui.exceptionbox()

@@ -1,7 +1,11 @@
 # ONE SMALL STEP FOR MAN, ONE GIANT LEAP FOR SMUDGE KIND! Invaded once again on the 6th March >:D
 
 import psutil, subprocess, sys
-rproc = psutil.Popen((sys.executable, "misc/render.py"), stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+try:
+	hwnd = int(sys.stdin.readline()[1:])
+except ValueError:
+	hwnd = 0
+rproc = psutil.Popen((sys.executable, "misc/render.py", str(hwnd)), stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
 sys.stdout.write = lambda *args, **kwargs: None
 import concurrent.futures
 
@@ -56,12 +60,8 @@ np = numpy
 CFFI = cffi.FFI()
 deque = collections.deque
 suppress = contextlib.suppress
-try:
-	hwnd = int(sys.stdin.readline()[1:])
-except ValueError:
-	hwnd = 0
 
-async_wait = lambda: time.sleep(0.01)
+async_wait = lambda: time.sleep(0.005)
 sys.setswitchinterval(0.01)
 
 is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
@@ -902,38 +902,39 @@ stderr_lock = None
 def oscilloscope(buffer):
 	global stderr_lock
 	try:
-		if packet:
-			arr = buffer[::2] + buffer[1::2]
-			osci = supersample(arr, osize[0], in_place=True)
-			osci *= 0.5
-			osci = np.clip(osci, -1, 1, out=osci)
-			if packet:
-				size = osize
-				OSCI = HWSurface.any(size, pygame.SRCALPHA)
-				OSCI.fill((0, 0, 0, 0))
-				if packet:
-					point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
-					for i in range(1, len(osci)):
-						prev = point
-						point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
-						hue = ((osci[i] + osci[i - 1]) / 4 - 1 / 3) % 1
-						col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(hue, 1, 1)]
-						pygame.draw.aaline(
-							OSCI,
-							col,
-							point,
-							prev,
-						)
-					if packet:
-						b = OSCI.get_buffer()
-						# b = pygame.image.tostring(OSCI, "RGBA")
-						while stderr_lock:
-							stderr_lock.result()
-						stderr_lock = concurrent.futures.Future()
-						bsend(b"o" + "~".join(map(str, size)).encode("ascii") + b"\n", b)
-						lock, stderr_lock = stderr_lock, None
-						if lock:
-							lock.set_result(None)
+		if not packet:
+			return
+		arr = buffer[::2] + buffer[1::2]
+		osci = supersample(arr, osize[0], in_place=True)
+		osci *= 0.5
+		osci = np.clip(osci, -1, 1, out=osci)
+		if "OSCI" not in globals():
+			import multiprocessing.shared_memory
+			globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
+				name=f"Miza-Player-{hwnd}-osci-mem",
+			)
+			globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
+				name=f"Miza-Player-{hwnd}-spec-locks",
+			)
+			length = osize[0] * osize[1] * 3
+			OSCI = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "RGB")
+		if not packet:
+			return
+		globals()["spec-locks"][1] = 1
+		OSCI.fill((0, 0, 0))
+		point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
+		for i in range(1, len(osci)):
+			prev = point
+			point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
+			hue = ((osci[i] + osci[i - 1]) / 4 - 1 / 3) % 1
+			col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(hue, 1, 1)]
+			pygame.draw.line(
+				OSCI,
+				col,
+				point,
+				prev,
+			)
+		globals()["spec-locks"][1] = 0
 	except:
 		print_exc()
 
@@ -997,25 +998,6 @@ def spectrogram_render():
 		binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2))) + b"\n"
 		rproc.stdin.write(binfo)
 		rproc.stdin.flush()
-		line = rproc.stdout.readline().rstrip()
-		while not line.startswith(b"~s"):
-			if line:
-				print("\x00" + line.decode("utf-8", "replace"))
-			line = rproc.stdout.readline().rstrip()
-		if line[2:]:
-			bsize = 3 * np.prod(deque(map(int, line[2:].split(b"~"))))
-			spectrobytes = rproc.stdout.read(bsize)
-			if OUTPUT_VIDEO and not OUTPUT_VIDEO.stdin.closed:
-				while video_write:
-					async_wait()
-				video_write = submit(OUTPUT_VIDEO.stdin.write, spectrobytes)
-			while stderr_lock:
-				stderr_lock.result()
-			stderr_lock = concurrent.futures.Future()
-			bsend(line[1:] + b"\n", spectrobytes)
-			lock, stderr_lock = stderr_lock, None
-			if lock:
-				lock.set_result(None)
 		if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
 			spec_update_fut = submit(spectrogram_render)
 			packet_advanced2 = False

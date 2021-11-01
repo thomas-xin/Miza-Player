@@ -51,6 +51,18 @@ import pygame
 sys.stdout.write = write
 pygame.font.init()
 FONTS = {}
+hwnd = int(sys.argv[1])
+
+import multiprocessing.shared_memory
+globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
+	name=f"Miza-Player-{hwnd}-spec-mem",
+)
+globals()["spec-size"] = multiprocessing.shared_memory.ShareableList(
+	name=f"Miza-Player-{hwnd}-spec-size",
+)
+globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
+	name=f"Miza-Player-{hwnd}-spec-locks",
+)
 
 def astype(obj, t, *args, **kwargs):
 	try:
@@ -754,10 +766,14 @@ def spectrogram_render(bars):
 			sfx = func(sp_changed)
 		sp_changed = False
 
+		length = ssize2[0] * ssize2[1] * 3
+		globals()["spec-size"][0] = ssize2[0]
+		globals()["spec-size"][1] = ssize2[1]
+		globals()["spec-locks"][0] = 1
+
 		if specs == 1:
-			if sfx.get_size() != ssize2:
-				sfx2 = HWSurface.any(ssize2)
-				sfx = pygame.transform.scale(sfx, ssize2, sfx2)
+			sfx2 = pygame.image.frombuffer(globals()["spec-mem"].buf[:length], ssize2, "RGB")
+			sfx = pygame.transform.scale(sfx, ssize2, sfx2)
 			fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
 			if Bar.fsize != fsize:
 				Bar.fsize = fsize
@@ -770,18 +786,10 @@ def spectrogram_render(bars):
 				bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
 
 		if not sfx:
-			sys.stdout.write("~s\n")
-			return sys.stdout.flush()
-		if type(sfx) is bytes:
-			spectrobytes = sfx
-		else:
-			try:
-				spectrobytes = sfx.tobytes()
-			except AttributeError:
-				# spectrobytes = sfx.get_buffer()
-				# print(spectrobytes.length)
-				spectrobytes = pygame.image.tostring(sfx, "RGB")
-				# print(len(spectrobytes))
+			return
+		if isinstance(sfx, bytes):
+			globals()["spec-mem"].buf[:length] = sfx
+		globals()["spec-locks"][0] = 0
 
 		if specs == 2:
 			dur *= 3
@@ -789,25 +797,8 @@ def spectrogram_render(bars):
 			dur *= 1.5
 		elif specs == 4:
 			dur *= 2
-		write = False
 		for bar in bars:
-			if bar.height2:
-				write = True
 			bar.update(dur=dur)
-
-		if write:
-			if type(sfx) is bytes:
-				size = ssize2
-			else:
-				try:
-					size = sfx.size
-				except AttributeError:
-					size = sfx.get_size()
-			sys.stdout.buffer.write(b"~s" + "~".join(map(str, size)).encode("ascii") + b"\n")
-			sys.stdout.buffer.write(spectrobytes)
-		else:
-			sys.stdout.write("~s\n")
-		return sys.stdout.flush()
 	except:
 		print_exc()
 

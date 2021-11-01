@@ -62,7 +62,7 @@ deque = collections.deque
 suppress = contextlib.suppress
 
 async_wait = lambda: time.sleep(0.005)
-sys.setswitchinterval(0.01)
+sys.setswitchinterval(0.008)
 
 is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 globals()["unfocus-time"] = 0
@@ -285,25 +285,30 @@ PG_USED = None
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
 def sc_player(d):
 	cc = d.channels
+	t = (d.name, cc)
 	try:
-		if not PG_USED:
+		if not PG_USED or PG_USED == t:
 			raise RuntimeError
 		player = d.player(SR, cc, 2048)
 	except RuntimeError:
 		if PG_USED:
-			pygame.mixer.Channel(0).stop()
+			pygame.mixer.stop()
+			pygame.mixer.resume()
 		else:
 			pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
-		globals()["PG_USED"] = (d.name, cc)
+		globals()["PG_USED"] = t
 		player = pygame.mixer
 		player.type = "pygame"
 		player.dtype = np.int16
 		player.peak = 32767
+		player.resume = player.unpause
 	else:
 		player.__enter__()
 		player.type = "soundcard"
 		player.dtype = np.float32
 		player.peak = 1
+		player.resume = lambda: None
+		player.pause = player.stop = lambda: setattr(player, "_data_", ())
 	player.closed = False
 	player.playing = None
 	player.fut = None
@@ -344,12 +349,13 @@ def sc_player(d):
 			else:
 				data >>= 1
 				data = data[::2] + data[1::2]
-		player.wait()
 		if player.type == "pygame":
 			if cc >= 2:
 				data = data.reshape((len(data) // cc, cc))
 			sound = pygame.sndarray.make_sound(data)
+			player.wait()
 			return player.Channel(0).queue(sound)
+		player.wait()
 		if not len(player._data_):
 			player._data_ = data
 			return verify()
@@ -361,7 +367,7 @@ def sc_player(d):
 	def close():
 		player.closed = True
 		if player.type == "pygame":
-			return player.Channel(0).stop()
+			return pygame.mixer.stop()
 		try:
 			player.__exit__(None, None, None)
 		except:
@@ -942,7 +948,8 @@ def oscilloscope(buffer):
 		except:
 			raise
 		finally:
-			globals()["spec-locks"][1] -= 1
+			if globals()["spec-locks"][1] > 0:
+				globals()["spec-locks"][1] -= 1
 	except:
 		print_exc()
 
@@ -1336,20 +1343,15 @@ def play(pos):
 						fut = submit(channel.write, sample)
 						fut.result(timeout=0.8)
 					except:
+						if paused:
+							break
 						print_exc()
 						print(f"{channel.type} timed out.")
 						globals()["waiting"] = concurrent.futures.Future()
 						if i > 1:
-							try:
-								channel.close()
-							except:
-								print_exc()
-							import importlib
-							print("Reloading soundcard...")
-							importlib.reload(soundcard)
-							time.sleep(0.5)
+							PROC.terminate()
 						else:
-							submit(channel.close)
+							channel.close()
 						globals()["channel"] = get_channel()
 						globals()["waiting"], w = None, waiting
 						w.set_result(None)
@@ -1559,16 +1561,9 @@ def piano_player():
 						print(f"{channel.type} timed out.")
 						globals()["waiting"] = concurrent.futures.Future()
 						if i > 1:
-							try:
-								channel.close()
-							except:
-								print_exc()
-							import importlib
-							print("Reloading soundcard...")
-							importlib.reload(soundcard)
-							time.sleep(0.5)
+							PROC.terminate()
 						else:
-							submit(channel.close)
+							channel.close()
 						globals()["channel"] = get_channel()
 						globals()["waiting"], w = None, waiting
 						w.set_result(None)
@@ -1789,7 +1784,9 @@ while not sys.stdin.closed and failed < 8:
 			i = int(command[6:])
 			if i and not paused:
 				paused = concurrent.futures.Future()
+				channel.pause()
 			elif not i and paused:
+				channel.resume()
 				paused.set_result(None)
 				paused = None
 			packet_advanced = paused

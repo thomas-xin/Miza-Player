@@ -4,7 +4,7 @@ if os.name != "nt":
 	raise NotImplementedError("This program is currently implemented to use Windows API and filesystem only.")
 
 async_wait = lambda: time.sleep(0.005)
-sys.setswitchinterval(0.01)
+sys.setswitchinterval(0.008)
 utc = time.time
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 from concurrent.futures import thread
@@ -51,6 +51,8 @@ def _settimeout(*args, timeout=0, **kwargs):
 settimeout = lambda *args, **kwargs: submit(_settimeout, *args, **kwargs)
 
 from rainbow_print import *
+
+write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 
 
 class MultiAutoImporter:
@@ -375,7 +377,8 @@ def start_mixer():
 	global mixer, hwnd
 	if "mixer" in globals() and mixer and mixer.is_running():
 		mixer.kill()
-	if "DISP" in globals() and getattr(pygame, "closed", None):
+	restarting = "DISP" in globals()
+	if restarting and getattr(pygame, "closed", None):
 		return
 	mixer = psutil.Popen(
 		argp + ["misc/mixer.py"],
@@ -384,8 +387,7 @@ def start_mixer():
 		stderr=subprocess.PIPE,
 		bufsize=65536,
 	)
-	if "DISP" not in globals():
-		write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
+	if not restarting:
 		sys.stdout.write = write
 		start_display()
 	else:
@@ -397,28 +399,29 @@ def start_mixer():
 		mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
 		hwnd = pygame.display.get_wm_info()["window"]
 		if hasmisc:
-			w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
-			length = w * h * 3
-			import multiprocessing.shared_memory
-			globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
-				[-1, -1],
-				name=f"Miza-Player-{hwnd}-spec-locks",
-			)
-			globals()["spec-size"] = multiprocessing.shared_memory.ShareableList(
-				[1, 1],
-				name=f"Miza-Player-{hwnd}-spec-size",
-			)
-			globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
-				name=f"Miza-Player-{hwnd}-spec-mem",
-				create=True,
-				size=length,
-			)
-			length = 65536
-			globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
-				name=f"Miza-Player-{hwnd}-osci-mem",
-				create=True,
-				size=length,
-			)
+			if not restarting:
+				w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+				length = w * h * 3
+				import multiprocessing.shared_memory
+				globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
+					[-1, -1],
+					name=f"Miza-Player-{hwnd}-spec-locks",
+				)
+				globals()["spec-size"] = multiprocessing.shared_memory.ShareableList(
+					[1, 1],
+					name=f"Miza-Player-{hwnd}-spec-size",
+				)
+				globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
+					name=f"Miza-Player-{hwnd}-spec-mem",
+					create=True,
+					size=length,
+				)
+				length = 65536
+				globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
+					name=f"Miza-Player-{hwnd}-osci-mem",
+					create=True,
+					size=length,
+				)
 			s = []
 			s.append((f"%{hwnd}\n"))
 			d = options.audio.copy()

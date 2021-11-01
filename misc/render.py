@@ -257,7 +257,8 @@ def animate_prism(changed=False):
 		glLoadIdentity()
 		glMatrixMode(GL_PROJECTION)
 		glLoadIdentity()
-		gluPerspective(45, 1, 1 / 16, 99999)
+		ar = ssize2[0] / ssize2[1]
+		gluPerspective(45, ar, 1 / 16, 99999)
 		glTranslatef(-x // 2 - 2.5, x // 2 - 9, -x * 1.5)
 		glRotatef(75, 1, 0.25, -0.125)
 		# glDisable(GL_DEPTH_TEST)
@@ -484,7 +485,8 @@ def animate_polytope(changed=False):
 		glLoadIdentity()
 		glMatrixMode(GL_PROJECTION)
 		glLoadIdentity()
-		gluPerspective(45, 1, 1/16, 6)
+		ar = ssize2[0] / ssize2[1]
+		gluPerspective(45, ar, 1 / 16, 99999)
 		glTranslatef(0, 0, -2.5)
 		glDisable(GL_DEPTH_TEST)
 		glDisable(GL_CULL_FACE)
@@ -600,7 +602,8 @@ def animate_ripple(changed=False):
 			glLoadIdentity()
 			glMatrixMode(GL_PROJECTION)
 			glLoadIdentity()
-			gluPerspective(45, 1, 1 / 16, 6)
+			ar = ssize2[0] / ssize2[1]
+			gluPerspective(45, ar, 1 / 16, 99999)
 			glTranslatef(0, 0, -2.5)
 		glDisable(GL_DEPTH_TEST)
 		glDisable(GL_CULL_FACE)
@@ -773,15 +776,12 @@ def spectrogram_render(bars):
 				globals()["spec-mem"].buf[:length] = sfx
 			elif sfx == "glReadPixels":
 				x = y = 0
-				if specsize[0] > ssize2[0]:
-					x = specsize[0] - ssize2[0] >> 1
-				elif specsize[1] > ssize2[1]:
-					y = specsize[1] - ssize2[1] >> 1
 				glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE, array=globals()["spec-mem"].buf[:length])
 		except:
 			raise
 		finally:
-			globals()["spec-locks"][0] -= 1
+			if globals()["spec-locks"][0] > 0:
+				globals()["spec-locks"][0] -= 1
 
 		if specs == 2:
 			dur *= 3
@@ -839,12 +839,16 @@ while True:
 		if line == b"~r":
 			line = sys.stdin.buffer.readline().rstrip()
 			ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
-			ssize3 = (max(ssize2),) * 2
-			if ssize3 != specsize and last_changed <= 0:
-				specsize = ssize3
-				glfw.destroy_window(window)
-				window = setup_window(specsize)
-				last_changed = 8
+			# ssize3 = (max(ssize2),) * 2
+			if ssize2 != specsize:
+				if last_changed <= 0:
+					specsize = ssize2
+					glfw.destroy_window(window)
+					window = setup_window(specsize)
+					last_changed = 8
+				else:
+					last_changed -= 1
+					continue
 			elif last_changed:
 				last_changed -= 1
 			if specs == 2:

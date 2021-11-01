@@ -846,6 +846,7 @@ def setup_window(size):
 glfw.init()
 window = setup_window(specsize)
 
+last_changed = 0
 while True:
 	try:
 		line = sys.stdin.buffer.read(2)
@@ -853,10 +854,13 @@ while True:
 			line = sys.stdin.buffer.readline().rstrip()
 			ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
 			ssize3 = (max(ssize2),) * 2
-			if ssize3 != specsize:
+			if ssize3 != specsize and last_changed <= 0:
 				specsize = ssize3
 				glfw.destroy_window(window)
 				window = setup_window(specsize)
+				last_changed = 8
+			elif last_changed:
+				last_changed -= 1
 			if specs == 2:
 				bi = bars3
 			elif specs == 4:

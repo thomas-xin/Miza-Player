@@ -3745,7 +3745,11 @@ try:
 			if not tick + 2 & 7 and not toolbar.editor:
 				if options.get("spectrogram") and globals()["spec-locks"][0] != -1:
 					rect = player.rect
-					size = tuple(globals()["spec-size"])
+					size = list(globals()["spec-size"])
+					if size[0] > rect[2]:
+						size[0] = rect[2]
+					if size[1] > rect[3]:
+						size[1] = rect[3]
 					try:
 						surf = player.spec
 						if surf.get_size() != size:

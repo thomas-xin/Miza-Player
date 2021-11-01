@@ -3180,6 +3180,9 @@ def draw_menu():
 				else:
 					s = str(n)
 					c = (255, 0, 0)
+				x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
+				x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
+				sfut.result()
 				message_display(
 					s,
 					min(20, toolbar_height // 3),
@@ -4193,6 +4196,7 @@ except Exception as ex:
 			pass
 	for mem in ("spec-mem", "spec-size", "spec-locks", "osci-mem"):
 		try:
+			mem = globals()[mem]
 			mem = getattr(mem, "shm", mem)
 			mem.unlink()
 		except:

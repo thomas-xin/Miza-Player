@@ -765,31 +765,37 @@ def spectrogram_render(bars):
 		if func:
 			sfx = func(sp_changed)
 		sp_changed = False
+		if not sfx:
+			return
 
 		length = ssize2[0] * ssize2[1] * 3
 		globals()["spec-size"][0] = ssize2[0]
 		globals()["spec-size"][1] = ssize2[1]
-		globals()["spec-locks"][0] = 1
-
-		if specs == 1:
-			sfx2 = pygame.image.frombuffer(globals()["spec-mem"].buf[:length], ssize2, "RGB")
-			sfx = pygame.transform.scale(sfx, ssize2, sfx2)
-			fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
-			if Bar.fsize != fsize:
-				Bar.fsize = fsize
-				Bar.font = pygame.font.Font("misc/Pacifico.ttf", bar.fsize)
-				for bar in bars:
-					bar.cache.clear()
-			highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:48]
-			high = highbars[0]
-			for bar in reversed(highbars):
-				bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
-
-		if not sfx:
-			return
-		if isinstance(sfx, bytes):
-			globals()["spec-mem"].buf[:length] = sfx
-		globals()["spec-locks"][0] = 0
+		while globals()["spec-locks"][0] > 0:
+			time.sleep(0.005)
+		if globals()["spec-locks"][0] == -1:
+			globals()["spec-locks"][0] = 0
+		globals()["spec-locks"][0] += 1
+		try:
+			if specs == 1:
+				sfx2 = pygame.image.frombuffer(globals()["spec-mem"].buf[:length], ssize2, "RGB")
+				sfx = pygame.transform.scale(sfx, ssize2, sfx2)
+				fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
+				if Bar.fsize != fsize:
+					Bar.fsize = fsize
+					Bar.font = pygame.font.Font("misc/Pacifico.ttf", bar.fsize)
+					for bar in bars:
+						bar.cache.clear()
+				highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:48]
+				high = highbars[0]
+				for bar in reversed(highbars):
+					bar.post_render(sfx=sfx, scale=bar.height / max(1, high.height))
+			if isinstance(sfx, bytes):
+				globals()["spec-mem"].buf[:length] = sfx
+		except:
+			raise
+		finally:
+			globals()["spec-locks"][0] -= 1
 
 		if specs == 2:
 			dur *= 3

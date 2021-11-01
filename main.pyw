@@ -3106,7 +3106,7 @@ def draw_menu():
 				(pos[0] + (rad + 3) // 5, pos[1] - rad, rad * 4 // 5, rad << 1),
 				3,
 			)
-		if options.get("oscilloscope") and globals()["spec-locks"][1] != 128:
+		if options.get("oscilloscope") and globals()["spec-locks"][1] != -1:
 			try:
 				surf = player.osci
 				if surf.get_size() != osize:
@@ -3115,13 +3115,19 @@ def draw_menu():
 				length = osize[0] * osize[1] * 3
 				surf = player.osci = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "BGR")
 				surf.set_colorkey((0, 0, 0))
-			while globals()["osci-mem"].buf[-1] & 1:
+			while globals()["spec-locks"][1] > 0:
 				async_wait()
-			blit_complex(
-				DISP,
-				surf,
-				osci_rect[:2],
-			)
+			globals()["spec-locks"][1] += 1
+			try:
+				blit_complex(
+					DISP,
+					surf,
+					osci_rect[:2],
+				)
+			except:
+				raise
+			finally:
+				globals()["spec-locks"][1] -= 1
 		else:
 			if options.get("oscilloscope"):
 				c = (255, 0, 0)
@@ -3737,7 +3743,7 @@ try:
 								editor.held_update = None
 					mixer.submit("~keys " + ",".join(map(str, notekeys)))
 			if not tick + 2 & 7 and not toolbar.editor:
-				if options.get("spectrogram") and globals()["spec-locks"][0] != 128:
+				if options.get("spectrogram") and globals()["spec-locks"][0] != -1:
 					rect = player.rect
 					size = tuple(globals()["spec-size"])
 					try:
@@ -3766,14 +3772,20 @@ try:
 								DISP.fill(0, rect)
 						if player.get("spec_used", None):
 							player.spec = surf
-						while globals()["spec-mem"].buf[-1] & 1:
+						while globals()["spec-locks"][0] > 0:
 							async_wait()
-						Enqueue(
-							blit_complex,
-							DISP,
-							surf,
-							prect,
-						)
+						globals()["spec-locks"][0] += 1
+						try:
+							Enqueue(
+								blit_complex,
+								DISP,
+								surf,
+								prect,
+							)
+						except:
+							raise
+						finally:
+							globals()["spec-locks"][0] -= 1
 						modified.add(player.rect)
 			if not tick & 3:
 				try:
@@ -4176,10 +4188,12 @@ except Exception as ex:
 			fut.result(timeout=1)
 		except:
 			pass
-	globals()["spec-mem"].unlink()
-	globals()["spec-size"].shm.unlink()
-	globals()["spec-locks"].shm.unlink()
-	globals()["osci-mem"].unlink()
+	for mem in ("spec-mem", "spec-size", "spec-locks", "osci-mem"):
+		try:
+			mem = getattr(mem, "shm", mem)
+			mem.unlink()
+		except:
+			print_exc()
 	pygame.quit()
 	if type(ex) is not StopIteration:
 		easygui.exceptionbox()

@@ -401,7 +401,7 @@ def start_mixer():
 			length = w * h * 3
 			import multiprocessing.shared_memory
 			globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
-				[128, 128],
+				[-1, -1],
 				name=f"Miza-Player-{hwnd}-spec-locks",
 			)
 			globals()["spec-size"] = multiprocessing.shared_memory.ShareableList(

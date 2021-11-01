@@ -920,21 +920,29 @@ def oscilloscope(buffer):
 			OSCI = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "RGB")
 		if not packet:
 			return
-		globals()["spec-locks"][1] = 1
-		OSCI.fill((0, 0, 0))
-		point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
-		for i in range(1, len(osci)):
-			prev = point
-			point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
-			hue = ((osci[i] + osci[i - 1]) / 4 - 1 / 3) % 1
-			col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(hue, 1, 1)]
-			pygame.draw.line(
-				OSCI,
-				col,
-				point,
-				prev,
-			)
-		globals()["spec-locks"][1] = 0
+		while globals()["spec-locks"][1] > 0:
+			time.sleep(0.005)
+		if globals()["spec-locks"][1] == -1:
+			globals()["spec-locks"][1] = 0
+		globals()["spec-locks"][1] += 1
+		try:
+			OSCI.fill((0, 0, 0))
+			point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
+			for i in range(1, len(osci)):
+				prev = point
+				point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
+				hue = ((osci[i] + osci[i - 1]) / 4 - 1 / 3) % 1
+				col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(hue, 1, 1)]
+				pygame.draw.line(
+					OSCI,
+					col,
+					point,
+					prev,
+				)
+		except:
+			raise
+		finally:
+			globals()["spec-locks"][1] -= 1
 	except:
 		print_exc()
 

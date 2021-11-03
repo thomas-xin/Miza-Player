@@ -2851,31 +2851,6 @@ def draw_menu():
 		player.flash_o = 32
 		options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
 		mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
-	if toolbar.editor:
-		editor_toolbar()
-	if sidebar_rendered and sidebar.get("dragging"):
-		sidebar_rendered.result()
-		if toolbar.editor:
-			Enqueue(render_dragging_2)
-		else:
-			Enqueue(render_dragging)
-		return
-	if not tick & 7 or toolbar.rect in modified:
-		if toolbar.resizing:
-			pygame.draw.rect(DISP, (255, 0, 0), toolbar.rect[:3] + (4,))
-			if not mheld[0]:
-				toolbar.resizing = False
-		elif toolbar.resizer:
-			pygame.draw.rect(DISP, (191, 127, 255), toolbar.rect[:3] + (4,))
-			toolbar.resizer = False
-	if not tick & 7 or sidebar.rect in modified:
-		if sidebar.resizing:
-			pygame.draw.rect(DISP, (255, 0, 0), sidebar.rect[:2] + (4, sidebar.rect[3]))
-			if not mheld[0]:
-				sidebar.resizing = False
-		elif sidebar.resizer:
-			pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
-			sidebar.resizer = False
 	tc = toolbar.colour
 	if (not tick & 7 or toolbar.rect in modified) and tc:
 		surf = toolbar.surf
@@ -2947,6 +2922,31 @@ def draw_menu():
 						cache=True,
 					)
 		modified.add(toolbar.rect)
+	if toolbar.editor:
+		editor_toolbar()
+	if sidebar_rendered and sidebar.get("dragging"):
+		sidebar_rendered.result()
+		if toolbar.editor:
+			Enqueue(render_dragging_2)
+		else:
+			Enqueue(render_dragging)
+		return
+	if not tick & 7 or toolbar.rect in modified:
+		if toolbar.resizing:
+			pygame.draw.rect(DISP, (255, 0, 0), toolbar.rect[:3] + (4,))
+			if not mheld[0]:
+				toolbar.resizing = False
+		elif toolbar.resizer:
+			pygame.draw.rect(DISP, (191, 127, 255), toolbar.rect[:3] + (4,))
+			toolbar.resizer = False
+	if not tick & 7 or sidebar.rect in modified:
+		if sidebar.resizing:
+			pygame.draw.rect(DISP, (255, 0, 0), sidebar.rect[:2] + (4, sidebar.rect[3]))
+			if not mheld[0]:
+				sidebar.resizing = False
+		elif sidebar.resizer:
+			pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
+			sidebar.resizer = False
 	if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
 		while sfut:
 			sfut.popleft().result()

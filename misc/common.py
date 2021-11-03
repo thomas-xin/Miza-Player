@@ -275,6 +275,7 @@ control_default = cdict(
 	preserve=0,
 	ripples=1,
 	autoupdate=0,
+	lyrics_size=16,
 )
 control_default["gradient-vertices"] = (4, 3, 3)
 control_default["spiral-vertices"] = [24, 1]

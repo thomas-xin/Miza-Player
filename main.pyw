@@ -1103,6 +1103,7 @@ def copy_entry(e):
 lyrics_cache = {}
 lyrics_renders = {}
 def render_lyrics(entry):
+	lyrics_size = control.lyrics_size
 	try:
 		name = entry.name
 		try:
@@ -1149,9 +1150,10 @@ def render_lyrics(entry):
 			mx = 0
 			x = 0
 			y = 0
+			z = lyrics_size // 2 + 1
 			for para in lyrics[1].split("\n\n"):
 				lines = para.splitlines()
-				if mx and y + 42 > render[1].get_height():
+				if mx and y + z * 3 > render[1].get_height():
 					y = 0
 					x += mx
 					mx = 0
@@ -1159,7 +1161,7 @@ def render_lyrics(entry):
 					line = line.strip()
 					if not line:
 						continue
-					if mx and y + 28 > render[1].get_height():
+					if mx and y + z * 2 > render[1].get_height():
 						y = 0
 						x += mx
 						mx = 0
@@ -1198,18 +1200,19 @@ def render_lyrics(entry):
 							col = (0, 0, 255)
 						if pre:
 							col = tuple(i >> 1 for i in col)
-					s = text_size(line, 12)
+					s = text_size(line, lyrics_size)
 					if s[0] <= render[1].get_width() >> 1:
 						rect = message_display(
 							line,
-							12,
+							lyrics_size,
 							(x, y),
 							col,
 							align=0,
 							surface=render[1],
 						)
 						mx = max(mx, rect[2] + 8)
-						y += 14
+						z = rect[3]
+						y += z
 					else:
 						p = 0
 						words = line.split()
@@ -1219,33 +1222,35 @@ def render_lyrics(entry):
 							orig = curr
 							curr = curr + " " + w if curr else w
 							if orig:
-								s = text_size(curr, 12)
+								s = text_size(curr, lyrics_size)
 								if s[0] > render[1].get_width() // 2 - p:
 									rect = message_display(
 										orig,
-										12,
+										lyrics_size,
 										(x + p, y),
 										col,
 										align=0,
 										surface=render[1],
 									)
 									mx = max(mx, rect[2] + 8 + p)
-									y += 14
+									z = rect[3]
+									y += z
 									p = 8
 									curr = w
 						if curr:
 							rect = message_display(
 								curr,
-								12,
+								lyrics_size,
 								(x + p, y),
 								col,
 								align=0,
 								surface=render[1],
 							)
 							mx = max(mx, rect[2] + 8 + p)
-							y += 14
+							z = rect[3]
+							y += z
 				if y:
-					y += 7
+					y += z >> 1
 		entry.lyrics = render
 		entry.pop("lyrics_loading", None)
 	except:
@@ -2110,8 +2115,13 @@ def update_menu():
 		common.font_reload = False
 		[e.pop("surf", None) for e in queue]
 		[e.pop("surf", None) for e in sidebar.instruments]
-		lyrics_cache.clear()
+		[e.pop("lyrics", None) for e in queue]
+		# lyrics_cache.clear()
 		lyrics_renders.clear()
+		for i in range(2):
+			if i >= len(queue):
+				break
+			submit(render_lyrics, queue[i])
 	if toolbar.editor:
 		update_piano()
 
@@ -2668,6 +2678,18 @@ def draw_menu():
 			if mclick[1]:
 				s = options.get("spectrogram")
 				if not s:
+					def change_font_size():
+						v = options.control.lyrics_size
+						enter = easygui.get_string(
+							"Change font size",
+							"Miza Player",
+							str(v),
+						)
+						if enter:
+							enter = eval(enter, {}, {})
+							options.control.lyrics_size = enter
+							common.font_reload = True
+
 					def change_image():
 						no_lyrics_path = easygui.fileopenbox(
 							"Open an image file here!",
@@ -2696,9 +2718,10 @@ def draw_menu():
 					sidebar.menu = cdict(
 						buttons=(
 							("Copy", lambda: pyperclip.copy(lyrics_cache[queue[0].name][1])),
-							("Change Image", change_image),
-							("Search Lyrics", search_lyrics),
-							("Reset Lyrics", reset_lyrics),
+							("Change image", change_image),
+							("Change font size", change_font_size),
+							("Search lyrics", search_lyrics),
+							("Reset lyrics", reset_lyrics),
 						),
 					)
 				elif s == 3:
@@ -3103,6 +3126,7 @@ try:
 			player.editor.selection.cancel = cancel_selection
 		if data.get("pos") and not toolbar.editor:
 			player.fut = submit(start_player, data["pos"])
+			submit(render_lyrics, queue[0])
 	tick = 0
 	while True:
 		if not tick + 2 & 65535:
@@ -3429,16 +3453,17 @@ try:
 					modified.add(player.rect)
 			if not tick + 2 & 7 and not toolbar.editor:
 				if (queue or lyrics_entry) and not options.spectrogram:
-					size = max(16, min(32, (screensize[0] - sidebar_width) // 36))
 					entry = lyrics_entry or queue[0]
 					if "lyrics" not in entry:
 						if pc() % 0.25 < 0.125:
 							col = (255,) * 3
 						else:
 							col = (255, 0, 0)
+						s = f"Loading lyrics for {entry.name}..."
+						size = max(20, min(40, (screensize[0] - sidebar_width) * 3 // len(s)))
 						Enqueue(
 							message_display,
-							f"Loading lyrics for {entry.name}...",
+							s,
 							size,
 							(player.rect[2] >> 1, size),
 							col,
@@ -3458,9 +3483,11 @@ try:
 							entry.lyrics[1],
 							(8, 92),
 						)
+						s = entry.lyrics[0]
+						size = max(20, min(40, (screensize[0] - sidebar_width) * 3 // len(s)))
 						Enqueue(
 							message_display,
-							entry.lyrics[0],
+							s,
 							size,
 							(player.rect[2] >> 1, size),
 							(255,) * 3,
@@ -3487,10 +3514,13 @@ try:
 								(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
 							)
 						if entry.lyrics == "":
-							title = f"No lyrics found for {entry.name}."
+							s = f"No lyrics found for {entry.name}."
+						else:
+							s = entry.lyrics[0]
+						size = max(20, min(40, (screensize[0] - sidebar_width) * 3 // len(s)))
 						Enqueue(
 							message_display,
-							title,
+							s,
 							size,
 							(player.rect[2] >> 1, size),
 							(255, 0, 0),

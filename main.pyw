@@ -3794,8 +3794,6 @@ except Exception as ex:
 		print_exc()
 	print("Exiting...")
 	if mixer.is_running():
-		mixer.clear()
-		time.sleep(0.1)
 		try:
 			mixer.submit("~quit")
 		except:

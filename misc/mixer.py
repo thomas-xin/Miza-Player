@@ -1882,6 +1882,18 @@ while not sys.stdin.closed and failed < 8:
 			pos = (frame + drop) / 30
 			drop = 0
 		elif command == "~quit":
+			if proc:
+				temp, proc = proc, None
+				try:
+					temp.kill()
+				except:
+					pass
+			if fn and file:
+				temp, file = file, None
+				temp.close()
+				submit(remove, file)
+			fn = file = proc = None
+			pygame.mixer.quit()
 			break
 		elif command != "~replay":
 			s = sys.stdin.readline().rstrip().split(" ", 3)

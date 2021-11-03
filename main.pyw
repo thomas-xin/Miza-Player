@@ -2607,14 +2607,12 @@ def draw_menu():
 			globals()["last-cond"] = True
 	elif not tick % 240:
 		cond = True
-	sfut = deque()
 	sidebar_rendered = None
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
 		if toolbar.editor:
 			sidebar_rendered = Enqueue(render_sidebar_2, dur)
 		else:
 			sidebar_rendered = Enqueue(render_sidebar, dur)
-		sfut.append(sidebar_rendered)
 		offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
 		Z = -sidebar.scroll.pos
 		maxb = (sidebar_width - 12) // 44
@@ -2875,9 +2873,9 @@ def draw_menu():
 		options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
 		mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
 	tc = toolbar.colour
-	if (not tick & 7 or toolbar.rect in modified) and tc:
-		surf = toolbar.surf
+	if tc and toolbar_wait:
 		toolbar_wait.result()
+		surf = toolbar.surf
 		blit_complex(
 			DISP,
 			surf,
@@ -2971,8 +2969,8 @@ def draw_menu():
 			pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
 			sidebar.resizer = False
 	if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
-		while sfut:
-			sfut.popleft().result()
+		if sidebar_rendered:
+			sidebar_rendered.result()
 		if crosshair & 3:
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
@@ -3307,6 +3305,9 @@ try:
 				update_menu()
 			if not toolbar.ripples and not sidebar.ripples and pc() - globals()["h-timer"] >= 8:
 				globals()["h-cache"].clear()
+			if globals().get("toolbar_wait"):
+				toolbar_wait.result()
+			toolbar_wait = None
 			if (toolbar.updated or not tick & 7) and toolbar.colour:
 				tc = toolbar.colour
 				highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor

@@ -5,7 +5,7 @@ np = numpy
 deque = collections.deque
 from PIL import Image
 import concurrent.futures
-exc = concurrent.futures.ThreadPoolExecutor()
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=9)
 submit = exc.submit
 
 def pyg2pil(surf):
@@ -49,18 +49,29 @@ import sys
 write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
 import pygame
 sys.stdout.write = write
+print = lambda s: sys.stderr.write(str(s) + "\n")
 pygame.font.init()
 FONTS = {}
-hwnd = int(sys.argv[1])
+
+try:
+	hwnd = int(sys.stdin.readline()[1:])
+except ValueError:
+	hwnd = 0
+import socket
+server = socket.create_server(("127.0.0.1", hwnd % 32768 + 16384))
+server.listen(1)
+receiver, _ = server.accept()
+
+is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 
 import multiprocessing.shared_memory
 globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
 	name=f"Miza-Player-{hwnd}-spec-mem",
 )
-globals()["spec-size"] = multiprocessing.shared_memory.ShareableList(
+globals()["spec-size"] = multiprocessing.shared_memory.SharedMemory(
 	name=f"Miza-Player-{hwnd}-spec-size",
 )
-globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
+globals()["spec-locks"] = multiprocessing.shared_memory.SharedMemory(
 	name=f"Miza-Player-{hwnd}-spec-locks",
 )
 
@@ -732,11 +743,8 @@ def spectrogram_render(bars):
 				globals()["clearing"] = 0
 			else:
 				globals()["clearing"] += 1
-			futs = set()
 			for bar in bars:
-				futs.add(submit(bar.render, sfx=sfx))
-			for fut in futs:
-				fut.result()
+				bar.render(sfx=sfx)
 			func = None
 		elif specs == 2:
 			func = animate_prism
@@ -756,10 +764,9 @@ def spectrogram_render(bars):
 			glFlush()
 
 		length = ssize2[0] * ssize2[1] * 3
-		globals()["spec-size"][0] = ssize2[0]
-		globals()["spec-size"][1] = ssize2[1]
-		locks = globals()["spec-locks"]
-		if locks[0] <= -1:
+		ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+		locks = globals()["spec-locks"].buf
+		if locks[0] == 255:
 			locks[0] = 0
 		else:
 			while locks[0] > 0:
@@ -841,39 +848,107 @@ def setup_window(size):
 	globals()["sp_changed"] = True
 	return window
 
+with open("misc/toolbar.py", "rb") as f:
+	b = f.read()
+exec(compile(b, "toolbar.py", "exec"))
+
+tool_lock = concurrent.futures.Future()
+tool_lock.set_result(None)
+def _render_toolbar(x):
+	global tool_lock
+	locks = globals()["spec-locks"].buf
+	tool_lock.result()
+	tool_lock = concurrent.futures.Future()
+	if locks[2] == 255:
+		locks[2] = 0
+	else:
+		while locks[2] > 0:
+			time.sleep(0.005)
+	locks[2] += 1
+	try:
+		render_toolbar()
+	except:
+		print_exc()
+	finally:
+		locks[2] = 0
+	tool_lock.set_result(None)
+	sys.__stdout__.buffer.write(b"~r" + x)
+	sys.__stdout__.flush()
+
 glfw.init()
 window = setup_window(specsize)
 
+def event():
+	global window, specsize, last_changed, ssize2, specs, vertices, dur, pc_
+	import psutil
+	parent = psutil.Process(os.getppid())
+	while True:
+		try:
+			comm = receiver.recv(2)
+			i = receiver.recv(8)
+			while len(i) < 8:
+				i += receiver.recv(8 - i)
+			nbytes = int(np.frombuffer(i, dtype=np.float64))
+			line = receiver.recv(nbytes)
+			while len(line) < nbytes:
+				line += receiver.recv(nbytes - len(line))
+			if comm == b"~r":
+				ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
+				if ssize2 != specsize:
+					if last_changed <= 0:
+						specsize = ssize2
+						glfw.destroy_window(window)
+						window = setup_window(specsize)
+						last_changed = 8
+					else:
+						last_changed -= 1
+						continue
+				elif last_changed:
+					last_changed -= 1
+				if specs == 2:
+					bi = bars3
+				elif specs == 4:
+					bi = bars2
+				else:
+					bi = bars
+				spectrogram_render(bi)
+			elif comm == b"~e":
+				ensure_bars(line)
+		except ConnectionResetError:
+			if parent.is_running() and parent.status() != "zombie":
+				time.sleep(0.5)
+			else:
+				psutil.Process().terminate()
+		except:
+			print_exc()
+submit(event)
+
+locks = globals()["spec-locks"].buf
 last_changed = 0
 while True:
 	try:
 		line = sys.stdin.buffer.read(2)
+		if line == b"~t":
+			x = sys.stdin.buffer.readline()[1:]
+			if globals().setdefault("rtool", None):
+				rtool.result()
+			rtool = submit(_render_toolbar, x)
+		if line == b"~a":
+			x = sys.stdin.buffer.readline().rstrip().split(b"~", 1)
+			i = int(x[0])
+			if i == 2:
+				tool_lock.result()
+				tool_lock = concurrent.futures.Future()
+			while locks[i] > 0:
+				time.sleep(0.004)
+			locks[i] += 1
+			sys.__stdout__.buffer.write(b"~r" + x[1] + b"\n")
+			sys.__stdout__.flush()
 		if line == b"~r":
-			line = sys.stdin.buffer.readline().rstrip()
-			ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
-			# ssize3 = (max(ssize2),) * 2
-			if ssize2 != specsize:
-				if last_changed <= 0:
-					specsize = ssize2
-					glfw.destroy_window(window)
-					window = setup_window(specsize)
-					last_changed = 8
-				else:
-					last_changed -= 1
-					continue
-			elif last_changed:
-				last_changed -= 1
-			if specs == 2:
-				bi = bars3
-			elif specs == 4:
-				bi = bars2
-			else:
-				bi = bars
-			spectrogram_render(bi)
-		elif line == b"~e":
-			b = sys.stdin.buffer.readline()
-			b = sys.stdin.buffer.read(int(b))
-			submit(ensure_bars, b)
+			i = int(sys.stdin.buffer.read(1))
+			locks[i] = 0
+			if i == 2:
+				tool_lock.set_result(None)
 		elif not line:
 			break
 		glfwPollEvents()

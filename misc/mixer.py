@@ -1,11 +1,13 @@
 # ONE SMALL STEP FOR MAN, ONE GIANT LEAP FOR SMUDGE KIND! Invaded once again on the 6th March >:D
 
-import psutil, subprocess, sys
+import os, sys
 try:
 	hwnd = int(sys.stdin.readline()[1:])
 except ValueError:
 	hwnd = 0
-rproc = psutil.Popen((sys.executable, "misc/render.py", str(hwnd)), stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0)
+import socket
+sender = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
+
 sys.stdout.write = lambda *args, **kwargs: None
 import concurrent.futures
 
@@ -48,8 +50,9 @@ class MultiAutoImporter:
 			_globals.update(zip(args, futs))
 
 importer = MultiAutoImporter(
-	"os, sys, numpy, math, cffi, soundcard, pygame, random, base64, hashlib, orjson, time, traceback",
+	"numpy, math, cffi, soundcard, pygame, random, hashlib, orjson, time, traceback, base64",
 	"httpx, contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
+	"psutil", "subprocess",
 	pool=exc,
 	_globals=globals(),
 )
@@ -530,11 +533,12 @@ def download(url, fn):
 			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 			with reqx.stream("GET", url, follow_redirects=True, timeout=24, headers=headers) as resp:
 				if resp.status_code not in range(200, 400):
-					raise ConnectionError(resp.status_code, resp.read().decode("utf-8", "replace"))
+					print(f"[DEBUG] Pre-emptive download terminated with HTTP status {resp.status_code}.")
+					return
 				try:
 					fsize = int(resp.headers["Content-Length"])
 				except (KeyError, ValueError):
-					fsize = None
+					fsize = 0
 				it = resp.iter_bytes()
 				with open(fi, "wb") as f:
 					if fsize:
@@ -549,6 +553,9 @@ def download(url, fn):
 						except httpx.ReadTimeout:
 							continue
 						f.write(b)
+				if not os.path.getsize(fi):
+					print(f"[DEBUG] Pre-emptive download terminated with HTTP status {resp.status_code}.")
+					return
 			url = fi
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".pcm"):
@@ -902,6 +909,12 @@ class HWSurface:
 			self.fill(colour)
 		return self
 
+import multiprocessing.shared_memory
+globals()["spec-size"] = multiprocessing.shared_memory.SharedMemory(
+	name=f"Miza-Player-{hwnd}-spec-size",
+)
+globals()["osize"] = np.frombuffer(globals()["spec-size"].buf[8:16], dtype=np.uint32)
+
 stderr_lock = None
 def oscilloscope(buffer):
 	global stderr_lock
@@ -909,23 +922,22 @@ def oscilloscope(buffer):
 		if not packet:
 			return
 		arr = buffer[::2] + buffer[1::2]
-		osci = supersample(arr, osize[0], in_place=True)
-		osci *= 0.5
-		osci = np.clip(osci, -1, 1, out=osci)
 		if "OSCI" not in globals():
-			import multiprocessing.shared_memory
 			globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
 				name=f"Miza-Player-{hwnd}-osci-mem",
 			)
-			globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
+			globals()["spec-locks"] = multiprocessing.shared_memory.SharedMemory(
 				name=f"Miza-Player-{hwnd}-spec-locks",
 			)
 			length = osize[0] * osize[1] * 3
 			OSCI = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "RGB")
 		if not packet:
 			return
-		locks = globals()["spec-locks"]
-		if locks[1] <= -1:
+		osci = supersample(arr, osize[0], in_place=True)
+		osci *= 0.5
+		osci = np.clip(osci, -1, 1, out=osci)
+		locks = globals()["spec-locks"].buf
+		if locks[1] == 255:
 			locks[1] = 0
 		else:
 			while locks[1] > 0:
@@ -996,10 +1008,8 @@ lastspec2 = 0
 def spectrogram_render():
 	global stderr_lock, ssize2, lastspec2, spec_update_fut, packet_advanced2, video_write
 	try:
-		# t = pc()
-		# dur = max(0.001, min(0.125, t - lastspec2))
-		# lastspec2 = t
-		ssize2 = ssize
+		sps = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+		ssize2 = ssize = tuple(map(round, sps))
 		specs = settings.spectrogram
 		packet_advanced2 = False
 		if specs == 3:
@@ -1010,9 +1020,9 @@ def spectrogram_render():
 			vertices = 0
 		t2 = frame / 30
 		d2 = 1 / 30
-		binfo = b"~r" + b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2))) + b"\n"
-		rproc.stdin.write(binfo)
-		rproc.stdin.flush()
+		b = b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2)))
+		binfo = b"~r" + np.float64(len(b)).data + b
+		sender.sendall(binfo)
 		if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
 			spec_update_fut = submit(spectrogram_render)
 			packet_advanced2 = False
@@ -1058,13 +1068,13 @@ def spectrogram_update():
 				amp = supersample(amp, barcount, in_place=True)
 			amp = np.asanyarray(amp, dtype=np.float32)
 			b = amp.data
-			rproc.stdin.write(f"~e{b.nbytes}\n".encode("ascii"))
-			rproc.stdin.write(b)
-			rproc.stdin.flush()
+			binfo = b"~e" + np.float64(b.nbytes).data + b
+			sender.sendall(binfo)
 		spec_buffer *= (1 / 3) ** dur
 		if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
 			spec_update_fut = submit(spectrogram_render)
 			packet_advanced2 = False
+		ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 		if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
 			spec2_fut = submit(spectrogram_update)
 			packet_advanced3 = False
@@ -1088,6 +1098,7 @@ def spectrogram():
 				buffer[:] = sample
 			spec_buffer[:-len(buffer)] = spec_buffer[len(buffer):]
 			spec_buffer[-len(buffer):] = buffer
+			ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 			if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
 				spec2_fut = submit(spectrogram_update)
 				packet_advanced3 = None
@@ -1105,6 +1116,7 @@ def render():
 	global lastpacket, osci_fut, spec_fut, spec2_fut, packet_advanced, sbuffer
 	try:
 		while True:
+			ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 			t = pc()
 			sleep = 0.005
 			if lastpacket != id(packet) and sbuffer is not None:
@@ -1215,7 +1227,7 @@ def play(pos):
 					b = fut.result(timeout=4)
 					drop = 0
 				else:
-					print(f"{proc} {fn}, {file}")
+					# print(f"{proc} {fn}, {file}")
 					if proc:
 						if proc.is_running():
 							try:
@@ -1325,10 +1337,12 @@ def play(pos):
 					submit(OUTPUT_FILE.write, s.data)
 				if not point_fut or point_fut.done():
 					point_fut = submit(point, f"~{frame} {duration}")
-				if settings.spectrogram >= 0 and ssize[0] and ssize[1] and not is_minimised():
-					if spec_fut:
-						spec_fut.result()
-					spec_fut = submit(spectrogram)
+				if settings.spectrogram >= 0:
+					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+					if ssize[0] and ssize[1] and not is_minimised():
+						if spec_fut:
+							spec_fut.result()
+						spec_fut = submit(spectrogram)
 				globals()["lastplay"] = pc()
 				while waiting:
 					waiting.result()
@@ -1357,15 +1371,17 @@ def play(pos):
 						w.set_result(None)
 					else:
 						break
-				if OUTPUT_VIDEO and settings.spectrogram > 0 and ssize[0] and ssize[1] and not is_minimised():
-					t = pc()
-					while not video_write and pc() - t < 1:
-						async_wait()
-					try:
-						video_write.result()
-					except (AttributeError, ValueError):
-						pass
-					video_write = None
+				if OUTPUT_VIDEO and settings.spectrogram > 0:
+					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+					if ssize[0] and ssize[1] and not is_minimised():
+						t = pc()
+						while not video_write and pc() - t < 1:
+							async_wait()
+						try:
+							video_write.result()
+						except (AttributeError, ValueError):
+							pass
+						video_write = None
 			except StopIteration:
 				pass
 			frame += settings.speed * 2 ** (settings.nightcore / 12)
@@ -1540,10 +1556,12 @@ def piano_player():
 					submit(OUTPUT_FILE.write, packet)
 				if not point_fut or point_fut.done():
 					point_fut = submit(point, f"~{frame} {duration}")
-				if settings.spectrogram >= 0 and ssize[0] and ssize[1] and not is_minimised():
-					if spec_fut:
-						spec_fut.result()
-					spec_fut = submit(spectrogram)
+				if settings.spectrogram >= 0:
+					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+					if ssize[0] and ssize[1] and not is_minimised():
+						if spec_fut:
+							spec_fut.result()
+						spec_fut = submit(spectrogram)
 				while waiting:
 					waiting.result()
 				for i in range(2147483648):
@@ -1684,7 +1702,6 @@ ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_dela
 settings = cdict()
 alphakeys = prevkeys = ()
 buffoffs = 0
-osize = (0, 0)
 ssize = (0, 0)
 lastpacket = None
 packet = None
@@ -1799,12 +1816,6 @@ while not sys.stdin.closed and failed < 8:
 					pt = time.perf_counter() - pt2
 				pt2 = None
 			continue
-		if command.startswith("~osize"):
-			osize = tuple(map(int, command[7:].split()))
-			continue
-		if command.startswith("~ssize"):
-			ssize = tuple(map(int, command[7:].split()))
-			continue
 		if command.startswith("~download"):
 			st, fn2 = command[10:].rsplit(" ", 1)
 			if not os.path.exists(fn2) or time.time() - os.path.getmtime(fn2) > 86400 * 7:
@@ -1823,6 +1834,7 @@ while not sys.stdin.closed and failed < 8:
 			s = command[8:]
 			if s:
 				if " " in s:
+					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 					s, v = s.split(None, 1)
 					args = (
 						ffmpeg, "-y", "-hide_banner", "-v", "error",

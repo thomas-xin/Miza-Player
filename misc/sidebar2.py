@@ -78,16 +78,20 @@ def render_sidebar_2(dur=0):
 			(0, 0) + sidebar.rect2[2:],
 			4,
 		)
+		futs = deque()
 		ripple_f = globals().get("h-ripple", concentric_circle)
 		for ripple in sidebar.ripples:
-			ripple_f(
+			futs.append(submit(
+				ripple_f,
 				DISP2,
 				colour=ripple.colour,
 				pos=(ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
 				radius=ripple.radius,
 				fill_ratio=1 / 3,
 				alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
-			)
+			))
+		for fut in futs:
+			fut.result()
 		if offs > -sidebar_width + 4:
 			n = len(project.instruments)
 			message_display(

@@ -94,7 +94,7 @@ class MultiAutoImporter:
 importer = MultiAutoImporter(
 	"psutil", "soundcard", "ctypes, struct, io", "requests", "PIL, easygui, easygui_qt, numpy, math, traceback",
 	"cffi, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, zipfile",
-	"pygame, pickle, PyQt5, hashlib, base64, urllib, datetime, weakref, orjson, copy, json",
+	"pygame, pickle, PyQt5, hashlib, base64, urllib, weakref, orjson, copy, json",
 	pool=exc,
 	_globals=globals(),
 )
@@ -384,11 +384,18 @@ def start_mixer():
 		argp + ["misc/mixer.py"],
 		stdin=subprocess.PIPE,
 		stdout=subprocess.PIPE,
-		stderr=subprocess.PIPE,
 		bufsize=65536,
 	)
 	if not restarting:
 		sys.stdout.write = write
+		if globals().get("rproc") and rproc.is_running():
+			rproc.kill()
+		globals()["rproc"] = psutil.Popen(
+			(sys.executable, "misc/render.py"),
+			stdin=subprocess.PIPE,
+			stdout=subprocess.PIPE,
+			bufsize=65536,
+		)
 		start_display()
 	else:
 		print("Mixer subprocess has crashed; restarting...")
@@ -400,30 +407,49 @@ def start_mixer():
 		hwnd = pygame.display.get_wm_info()["window"]
 		if hasmisc:
 			if not restarting:
+				rproc.stdin.write(f"%{hwnd}\n".encode("ascii"))
+				rproc.stdin.write(b"\n")
+				rproc.stdin.flush()
+
 				w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 				length = w * h * 3
 				import multiprocessing.shared_memory
-				globals()["spec-locks"] = multiprocessing.shared_memory.ShareableList(
-					[-1, -1],
+				globals()["spec-locks"] = multiprocessing.shared_memory.SharedMemory(
 					name=f"Miza-Player-{hwnd}-spec-locks",
+					create=True,
+					size=3,
 				)
-				globals()["spec-size"] = multiprocessing.shared_memory.ShareableList(
-					[1, 1],
+				locks = globals()["spec-locks"].buf
+				locks[0] = locks[1] = locks[2] = 255
+				globals()["spec-size"] = multiprocessing.shared_memory.SharedMemory(
 					name=f"Miza-Player-{hwnd}-spec-size",
+					create=True,
+					size=16,
 				)
+				ssize = numpy.frombuffer(globals()["spec-size"].buf[:16], dtype=numpy.uint32)
+				ssize[:] = 1
 				globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
 					name=f"Miza-Player-{hwnd}-spec-mem",
 					create=True,
 					size=length,
 				)
-				length = 65536
 				globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
 					name=f"Miza-Player-{hwnd}-osci-mem",
+					create=True,
+					size=65536,
+				)
+				globals()["tool-vals"] = multiprocessing.shared_memory.SharedMemory(
+					name=f"Miza-Player-{hwnd}-tool-vals",
+					create=True,
+					size=4096,
+				)
+				globals()["tool-mem"] = multiprocessing.shared_memory.SharedMemory(
+					name=f"Miza-Player-{hwnd}-tool-mem",
 					create=True,
 					size=length,
 				)
 			s = []
-			s.append((f"%{hwnd}\n"))
+			s.append(f"%{hwnd}\n")
 			d = options.audio.copy()
 			d.update(options.control)
 			j = orjson.dumps(d).decode("utf-8")
@@ -478,6 +504,36 @@ else:
 	mixer = cdict()
 
 PROC = psutil.Process()
+
+IPC = {}
+def lock_ipc():
+	while rproc.is_running():
+		try:
+			b = rproc.stdout.readline()[2:-1]
+			if not b:
+				break
+			k = int(b)
+			IPC.pop(k).set_result(None)
+		except:
+			print_exc()
+submit(lock_ipc)
+def Acquire(i):
+	k = time.time_ns() // 1000
+	IPC[k] = fut = concurrent.futures.Future()
+	rproc.stdin.write(f"~a{i}~{k}\n".encode("ascii"))
+	rproc.stdin.flush()
+	fut.result()
+	return k
+def Release(i):
+	rproc.stdin.write(f"~r{i}".encode("ascii"))
+	rproc.stdin.flush()
+def Toolbar():
+	k = time.time_ns() // 1000
+	IPC[k] = fut = concurrent.futures.Future()
+	rproc.stdin.write(f"~t~{k}\n".encode("ascii"))
+	rproc.stdin.flush()
+	fut.result()
+	return k
 
 psize = struct.calcsize("P")
 if psize == 8:
@@ -713,48 +769,6 @@ def taskbar_progress_bar(ratio=1, colour=0):
 		if colour:
 			shobjidl_core.SetProgressValue(hwnd, r, 256)
 
-# above = True
-# @ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_int)
-# def callback(h, lp):
-#	 global above, pts
-#	 if not above or not pts:
-#		 return
-#	 if h == hwnd:
-#		 above = False
-#		 return
-#	 user32.GetWindowPlacement(h, ctypes.byref(wp))
-#	 if wp.showCmd != 1 and wp.showCmd != 3:
-#		 return
-#	 if not user32.IsWindowVisible(h):
-#		 return
-#	 user32.GetWindowRect(h, ctypes.byref(wr))
-#	 rect = (wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top)
-#	 if not rect[2] or not rect[3]:
-#		 return
-#	 pops = []
-#	 for i, p in enumerate(pts):
-#		 if in_rect(p, rect):
-#			 pops.append(i)
-#	 if pops:
-#		 pts = [p for i, p in enumerate(pts) if i not in pops]
-#		 print(pts)
-#	 # print(*rect)
-
-# def is_covered():
-#	 global pts
-#	 user32.GetWindowRect(hwnd, ctypes.byref(wr))
-#	 rect = (wr.left, wr.top, wr.right, wr.bottom)
-#	 pts = [(rect[:2]), (rect[2], rect[1]), (rect[0], rect[3]), rect[2:]]
-#	 print(pts)
-#	 user32.EnumWindows(callback, -1)
-#	 print(pts)
-
-# def get_window_clip():
-#	 hdc = user32.GetWindowDC(hwnd)
-#	 clip = ctypes.windll.gdi32.GetClipBox(hdc, ctypes.byref(wr))
-#	 user32.ReleaseDC(hdc)
-#	 return hdc, clip, wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
-
 
 PyQt5.force()
 from PyQt5 import QtCore, QtWidgets
@@ -766,7 +780,7 @@ PIL.force()
 from PIL import Image, ImageOps, ImageChops
 math.force()
 from math import *
-np = numpy.force()
+np = numpy
 easygui.__dict__.update(easygui_qt.easygui_qt.__dict__)
 deque = collections.deque
 suppress = contextlib.suppress
@@ -1080,16 +1094,16 @@ def pil2pyg(im, convert=None):
 		return HWSurface.copy(surf)
 	return surf
 
-def as_pyg(hws):
-	if isinstance(hws, pygame.Surface):
-		return hws
-	if isinstance(hws, Image.Image):
-		return pil2pyg(hws)
-	# return pygame.image.frombuffer(hws.get_data(), im.size, im.mode)
-	glfw.make_context_current(hws.wind)
-	mi = GL_RGB if "A" not in hws.mode else GL_RGBA
-	b = glReadPixels(0, 0, *hws.size, mi, GL_UNSIGNED_BYTE)
-	return pygame.image.frombuffer(b, hws.size, hws.mode)
+# def as_pyg(hws):
+	# if isinstance(hws, pygame.Surface):
+		# return hws
+	# if isinstance(hws, Image.Image):
+		# return pil2pyg(hws)
+	return pygame.image.frombuffer(hws.get_data(), im.size, im.mode)
+	# glfw.make_context_current(hws.wind)
+	# mi = GL_RGB if "A" not in hws.mode else GL_RGBA
+	# b = glReadPixels(0, 0, *hws.size, mi, GL_UNSIGNED_BYTE)
+	# return pygame.image.frombuffer(b, hws.size, hws.mode)
 
 class HWSurface:
 
@@ -1151,106 +1165,106 @@ class HWSurface:
 	get_width = lambda self: self.width
 	get_height = lambda self: self.height
 
-	def fill(self, colour=(0,) * 4):
-		glfw.make_context_current(self.wind)
-		glClearColor(*colour)
-		glClear(GL_COLOR_BUFFER_BIT)
+	# def fill(self, colour=(0,) * 4):
+		# glfw.make_context_current(self.wind)
+		# glClearColor(*colour)
+		# glClear(GL_COLOR_BUFFER_BIT)
 
-	def blit(self, source, dest=None, area=None, special_flags=0):
-		glfw.make_context_current(self.wind)
-		glEnable(GL_TEXTURE_2D)
-		try:
-			size = source.size
-		except AttributeError:
-			size = source.get_size()
-			mode = "RGBA" if source.get_flags() & pygame.SRCALPHA else "RGB"
-		else:
-			mode = source.mode
-		try:
-			tex = self.cache[source]
-		except KeyError:
-			if isinstance(source, self.__class__):
-				glfw.make_context_current(source.wind)
-				mi = GL_RGB if "A" not in mode else GL_RGBA
-				data = glReadPixels(0, 0, *size, mi, GL_UNSIGNED_BYTE)
-			elif isinstance(source, pygame.Surface):
-				data = pygame.image.tostring(source, mode, True)
-			else:
-				data = source.tobytes()
-			m = len(mode)
-			tex = self.cache[source] = glGenTextures(1)
-			weakref.finalize(source, glDeleteTextures, (tex,))
-			glBindTexture(GL_TEXTURE_2D, tex)
-			mi = GL_RGBA if m > 3 else GL_RGB
-			glTexImage2D(
-				GL_TEXTURE_2D,
-				0,
-				mi,
-				*size,
-				0,
-				mi,
-				GL_UNSIGNED_BYTE,
-				data,
-			)
-			print("Textures:", len(self.cache))
-		glBindTexture(GL_TEXTURE_2D, tex)
-		glOrtho(0, *self.size, 0, 0, 1)
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-		if len(mode) > 3:
-			glEnable(GL_BLEND)
-		else:
-			glDisable(GL_BLEND)
+	# def blit(self, source, dest=None, area=None, special_flags=0):
+		# glfw.make_context_current(self.wind)
+		# glEnable(GL_TEXTURE_2D)
+		# try:
+			# size = source.size
+		# except AttributeError:
+			# size = source.get_size()
+			# mode = "RGBA" if source.get_flags() & pygame.SRCALPHA else "RGB"
+		# else:
+			# mode = source.mode
+		# try:
+			# tex = self.cache[source]
+		# except KeyError:
+			# if isinstance(source, self.__class__):
+				# glfw.make_context_current(source.wind)
+				# mi = GL_RGB if "A" not in mode else GL_RGBA
+				# data = glReadPixels(0, 0, *size, mi, GL_UNSIGNED_BYTE)
+			# elif isinstance(source, pygame.Surface):
+				# data = pygame.image.tostring(source, mode, True)
+			# else:
+				# data = source.tobytes()
+			# m = len(mode)
+			# tex = self.cache[source] = glGenTextures(1)
+			# weakref.finalize(source, glDeleteTextures, (tex,))
+			# glBindTexture(GL_TEXTURE_2D, tex)
+			# mi = GL_RGBA if m > 3 else GL_RGB
+			# glTexImage2D(
+				# GL_TEXTURE_2D,
+				# 0,
+				# mi,
+				# *size,
+				# 0,
+				# mi,
+				# GL_UNSIGNED_BYTE,
+				# data,
+			# )
+			# print("Textures:", len(self.cache))
+		# glBindTexture(GL_TEXTURE_2D, tex)
+		# glOrtho(0, *self.size, 0, 0, 1)
+		# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+		# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+		# if len(mode) > 3:
+			# glEnable(GL_BLEND)
+		# else:
+			# glDisable(GL_BLEND)
 
-		if area is None:
-			area = [0, 0]
-			area.extend(size)
-		area = astype(area, list)
-		if len(area) < 4:
-			area = [0, 0] + area
-		if dest is None:
-			dest = [0, 0, *self.size]
-		dest = astype(dest, list)
-		if dest[0] < 0:
-			area[0], dest[0] = -dest[0], 0
-		if dest[1] < 0:
-			area[1], dest[1] = -dest[1], 0
-		if len(dest) < 4:
-			dest.extend(area[2:])
-		sx1, sy1, sx2, sy2 = area
-		dx1, dy1, dx2, dy2 = dest
-		sx2 += sx1
-		sy2 += sy1
-		dx2 += dx1
-		dy2 += dy1
-		if dx2 > self.width:
-			dx2 = sx2 = self.width
-		if dy2 > self.height:
-			dy2 = sy2 = self.height
-		if sx2 > size[0]:
-			sx2 = dx2 = size[0]
-		if sy2 > size[1]:
-			sy2 = dy2 = size[1]
-		self.v1[:] = (
-			sx1, sy1,
-			sx1, sy2,
-			sx2, sy1,
-			sx2, sy2,
-		)
-		self.v1[::2] /= size[0]
-		self.v1[1::2] /= size[1]
-		glTexCoordPointer(2, GL_FLOAT, 0, self.v1)
-		self.v2[:] = (
-			dx1, dy1,
-			dx1, dy2,
-			dx2, dy1,
-			dx2, dy2,
-		)
-		glVertexPointer(2, GL_FLOAT, 0, self.v2)
-		glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-		glEnableClientState(GL_VERTEX_ARRAY)
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-		return dest
+		# if area is None:
+			# area = [0, 0]
+			# area.extend(size)
+		# area = astype(area, list)
+		# if len(area) < 4:
+			# area = [0, 0] + area
+		# if dest is None:
+			# dest = [0, 0, *self.size]
+		# dest = astype(dest, list)
+		# if dest[0] < 0:
+			# area[0], dest[0] = -dest[0], 0
+		# if dest[1] < 0:
+			# area[1], dest[1] = -dest[1], 0
+		# if len(dest) < 4:
+			# dest.extend(area[2:])
+		# sx1, sy1, sx2, sy2 = area
+		# dx1, dy1, dx2, dy2 = dest
+		# sx2 += sx1
+		# sy2 += sy1
+		# dx2 += dx1
+		# dy2 += dy1
+		# if dx2 > self.width:
+			# dx2 = sx2 = self.width
+		# if dy2 > self.height:
+			# dy2 = sy2 = self.height
+		# if sx2 > size[0]:
+			# sx2 = dx2 = size[0]
+		# if sy2 > size[1]:
+			# sy2 = dy2 = size[1]
+		# self.v1[:] = (
+			# sx1, sy1,
+			# sx1, sy2,
+			# sx2, sy1,
+			# sx2, sy2,
+		# )
+		# self.v1[::2] /= size[0]
+		# self.v1[1::2] /= size[1]
+		# glTexCoordPointer(2, GL_FLOAT, 0, self.v1)
+		# self.v2[:] = (
+			# dx1, dy1,
+			# dx1, dy2,
+			# dx2, dy1,
+			# dx2, dy2,
+		# )
+		# glVertexPointer(2, GL_FLOAT, 0, self.v2)
+		# glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+		# glEnableClientState(GL_VERTEX_ARRAY)
+		# glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+		# return dest
 
 SURFS = {}
 def load_surface(fn, greyscale=False, size=None, force=False):
@@ -1574,42 +1588,6 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
 			return dest.blit(s, pos, area, special_flags=BLEND_ALPHA_SDL2)
 		globals()["BASIC"] += 1
 		return dest.blit(s, pos, area)
-		if not area:
-			area = [0, 0]
-			area.extend(source.get_size())
-		size = dest.get_size()
-		if pos[0] < 0:
-			area = astype(area, list)
-			area[2] += pos[0]
-			area[0] -= pos[0]
-			pos = astype(pos, list)
-			pos[0] = 0
-		if pos[1] < 0:
-			area = astype(area, list)
-			area[3] += pos[1]
-			area[1] -= pos[1]
-			pos = astype(pos, list)
-			pos[1] = 0
-		if area[2] - area[0] + pos[0] > size[0]:
-			area = astype(area, list)
-			area[2] = size[0] - pos[0] + area[0]
-		if area[3] - area[1] + pos[1] > size[1]:
-			area = astype(area, list)
-			area[3] = size[1] - pos[1] + area[1]
-		pos = astype(pos, tuple)
-		area = astype(area, tuple)
-		try:
-			dss = pos + area[2:]
-			srs = area
-			dst = dest.subsurface(dss)
-			src = s.subsurface(srs)
-			# pygame.PixelArray(dst)[:] = pygame.PixelArray(src)
-			pygame.transform.scale(src, area[2:], dst)
-			return pos + dss
-		except (ValueError, TypeError):
-			print(dss[2:], srs[2:])
-			print_exc()
-			return dest.blit(s, pos, area)
 	return s
 
 def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
@@ -2052,16 +2030,6 @@ def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, rat
 
 def text_objects(text, font, colour, background):
 	text_surface = font.render(text, True, colour, background)
-	if text_surface.get_flags() & SRCALPHA:
-		try:
-			text_surface = text_surface.convert_alpha()
-		except:
-			pass
-	else:
-		try:
-			text_surface = text_surface.convert()
-		except:
-			pass
 	return text_surface, text_surface.get_rect()
 
 def get_font(font):

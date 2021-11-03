@@ -1018,8 +1018,8 @@ def reset_menu(full=True, reset=False):
 			modified.add(tuple(screensize))
 	ssize2 = (screensize[0] - sidebar_width, screensize[1] - toolbar_height)
 	if ssize != ssize2 or full and reset:
-		ssize = ssize2
-		mixer.submit(f"~ssize {' '.join(map(str, ssize))}")
+		sps = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+		sps[:] = ssize = ssize2
 		mixer.new = False
 	player.rect = (0,) * 2 + ssize
 	sidebar.colour = None
@@ -1070,8 +1070,8 @@ def reset_menu(full=True, reset=False):
 	toolbar.resizer = False
 	osize2 = (progress.box, toolbar.pause.radius * 4 // 3 - 3)
 	if osize != osize2 or full and reset:
-		osize = osize2
-		mixer.submit(f"~osize {' '.join(map(str, osize))}")
+		sps = np.frombuffer(globals()["spec-size"].buf[8:16], dtype=np.uint32)
+		sps[:] = osize = osize2
 		mixer.new = False
 	globals()["last-cond"] = True
 
@@ -1255,7 +1255,7 @@ def prepare(entry, force=False, download=False):
 	if not entry.url:
 		return
 	stream = entry.get("stream", "")
-	if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream)):
+	if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
 		if not is_url(entry.url):
 			entry.stream = os.path.exists(entry.url) and entry.url
 			duration = entry.duration
@@ -1511,22 +1511,6 @@ def restart_mixer():
 	submit(transfer_instrument, *project.instruments.values())
 	return seek_abs(player.pos)
 
-def mixer_stderr():
-	try:
-		while True:
-			b = as_str(mixer.stderr.readline()).rstrip()
-			if b:
-				print(b)
-			else:
-				time.sleep(0.1)
-				if not mixer.is_running():
-					restart_mixer()
-			continue
-	except:
-		if not mixer.is_running():
-			print(as_str(mixer.stderr.read()))
-		print_exc()
-
 def reevaluate():
 	time.sleep(2)
 	while not player.pos and not pygame.closed:
@@ -1665,15 +1649,23 @@ channel = get_channel()
 
 def mixer_stdout():
 	try:
-		while True:
+		while mixer:
 			s = None
-			while not s and mixer.is_running():
+			while not s and mixer and mixer.is_running():
 				s = as_str(mixer.stdout.readline()).rstrip()
-				if s and s[0] != "~":
-					if s[0] in "'\"":
-						s = ast.literal_eval(s)
-					print(s, end="")
-					s = ""
+				if s:
+					if s[0] != "~":
+						if s[0] in "'\"":
+							s = ast.literal_eval(s)
+						print(s, end="")
+						s = ""
+					else:
+						break
+			else:
+				if not mixer or not mixer.is_running():
+					time.sleep(0.25)
+					if mixer:
+						restart_mixer()
 			if not s:
 				time.sleep(0.05)
 				continue
@@ -1732,11 +1724,8 @@ def mixer_stdout():
 			if dur >= 0:
 				player.end = dur or inf
 	except:
-		if not mixer.is_running():
-			print(mixer.stderr.read().decode("utf-8", "replace"))
 		print_exc()
 
-submit(mixer_stderr)
 submit(mixer_stdout)
 
 def ensure_next(i=1):
@@ -2212,172 +2201,9 @@ def load_bubble(bubble_path):
 	except:
 		print_exc()
 
-def load_spinner(spinner_path):
-	try:
-		globals()["s-img"] = Image.open(spinner_path)
-		globals()["s-cache"] = {}
-
-		def spinner_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
-			diameter = round_random(radius * 2)
-			if not diameter > 0:
-				return
-			try:
-				surf = globals()["s-cache"][diameter]
-			except KeyError:
-				im = globals()["s-img"].resize((diameter,) * 2, resample=Image.BICUBIC)
-				if "RGB" not in im.mode:
-					im = im.convert("RGBA")
-				surf = pil2pyg(im, convert=True)
-				im.close()
-				globals()["s-cache"][diameter] = surf
-			blit_complex(
-				dest,
-				surf,
-				[round_random(x - y / 2) for x, y in zip(pos, surf.get_size())],
-				alpha=alpha,
-				colour=colour,
-			)
-		globals()["s-ripple"] = spinner_ripple
-	except:
-		print_exc()
-
 bubble_path = options.get("bubble_path")
 if bubble_path:
 	submit(load_bubble, bubble_path)
-
-spinner_path = "misc/Default/bubble.png"
-submit(load_spinner, spinner_path)
-
-def get_spinny_life(t):
-	try:
-		return t[1].life
-	except (TypeError, AttributeError, IndexError):
-		return inf
-
-def spinnies():
-	ts = 0
-	while "pos" not in progress:
-		time.sleep(0.5)
-	t = pc()
-	while True:
-		while is_minimised():
-			time.sleep(0.1)
-		dur = max(0.001, min(t - ts, 0.125))
-		ts = t
-		try:
-			ratio = 1 + 1 / (dur * 8)
-			progress.vis = (progress.vis * (ratio - 1) + player.pos) / ratio
-			diff = 1 - abs(player.pos - progress.vis) / player.end
-			progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio * diff)
-			progress.angle = -t * pi
-			pops = deque()
-			for i, p in sorted(enumerate(progress.particles), key=get_spinny_life):
-				if not p:
-					break
-				p.life -= dur * 2.5
-				if p.life <= 6:
-					p.angle += dur
-					p.rad = max(0, p.rad - 12 * dur)
-					p.hsv[2] = max(p.hsv[2] - dur / 5, 0)
-				if p.life < 3:
-					pops.append(i)
-			try:
-				progress.particles.pops(pops)
-			except IndexError:
-				pass
-			x = progress.pos[0] + round_random(progress.length * progress.vis / player.end) - progress.width // 2 if not progress.seeking or player.end < inf else mpos2[0]
-			x = min(progress.pos[0] - progress.width // 2 + progress.length, max(progress.pos[0] - progress.width // 2, x))
-			d = abs(pc() % 2 - 1)
-			hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
-			r = progress.spread * toolbar.pause.radius
-			if r >= 2:
-				rx = progress.spread * toolbar.pause.radius
-				a = progress.angle
-				point = [cos(a) * r, sin(a) * r]
-				p = (x + point[0], progress.pos[1] + point[1])
-				progress.particles.append(cdict(
-					centre=(x, progress.pos[1]),
-					angle=a,
-					rad=r,
-					r=rx,
-					life=7,
-					hsv=hsv,
-				))
-			d = 1 / 60
-			if pc() - t < d:
-				time.sleep(max(0, t - pc() + d))
-			t = max(t + d, pc() - 0.5)
-		except:
-			print_exc()
-submit(spinnies)
-
-def render_spinnies():
-	length = progress.length
-	width = progress.width
-	x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
-	x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
-	r = progress.spread * toolbar.pause.radius
-	if r < 2 and not progress.particles and not is_active():
-		return
-	ripple_f = globals().get("s-ripple", concentric_circle)
-	ripple_f(
-		DISP,
-		colour=(127, 127, 255),
-		pos=(x, progress.pos[1]),
-		radius=r,
-		fill_ratio=0.5,
-	)
-	for i, p in sorted(enumerate(progress.particles), key=get_spinny_life):
-		if not p:
-			continue
-		col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-		a = round(min(255, (p.life - 2.5) * 12))
-		for j in shuffle(range(3)):
-			point = [cos(p.angle + j * tau / 3) * p.rad, sin(p.angle + j * tau / 3) * p.rad]
-			pos = [round_random(x) for x in (p.centre[0] + point[0], p.centre[1] + point[1])]
-			ri = max(1, round_random(p.life ** 1.2 * p.r ** 0.7 / 16 + 0.5))
-			if ri > 2:
-				reg_polygon_complex(
-					DISP,
-					pos,
-					col,
-					0,
-					ri,
-					ri,
-					alpha=a,
-					thickness=2,
-					repetition=ri - 2,
-					soft=True,
-				)
-			else:
-				gfxdraw.aacircle(
-					DISP,
-					*pos,
-					1,
-					col + [a],
-				)
-	if r < 2 and not is_active():
-		return
-	d = abs(pc() % 2 - 1)
-	hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
-	col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
-	for i in shuffle(range(3)):
-		a = progress.angle + i / 3 * tau
-		point = [cos(a) * r, sin(a) * r]
-		p = (x + point[0], progress.pos[1] + point[1])
-		ri = max(7, round_random(r ** 0.7 / 1.2 + 2))
-		reg_polygon_complex(
-			DISP,
-			p,
-			col,
-			0,
-			ri,
-			ri,
-			alpha=159 if r else 255,
-			thickness=2,
-			repetition=ri - 2,
-			soft=True,
-		)
 
 
 def change_bubble():
@@ -2700,382 +2526,6 @@ def render_settings(dur, ignore=False):
 		cache=True,
 	)
 
-def render_toolbar(sfut):
-	global crosshair, hovertext
-	if not toolbar.colour:
-		return
-	highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
-	bevel_rectangle(
-		DISP,
-		toolbar.colour,
-		toolbar.rect,
-		4,
-	)
-	modified.add(toolbar.rect)
-	if toolbar.ripples:
-		subp = toolbar.rect[:2]
-		sub = toolbar.rect[2:]
-		DISP2 = DISP.subsurface(subp + sub)
-		ripple_f = globals().get("h-ripple", concentric_circle)
-		for ripple in toolbar.ripples:
-			ripple_f(
-				DISP2,
-				colour=ripple.colour,
-				pos=(ripple.pos[0], ripple.pos[1] - screensize[1] + toolbar_height),
-				radius=ripple.radius,
-				fill_ratio=1 / 3,
-				alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
-			)
-	elif not sidebar.ripples and pc() - globals()["h-timer"] >= 8:
-		globals()["h-cache"].clear()
-	pos = progress.pos
-	length = progress.length
-	width = progress.width
-	ratio = player.pos / player.end
-	if not toolbar.editor:
-		if highlighted:
-			bevel_rectangle(
-				DISP,
-				progress.select_colour,
-				progress.rect,
-				3,
-				filled=False,
-			)
-		xv = round(length * progress.vis / player.end) if not progress.seeking or player.end < inf else mpos2[0] - pos[0] + width // 2
-		xv = max(0, min(xv, length))
-		xv2 = max(0, xv - 4)
-		if highlighted:
-			c = (48,) * 3
-		else:
-			c = (32,) * 3
-		bevel_rectangle(
-			DISP,
-			c,
-			(xv2 + pos[0] - width // 2, pos[1] - width // 2, length - xv2, width),
-			min(4, width >> 1),
-		)
-		rainbow = quadratic_gradient((length, width), pc() / 2, curve=0.03125)
-		DISP.blit(
-			rainbow,
-			(pos[0] - width // 2 + xv, pos[1] - width // 2),
-			(xv, 0, length - xv, width),
-			special_flags=BLEND_RGB_MULT,
-		)
-		if progress.vis or not player.end < inf:
-			if highlighted:
-				c = (223,) * 3
-			else:
-				c = (191,) * 3
-			bevel_rectangle(
-				DISP,
-				c,
-				(pos[0] - width // 2, pos[1] - width // 2, xv, width),
-				min(4, width >> 1),
-			)
-		rainbow = quadratic_gradient((length, width), curve=0.03125)
-		DISP.blit(
-			rainbow,
-			(pos[0] - width // 2, pos[1] - width // 2),
-			(0, 0, xv, width),
-			special_flags=BLEND_RGB_MULT,
-		)
-	tc = options.get("toolbar_colour", (64, 0, 96))
-	for i, button in enumerate(toolbar.buttons):
-		if i and toolbar.editor:
-			break
-		if button.get("rect"):
-			if in_rect(mpos, button.rect):
-				lum = 191
-				cm = abs(pc() % 1 - 0.5) * 0.328125
-				c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
-				hovertext = cdict(
-					text=button.name,
-					size=15,
-					colour=c,
-					font="Rockwell",
-					offset=-19,
-				)
-				crosshair |= 4
-			else:
-				lum = 96
-			lum += button.get("flash", 0)
-			hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
-			light = 1 - (1 - hls[1]) / 4
-			if hls[2]:
-				sat = 1 - (1 - hls[2]) / 2
-			else:
-				sat = 0
-			col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
-			rounded_bev_rect(
-				DISP,
-				col,
-				button.rect,
-				3,
-				background=toolbar.colour,
-			)
-			if i == 2:
-				val = control.shuffle
-			elif i == 1:
-				val = control.loop
-			else:
-				val = -1
-			if val == 2:
-				size = button.sprite.get_size()
-				if i > 1:
-					sprite = quadratic_gradient(size, pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
-				else:
-					sprite = radial_gradient(size, -pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
-				sprite.blit(
-					button.sprite,
-					(0, 0),
-					special_flags=BLEND_RGBA_MULT,
-				)
-			elif val == 1:
-				sprite = button.on
-			elif val == 0:
-				sprite = button.off
-			else:
-				sprite = button.sprite
-			blit_complex(
-				DISP,
-				sprite,
-				(button.rect[0] + 3, button.rect[1] + 3),
-			)
-			if val == 2:
-				message_display(
-					"1",
-					12,
-					(button.rect[0] + button.rect[2] - 4, button.rect[1] + button.rect[3] - 8),
-					colour=(0,) * 3,
-					surface=DISP,
-					font="Comic Sans MS",
-					cache=True,
-				)
-	downloading = globals().get("downloading")
-	if common.__dict__.get("updating"):
-		downloading = common.__dict__["updating"]
-		pgr = downloading.progress
-	elif downloading.target:
-		pgr = os.path.exists(downloading.fn) and os.path.getsize(downloading.fn) / 192000 * 8
-	if downloading.target:
-		ratio = min(1, pgr / max(1, downloading.target))
-		percentage = round(ratio * 100, 3)
-		message_display(
-			f"Downloading: {percentage}%",
-			16,
-			(screensize[0] / 2, screensize[1] - 16),
-			colour=[round(i * 255) for i in colorsys.hsv_to_rgb(ratio / 3, 1, 1)],
-			surface=DISP,
-			font="Rockwell",
-			cache=True,
-		)
-	pos = toolbar.pause.pos
-	radius = toolbar.pause.radius
-	spl = max(4, radius >> 2)
-	lum = round(toolbar.pause.speed / toolbar.pause.maxspeed * toolbar.pause.outer)
-	if player.paused:
-		c = (toolbar.pause.outer, lum, lum)
-	elif is_active() and player.amp > 1 / 64:
-		c = (lum, toolbar.pause.outer, lum)
-	else:
-		c = (toolbar.pause.outer, toolbar.pause.outer, lum)
-	dt = datetime.datetime.now()
-	ti = dt.month * 100 + dt.day
-	if ti == 627 and globals().get("alt-play") != 0:
-		try:
-			if globals()["alt-play"].get_width() != radius << 1:
-				raise KeyError
-		except KeyError:
-			resp = globals().get("alt-ip")
-			if resp is None:
-				resp = reqx.get("https://api.ipify.org")
-				globals()["alt-ip"] = resp
-			ip = resp.text
-			u = os.environ.get("USERNAME") or os.environ.get("USER") or ""
-			x = int.from_bytes(b"\x00" + bytes(int(i) for i in ip.split(".")), "big")
-			y = int.from_bytes(u.encode("utf-8"), "big")
-			z = (x + y) ** 2 - 183567999708646235967804
-			surf = globals().get("alt-surf")
-			if not surf:
-				resp = reqx.get(f"https://cdn.discordapp.com/emojis/{z}.png")
-			try:
-				if not surf:
-					surf = load_surface(io.BytesIO(resp.content), greyscale=True, size=(128, 128))
-					globals()["alt-surf"] = surf
-				globals()["alt-play"] = pygame.transform.smoothscale(surf, (radius << 1,) * 2)
-			except:
-				print_exc()
-				globals()["alt-play"] = 0
-		if globals().get("alt-play") != 0:
-			blit_complex(
-				DISP,
-				globals()["alt-play"],
-				[i - radius for i in pos],
-				colour=c,
-			)
-	else:
-		kwargs = {}
-		if not toolbar.ripples:
-			kwargs["soft"] = toolbar.colour
-		reg_polygon_complex(
-			DISP,
-			pos,
-			c,
-			6,
-			radius,
-			radius,
-			thickness=2,
-			repetition=spl,
-			angle=toolbar.pause.angle,
-			**kwargs,
-		)
-		if player.paused:
-			c = (toolbar.pause.inner, lum, lum)
-		elif is_active():
-			c = (lum, toolbar.pause.inner, lum)
-		else:
-			c = (toolbar.pause.inner, toolbar.pause.inner, lum)
-		reg_polygon_complex(
-			DISP,
-			pos,
-			c,
-			6,
-			radius - spl,
-			radius - spl,
-			thickness=2,
-			repetition=radius - spl,
-			angle=toolbar.pause.angle,
-		)
-	lum = toolbar.pause.outer + 224 >> 1
-	rad = max(4, radius // 2)
-	col = (lum,) * 3
-	if player.paused:
-		w = 4
-		for i in range(w):
-			r = rad + w - i
-			x = (w - i) / 2
-			x1 = pos[0] - r * (2 - sqrt(3)) // 2
-			A = (x1 + r, pos[1])
-			B = (x1 - r // 2, pos[1] - r * sqrt(3) // 2)
-			C = (x1 - r // 2, pos[1] + r * sqrt(3) // 2)
-			c1 = (min(255, (lum + 64) // x),) * 3
-			c2 = (min(255, (lum + 256) // x),) * 3
-			c3 = (max(0, (lum - 128) // x),) * 3
-			pygame.draw.aaline(DISP, c1, A, B)
-			pygame.draw.aaline(DISP, c2, B, C)
-			pygame.draw.aaline(DISP, c3, A, C)
-		x2 = pos[0] - rad * (2 - sqrt(3)) // 2
-		pts = (
-			(x2 + rad, pos[1]),
-			(x2 - rad // 2, pos[1] - rad * sqrt(3) // 2),
-			(x2 - rad // 2, pos[1] + rad * sqrt(3) // 2),
-		)
-		pygame.draw.polygon(DISP, col, pts)
-	else:
-		bevel_rectangle(
-			DISP,
-			col,
-			(pos[0] - rad, pos[1] - rad, rad * 4 // 5, rad << 1),
-			3,
-		)
-		bevel_rectangle(
-			DISP,
-			col,
-			(pos[0] + (rad + 3) // 5, pos[1] - rad, rad * 4 // 5, rad << 1),
-			3,
-		)
-	osci_rect = (screensize[0] - 4 - progress.box, screensize[1] - toolbar_height + 4) + osize
-	locks = globals()["spec-locks"]
-	if options.get("oscilloscope") and locks[1] != -1:
-		try:
-			surf = player.osci
-			if surf.get_size() != osize:
-				raise AttributeError
-		except AttributeError:
-			length = osize[0] * osize[1] * 3
-			surf = player.osci = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "BGR")
-			surf.set_colorkey((0, 0, 0))
-		for i in range(7):
-			if locks[1] <= 0:
-				break
-			async_wait()
-		else:
-			print(f"Oscilloscope lock expired ({i + 1}).")
-		locks[1] += 1
-		try:
-			blit_complex(
-				DISP,
-				surf,
-				osci_rect[:2],
-			)
-		except:
-			raise
-		finally:
-			locks[1] = 0
-	else:
-		if options.get("oscilloscope"):
-			c = (255, 0, 0)
-		else:
-			c = (127, 0, 127)
-		y = osci_rect[1] + osci_rect[3] // 2
-		pygame.draw.line(
-			DISP,
-			c,
-			(osci_rect[0], y),
-			(osci_rect[0] + osci_rect[2], y)
-		)
-	if player.flash_o > 0:
-		bevel_rectangle(
-			DISP,
-			(191,) * 3,
-			osci_rect,
-			4,
-			alpha=player.flash_o * 8 - 1,
-		)
-	if not toolbar.resizer and in_rect(mpos, osci_rect):
-		bevel_rectangle(
-			DISP,
-			(191,) * 3,
-			osci_rect,
-			4,
-			filled=False,
-		)
-	if not toolbar.editor and toolbar.colour:
-		bsize = min(40, toolbar_height // 3)
-		s = f"{time_disp(player.pos)}/{time_disp(player.end)}"
-		c = high_colour(toolbar.colour)
-		message_display(
-			s,
-			min(24, toolbar_height // 3),
-			(screensize[0] - 8 - bsize, screensize[1]),
-			surface=DISP,
-			align=2,
-			font="Comic Sans MS",
-			colour=c,
-		)
-		fut = render_spinnies()
-		a = int(progress.alpha)
-		if a >= 16:
-			n = round(progress.num)
-			if n >= 0:
-				s = "+" + str(n)
-				c = (0, 255, 0)
-			else:
-				s = str(n)
-				c = (255, 0, 0)
-			x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
-			x = min(progress.pos[0] - width // 2 + length, max(progress.pos[0] - width // 2, x))
-			message_display(
-				s,
-				min(20, toolbar_height // 3),
-				(x, progress.pos[1] - 16),
-				c,
-				surface=DISP,
-				alpha=a,
-				font="Comic Sans MS",
-				cache=True,
-			)
-
 def draw_menu():
 	global crosshair, hovertext
 	ts = toolbar.progress.setdefault("timestamp", 0)
@@ -3099,7 +2549,6 @@ def draw_menu():
 				pops.add(i)
 		if pops:
 			sidebar.ripples.pops(pops)
-	crosshair = False
 	hovertext = None
 	if any(mclick) and in_rect(mpos, sidebar.rect):
 		if control.ripples:
@@ -3207,12 +2656,6 @@ def draw_menu():
 					("Reset ripples", reset_bubble),
 				),
 			)
-	if (toolbar.updated or not tick & 7) and toolbar.colour:
-		highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
-		crosshair |= highlighted
-		fut = submit(render_toolbar, sfut)
-		sfut.append(fut)
-		QUEUED.append(fut)
 	if not toolbar.editor and (mclick[0] or mclick[1]):
 		text_rect = (0, 0, 192, 92)
 		if in_rect(mpos, text_rect):
@@ -3433,6 +2876,77 @@ def draw_menu():
 		elif sidebar.resizer:
 			pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
 			sidebar.resizer = False
+	tc = toolbar.colour
+	if (not tick & 7 or toolbar.rect in modified) and tc:
+		surf = toolbar.surf
+		toolbar_wait.result()
+		blit_complex(
+			DISP,
+			surf,
+			toolbar.rect[:2],
+		)
+		for i, button in enumerate(toolbar.buttons):
+			if i and toolbar.editor:
+				break
+			if button.get("rect"):
+				if in_rect(mpos, button.rect):
+					lum = 191
+				else:
+					lum = 96
+				lum += button.get("flash", 0)
+				hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
+				light = 1 - (1 - hls[1]) / 4
+				if hls[2]:
+					sat = 1 - (1 - hls[2]) / 2
+				else:
+					sat = 0
+				col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
+				rounded_bev_rect(
+					DISP,
+					col,
+					button.rect,
+					3,
+					background=toolbar.colour,
+				)
+				if i == 2:
+					val = control.shuffle
+				elif i == 1:
+					val = control.loop
+				else:
+					val = -1
+				if val == 2:
+					size = button.sprite.get_size()
+					if i > 1:
+						sprite = quadratic_gradient(size, pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
+					else:
+						sprite = radial_gradient(size, -pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
+					sprite.blit(
+						button.sprite,
+						(0, 0),
+						special_flags=pygame.BLEND_RGBA_MULT,
+					)
+				elif val == 1:
+					sprite = button.on
+				elif val == 0:
+					sprite = button.off
+				else:
+					sprite = button.sprite
+				blit_complex(
+					DISP,
+					sprite,
+					(button.rect[0] + 3, button.rect[1] + 3),
+				)
+				if val == 2:
+					message_display(
+						"1",
+						12,
+						(button.rect[0] + button.rect[2] - 4, button.rect[1] + button.rect[3] - 8),
+						colour=(0,) * 3,
+						surface=DISP,
+						font="Comic Sans MS",
+						cache=True,
+					)
+		modified.add(toolbar.rect)
 	if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
 		while sfut:
 			sfut.popleft().result()
@@ -3764,19 +3278,99 @@ try:
 							if editor.held_update <= 0:
 								editor.held_update = None
 					mixer.submit("~keys " + ",".join(map(str, notekeys)))
+			crosshair = False
+			if not tick & 3:
+				update_menu()
+			if not toolbar.ripples and not sidebar.ripples and pc() - globals()["h-timer"] >= 8:
+				globals()["h-cache"].clear()
+			if (toolbar.updated or not tick & 7) and toolbar.colour:
+				tc = toolbar.colour
+				highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
+				crosshair |= highlighted
+				locks = globals()["spec-locks"].buf
+				if locks[2] == 255:
+					locks[2] = 0
+				Acquire(2)
+				args = np.frombuffer(globals()["tool-vals"].buf[:4096], dtype=np.float64)
+				args[0], args[1] = toolbar.rect[2:]
+				args[2], args[3], args[4] = tc
+				args[5], args[6] = mpos
+				args[7], args[8] = mpos2
+				args[9] = highlighted
+				args[10], args[11] = progress.pos
+				args[12] = progress.length
+				args[13] = progress.width
+				args[14] = player.pos
+				args[15] = player.end
+				args[16] = options.get("oscilloscope") or 0
+				args[17] = toolbar.pause.radius
+				args[18], args[19] = toolbar.pause.pos
+				args[20] = toolbar.pause.speed
+				args[21] = toolbar.pause.angle
+				args[22] = toolbar.pause.outer
+				args[23] = toolbar.pause.inner
+				args[24] = player.paused
+				args[25] = player.flash_o
+				args[26] = player.amp
+				args[27] = is_active() or 0
+				args[28] = progress.alpha
+				args[29], args[30], args[31] = progress.select_colour
+				args[32] = screensize[1]
+				args[33] = progress.num
+				args[34] = toolbar.editor or 0
+				tsize = toolbar.rect[2:]
+				try:
+					surf = toolbar.surf
+					if surf.get_size() != tsize:
+						raise AttributeError
+				except AttributeError:
+					length = tsize[0] * tsize[1] * 3
+					surf = toolbar.surf = pygame.image.frombuffer(globals()["tool-mem"].buf[:length], tsize, "RGB")
+				try:
+					bevel_rectangle(
+						surf,
+						tc,
+						(0, 0) + tsize,
+						4,
+					)
+					if toolbar.ripples:
+						ripple_f = globals().get("h-ripple", concentric_circle)
+						for ripple in toolbar.ripples:
+							ripple_f(
+								surf,
+								colour=ripple.colour,
+								pos=(ripple.pos[0], ripple.pos[1] - screensize[1] + toolbar_height),
+								radius=ripple.radius,
+								fill_ratio=1 / 3,
+								alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
+							)
+				except:
+					raise
+				finally:
+					Release(2)
+				toolbar_wait = Enqueue(Toolbar)
+				for i, button in enumerate(toolbar.buttons):
+					if i and toolbar.editor:
+						break
+					if button.get("rect"):
+						if in_rect(mpos, button.rect):
+							cm = abs(pc() % 1 - 0.5) * 0.328125
+							c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
+							hovertext = cdict(
+								text=button.name,
+								size=15,
+								colour=c,
+								font="Rockwell",
+								offset=-19,
+							)
+							crosshair |= 4
 			if not tick + 2 & 7 and not toolbar.editor:
-				locks = globals()["spec-locks"]
-				if options.get("spectrogram") and locks[0] != -1:
+				locks = globals()["spec-locks"].buf
+				if options.get("spectrogram") and locks[0] != 255:
 					rect = player.rect
-					for i in range(12):
-						if locks[0] <= 0:
-							break
-						async_wait()
-					else:
-						print(f"Spectrogram lock expired ({i + 1}).")
-					locks[0] += 1
+					Acquire(0)
 					try:
-						size = list(globals()["spec-size"])
+						size = tuple(np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32))
 						if size[1] > rect[3]:
 							size[1] = rect[3]
 						try:
@@ -3813,13 +3407,9 @@ try:
 					except:
 						raise
 					finally:
-						locks[0] = 0
+						Release(0)
 					modified.add(player.rect)
 			if not tick & 3:
-				try:
-					update_menu()
-				except:
-					print_exc()
 				try:
 					globals()["menu-drawer"].result()
 				except KeyError:
@@ -4101,41 +3691,21 @@ try:
 							colour=col,
 						)
 					modified.add(rect)
-			if modified:
-				if not tick + 6 & 7:
-					Finish()
-					if tuple(screensize) in modified:
-						pygame.display.flip()
-					else:
-						pygame.display.update(tuple(modified))
-					if (tuple(screensize) in modified or player.rect in modified) and (not options.spectrogram or not player.get("spec")):
-						rect = player.rect if tuple(screensize) in modified else player.rect[:3] + (96,)
-						DISP.fill(
-							(0,) * 3,
-							rect,
-						)
-					modified.clear()
+			if modified and not tick + 6 & 7:
+				Finish()
+				if tuple(screensize) in modified:
+					pygame.display.flip()
+				else:
+					pygame.display.update(tuple(modified))
+				if (tuple(screensize) in modified or player.rect in modified) and (not options.spectrogram or not player.get("spec")):
+					rect = player.rect if tuple(screensize) in modified else player.rect[:3] + (96,)
+					DISP.fill(
+						(0,) * 3,
+						rect,
+					)
+				modified.clear()
 		elif minimised:
 			sidebar.particles.clear()
-			progress.particles.clear()
-		# if not tick & 63:
-		#	 if queue:
-		#		 s = time_disp(player.pos)
-		#		 if s != ICON_DISP:
-		#			 icon = ICON.copy()
-		#			 xs = icon.get_size()
-		#			 message_display(
-		#				 s,
-		#				 28,
-		#				 (xs[0] / 2, xs[1] / 5),
-		#				 colour=(255, 191, 223),
-		#				 surface=icon,
-		#				 font="Pacifico",
-		#			 )
-		#			 pygame.display.set_icon(icon)
-		#	 elif ICON_DISP:
-		#		 ICON_DISP = ""
-		#		 pygame.display.set_icon(ICON)
 		d = 1 / 240
 		t = pc()
 		delay = t - last_tick
@@ -4200,7 +3770,8 @@ except Exception as ex:
 		except:
 			pass
 	for c in PROC.children(recursive=True):
-		futs.add(submit(c.kill))
+		futs.add(submit(c.terminate))
+	mixer = None
 	for e in os.scandir("cache"):
 		fn = e.name
 		if e.is_file(follow_symlinks=False):

@@ -457,6 +457,7 @@ def start_mixer():
 			s.append(f"~setting #{j}\n")
 			s.append(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
 			s.append(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
+			s.append(f"~setting insights {options.setdefault('insights', 1)}\n")
 			if OUTPUT_DEVICE:
 				s.append(f"~output {OUTPUT_DEVICE}\n")
 			mixer.stdin.write("".join(s).encode("utf-8"))
@@ -916,7 +917,12 @@ try:
 		raise FileNotFoundError
 	exec(compile(b, "collections2.tmp", "exec"), globals())
 except FileNotFoundError:
-	update_collections2()
+	try:
+		update_collections2()
+	except:
+		if not os.path.getsize(collections2f):
+			raise
+		print_exc()
 	repo_fut = submit(update_repo)
 if utc() - os.path.getmtime(collections2f) > 3600:
 	submit(update_collections2)

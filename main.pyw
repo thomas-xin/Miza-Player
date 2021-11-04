@@ -1683,6 +1683,8 @@ def mixer_stdout():
 			if not s:
 				time.sleep(0.05)
 				continue
+			if not mixer:
+				break
 			if mixer.new:
 				submit(reset_menu, reset=True)
 			player.last = pc()
@@ -2716,6 +2718,7 @@ def draw_menu():
 			else:
 				player.flash_i = 32
 				options.insights = (options.get("insights", 0) + 1) & 1
+				mixer.submit(f"~setting insights {options.insights}")
 		elif in_rect(mpos, player.rect):
 			if mclick[1]:
 				s = options.get("spectrogram")
@@ -3789,6 +3792,8 @@ try:
 		fps = 0.25 / max(d / 4, last_ratio)
 		# print(fps)
 		d2 = max(0.001, d - delay)
+		if minimised:
+			d2 += 0.05
 		last_ratio = (last_ratio * 7 + t - last_precise) / 8
 		last_precise = t
 		last_tick = max(last_tick + d, t - 0.25)
@@ -3827,10 +3832,6 @@ try:
 except Exception as ex:
 	futs = set()
 	futs.add(submit(reqx.delete, mp))
-	try:
-		os.remove(collections2f)
-	except:
-		pass
 	futs.add(submit(update_collections2))
 	save_settings()
 	if restarting:

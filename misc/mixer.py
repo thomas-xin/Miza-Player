@@ -304,8 +304,13 @@ def sc_player(d):
 		player.resume = player.unpause
 		def stop():
 			player.pause()
+			# pygame.mixer.Channel(0).stop()
 			player._data_ = ()
 		player.stop = stop
+		try:
+			player.resume()
+		except:
+			print_exc()
 	else:
 		player.__enter__()
 		player.type = "soundcard"
@@ -346,7 +351,7 @@ def sc_player(d):
 			self.fut.set_result(None)
 	def play2(self):
 		channel = self.Channel(0)
-		while self._data_:
+		while True:
 			if self.closed or paused and not paused.done() or not fut and not alphakeys or cleared:
 				sound = None
 				while len(self._data_) >= 4:
@@ -362,11 +367,11 @@ def sc_player(d):
 			return
 		if cc < 2:
 			if data.dtype == np.float32:
-				data = data[::2] + data[1::2]
+				data = np.add(data[::2], data[1::2], out=data[:len(data) >> 1])
 				data *= 0.5
 			else:
 				data >>= 1
-				data = data[::2] + data[1::2]
+				data = np.add(data[::2], data[1::2], out=data[:len(data) >> 1])
 		if player.type == "pygame":
 			if cc >= 2:
 				data = data.reshape((len(data) // cc, cc))
@@ -418,6 +423,8 @@ def sc_player(d):
 			func = play2 if player.type == "pygame" else play
 			player.playing = submit(func, player)
 	player.wait = wait
+	if player.type == "pygame":
+		verify()
 	return player
 
 get_channel = lambda: sc_player(get_device(OUTPUT_DEVICE))
@@ -559,7 +566,7 @@ def download(url, fn):
 				fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 				args = (sys.executable, "downloader.py", "-q", "-threads", "3", "-attempts", "13", url, "../" + fi)
 				print(args)
-				subprocess.run(args, universal_newlines=True, cwd="misc")
+				subprocess.run(args, timeout=1800, universal_newlines=True, cwd="misc")
 			except:
 				raise
 			finally:
@@ -1042,8 +1049,8 @@ def spectrogram_render():
 		except:
 			print_exc()
 			globals()["sender"] = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
-		else:
-			sender.recv(1)
+		# else:
+			# sender.recv(1)
 	except:
 		print_exc()
 
@@ -1130,7 +1137,6 @@ def render():
 	global lastpacket, osci_fut, spec_fut, spec2_fut, packet_advanced, sbuffer
 	try:
 		while True:
-			ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 			t = pc()
 			sleep = 0.005
 			if lastpacket != id(packet) and sbuffer is not None:
@@ -1344,7 +1350,7 @@ def play(pos):
 					submit(OUTPUT_FILE.write, s.data)
 				if not point_fut or point_fut.done():
 					point_fut = submit(point, f"~{frame} {duration}")
-				if settings.spectrogram >= 0:
+				if settings.spectrogram == 0 and settings.get("insights") != 0 or settings.spectrogram > 0:
 					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 					if ssize[0] and ssize[1] and not is_minimised():
 						if spec_fut:
@@ -1355,7 +1361,7 @@ def play(pos):
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						if not random.randint(0, 7):
+						if not random.randint(0, 15):
 							cc = sc.get_speaker(DEVICE.id).channels
 							if cc != channel.channels:
 								raise
@@ -1380,7 +1386,7 @@ def play(pos):
 						break
 				if OUTPUT_VIDEO and settings.spectrogram > 0:
 					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
-					if ssize[0] and ssize[1] and not is_minimised():
+					if ssize[0] and ssize[1]:
 						t = pc()
 						while not video_write and pc() - t < 1:
 							async_wait()
@@ -1538,6 +1544,8 @@ def piano_player():
 		while not hasattr(channel, "wait"):
 			time.sleep(0.1)
 		while True:
+			while is_minimised():
+				time.sleep(0.1)
 			channel.wait()
 			if pc() - lastplay < 0.5:
 				async_wait()
@@ -1563,7 +1571,7 @@ def piano_player():
 					submit(OUTPUT_FILE.write, packet)
 				if not point_fut or point_fut.done():
 					point_fut = submit(point, f"~{frame} {duration}")
-				if settings.spectrogram >= 0:
+				if settings.spectrogram == 0 and settings.get("insights") != 0 or settings.spectrogram > 0:
 					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 					if ssize[0] and ssize[1] and not is_minimised():
 						if spec_fut:
@@ -1573,7 +1581,7 @@ def piano_player():
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						if not random.randint(0, 7):
+						if not random.randint(0, 15):
 							cc = sc.get_speaker(DEVICE.id).channels
 							if cc != channel.channels:
 								raise
@@ -1613,7 +1621,7 @@ def ensure_parent():
 	par = psutil.Process(os.getppid())
 	while True:
 		if par.is_running():
-			time.sleep(0.1)
+			time.sleep(0.5)
 		else:
 			PROC.kill()
 
@@ -1878,7 +1886,7 @@ while not sys.stdin.closed and failed < 8:
 				if not os.path.exists(value):
 					value = eval(value, {}, {})
 				settings[setting] = value
-				if setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus"):
+				if setting in ("volume", "shuffle", "spectrogram", "oscilloscope", "unfocus", "insights"):
 					continue
 			if nostart or not stream:
 				continue

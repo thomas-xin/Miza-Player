@@ -330,9 +330,6 @@ def animate_prism(changed=False):
 		colarray = np.empty((len(bars), len(prism_setup), 4), dtype=np.float32)
 	hexarray.append([colarray, vertarray])
 
-	if skipping:
-		return
-
 	hexagon = np.array([[cos(z), sin(z), 0] for z in (i * tau / 6 for i in range(6))] * 2, dtype=np.float32)
 	b = (0, 0, 0, 1 / 6)
 	bc = np.array([b, b], dtype=np.float32)
@@ -347,10 +344,15 @@ def animate_prism(changed=False):
 		np.take(bc, prism_setup < 6, axis=0, out=colarray[i])
 
 	for c, v in hexarray:
-		glColorPointer(4, GL_FLOAT, 0, c.ravel())
-		glVertexPointer(3, GL_FLOAT, 0, v.ravel())
-		glDrawArrays(GL_TRIANGLES, 0, len(bars) * len(prism_setup))
+		if not skipping:
+			glColorPointer(4, GL_FLOAT, 0, c.ravel())
+			glVertexPointer(3, GL_FLOAT, 0, v.ravel())
+			glDrawArrays(GL_TRIANGLES, 0, len(bars) * len(prism_setup))
 		v.T[1] -= sqrt(3)
+
+	if skipping:
+		return
+
 	return "glReadPixels"
 
 def schlafli(symbol):
@@ -619,6 +621,10 @@ def animate_ripple(changed=False):
 			glLoadIdentity()
 			glMatrixMode(GL_MODELVIEW)
 			glLoadIdentity()
+			ar = ssize2[0] / ssize2[1]
+			w = 1 if ar >= 1 else ar
+			h = 1 if ar <= 1 else 1 / ar
+			glOrtho(-w, w, -h, h, -1, 1)
 		else:
 			glLoadIdentity()
 			glMatrixMode(GL_PROJECTION)
@@ -718,15 +724,18 @@ def animate_ripple(changed=False):
 	linearray.append([colours, rva])
 	r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
 
+	for c, verts in linearray:
+		if not skipping:
+			glColorPointer(4, GL_FLOAT, 0, c.ravel())
+		verts.T[-1][:] = hi
+		if not skipping:
+			glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
+			glDrawArrays(GL_LINES, 0, len(c))
+		c.T[-1] *= r
+
 	if skipping:
 		return
 
-	for c, verts in linearray:
-		glColorPointer(4, GL_FLOAT, 0, c.ravel())
-		verts.T[-1][:] = hi
-		glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
-		glDrawArrays(GL_LINES, 0, len(c))
-		c.T[-1] *= r
 	return "glReadPixels"
 
 bars = [Bar(i - 1, barcount) for i in range(barcount)]
@@ -745,6 +754,8 @@ clearing = 0
 def spectrogram_render(bars):
 	global ssize2, specs, dur, last, sp_changed
 	try:
+		if skipping:
+			return
 		if specs == 1:
 			sfx = HWSurface.any((barcount - 2, barheight))
 			if clearing >= 3:
@@ -767,7 +778,7 @@ def spectrogram_render(bars):
 		if func:
 			sfx = func(sp_changed)
 		sp_changed = False
-		if not sfx:
+		if not sfx or skipping:
 			return
 		if sfx == "glReadPixels":
 			glFlush()
@@ -821,6 +832,8 @@ def spectrogram_render(bars):
 			bar.update(dur=dur)
 	except:
 		print_exc()
+	finally:
+		glfwPollEvents()
 
 def ensure_bars(b):
 	amp = np.frombuffer(b, dtype=np.float32)
@@ -890,7 +903,7 @@ def event():
 					tool_lock.result()
 					tool_lock = concurrent.futures.Future()
 				while locks[i] > 0:
-					time.sleep(0.004)
+					time.sleep(0.005)
 				locks[i] += 1
 				sys.__stdout__.buffer.write(b"~r" + x[1] + b"\n")
 				sys.__stdout__.flush()
@@ -926,49 +939,70 @@ submit(event)
 import psutil
 parent = psutil.Process(os.getppid())
 receiver, _ = server.accept()
+BarInput = None
+BarOutput = None
+BarSem = 0
+
+def special():
+	global receiver, ssize2, specs, vertices, dur, pc_, BarSem
+	while True:
+		try:
+			comm = receiver.recv(2)
+			i = receiver.recv(8)
+			while len(i) < 8:
+				i += receiver.recv(8 - i)
+			nbytes = int(np.frombuffer(i, dtype=np.float64))
+			line = receiver.recv(nbytes)
+			while len(line) < nbytes:
+				line += receiver.recv(nbytes - len(line))
+			if comm == b"~r":
+				ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
+				if specs == 2:
+					bi = bars3
+				elif specs == 4:
+					bi = bars2
+				else:
+					bi = bars
+				if BarInput:
+					try:
+						if BarSem >= 2:
+							raise TimeoutError
+						BarSem += 1
+						BarOutput.result(timeout=0.03)
+					except (TimeoutError, concurrent.futures.TimeoutError):
+						globals()["skipping"] = True
+						BarOutput.result()
+						globals()["skipping"] = False
+					else:
+						BarSem = 0
+				globals()["BarInput"] = bi
+				globals()["BarOutput"] = concurrent.futures.Future()
+			elif comm == b"~e":
+				ensure_bars(line)
+		except ConnectionResetError:
+			if parent.is_running() and parent.status() != "zombie":
+				time.sleep(0.5)
+				receiver, _ = server.accept()
+			else:
+				psutil.Process().terminate()
+		except:
+			print_exc()
+
+submit(special)
 
 while True:
-	try:
-		comm = receiver.recv(2)
-		i = receiver.recv(8)
-		while len(i) < 8:
-			i += receiver.recv(8 - i)
-		nbytes = int(np.frombuffer(i, dtype=np.float64))
-		line = receiver.recv(nbytes)
-		while len(line) < nbytes:
-			line += receiver.recv(nbytes - len(line))
-		if comm == b"~r":
-			ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
-			if ssize2 != specsize:
-				if last_changed <= 0:
-					specsize = ssize2
-					glfw.destroy_window(window)
-					window = setup_window(specsize)
-					last_changed = 8
-				else:
-					last_changed -= 1
-					continue
-			elif last_changed:
-				last_changed -= 1
-			if specs == 2:
-				bi = bars3
-			elif specs == 4:
-				bi = bars2
+	time.sleep(0.003)
+	if BarInput:
+		if ssize2 != specsize:
+			if last_changed <= 0:
+				last_changed = 8
+				specsize = ssize2
+				glfw.destroy_window(window)
+				window = setup_window(specsize)
 			else:
-				bi = bars
-			spectrogram_render(bi)
-			receiver.send(b"\x7f")
-		elif comm == b"~e":
-			ensure_bars(line)
-		glfwPollEvents()
-	except ConnectionResetError:
-		if parent.is_running() and parent.status() != "zombie":
-			time.sleep(0.5)
-			receiver, _ = server.accept()
-		else:
-			psutil.Process().terminate()
-	except:
-		print_exc()
-
-glfw.destroy_window(window)
-glfw.terminate()
+				last_changed -= 1
+				continue
+		elif last_changed:
+			last_changed -= 1
+		BarOutput.set_result(spectrogram_render(BarInput))
+		BarInput = None

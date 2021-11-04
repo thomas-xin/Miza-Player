@@ -316,7 +316,8 @@ def sc_player(d):
 	player.closed = False
 	player.playing = None
 	player.fut = None
-	player._data_ = ()
+	if not getattr(player, "_data_", None):
+		player._data_ = ()
 	player.channels = cc
 	# a monkey-patched play function that has a better buffer
 	# (soundcard's normal one is insufficient for continuous playback)
@@ -386,9 +387,9 @@ def sc_player(d):
 		return verify()
 	player.write = write
 	def close():
-		player.closed = True
 		if player.type == "pygame":
-			return pygame.mixer.stop()
+			return pygame.mixer.pause()
+		player.closed = True
 		try:
 			player.__exit__(None, None, None)
 		except:

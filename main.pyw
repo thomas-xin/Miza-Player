@@ -539,11 +539,12 @@ def setup_buttons():
 				futs = deque()
 				for fn in os.listdir("cache"):
 					futs.append(submit(os.remove, "cache/" + fn))
-				for fn in os.listdir("misc/cache"):
-					try:
-						os.remove("misc/cache/" + fn)
-					except:
-						pass
+				if os.path.exists("misc/cache"):
+					for fn in os.listdir("misc/cache"):
+						try:
+							os.remove("misc/cache/" + fn)
+						except:
+							pass
 				for fut in futs:
 					try:
 						fut.result()
@@ -2220,6 +2221,38 @@ bubble_path = options.get("bubble_path")
 if bubble_path:
 	submit(load_bubble, bubble_path)
 
+def load_spinner(spinner_path):
+	try:
+		globals()["s-img"] = Image.open(spinner_path)
+		globals()["s-cache"] = {}
+
+		def spinner_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
+			diameter = round_random(radius * 2)
+			if not diameter > 0:
+				return
+			try:
+				surf = globals()["s-cache"][diameter]
+			except KeyError:
+				im = globals()["s-img"].resize((diameter,) * 2, resample=Image.LANCZOS)
+				if "RGB" not in im.mode:
+					im = im.convert("RGBA")
+				surf = pil2pyg(im)
+				im.close()
+				globals()["s-cache"][diameter] = surf
+			blit_complex(
+				dest,
+				surf,
+				[round_random(x - y / 2) for x, y in zip(pos, surf.get_size())],
+				alpha=alpha,
+				colour=colour,
+			)
+		globals()["s-ripple"] = spinner_ripple
+	except:
+		print_exc()
+
+spinner_path = "misc/Default/bubble.png"
+submit(load_spinner, spinner_path)
+
 
 def change_bubble():
 	bubble_path = easygui.fileopenbox(
@@ -2388,11 +2421,11 @@ def render_settings(dur, ignore=False):
 			("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
 		)
 		mrect = (offs2 + 8, 376, sidebar_width - 16, 192)
-		if sidebar.more_angle < 63 / 64:
-			surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
-			surf.fill((0, 0, 0, 0))
-		else:
-			surf = DISP2.subsurface(mrect)
+		# if sidebar.more_angle < 63 / 64:
+		surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
+		surf.fill((0, 0, 0, 0))
+		# else:
+			# surf = DISP2.subsurface(mrect)
 		for i, t in enumerate(more):
 			s, name, description = t
 			apos = (screensize[0] - sidebar_width + offs2 + 24, 427 + i * 32 + 16)
@@ -2480,11 +2513,11 @@ def render_settings(dur, ignore=False):
 			a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Image.NEAREST)
 			A = ImageChops.multiply(a, a2)
 			im.putalpha(A)
-			surf = pil2pyg(im, convert=False)
-			DISP2.blit(
-				surf,
-				mrect[:2],
-			)
+			surf = pil2pyg(im)
+		DISP2.blit(
+			surf,
+			mrect[:2],
+		)
 	rect = (offs2 + sidebar_width // 2 - 32, 344, 64, 32)
 	crect = (screensize[0] - sidebar_width // 2 - 32, 395) + rect[2:]
 	hovered = in_rect(mpos, crect)
@@ -2619,10 +2652,8 @@ def draw_menu():
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
 		if toolbar.editor:
 			render_sidebar_2(dur)
-			# globals()["sidebar_rendered"] = Enqueue(render_sidebar_2, dur)
 		else:
 			render_sidebar(dur)
-			# globals()["sidebar_rendered"] = Enqueue(render_sidebar, dur)
 		offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
 		Z = -sidebar.scroll.pos
 		maxb = (sidebar_width - 12) // 44
@@ -3827,11 +3858,12 @@ except Exception as ex:
 					os.remove(e.path)
 				except:
 					pass
-	for fn in os.listdir("misc/cache"):
-		try:
-			os.remove("misc/cache/" + fn)
-		except:
-			pass
+	if os.path.exists("misc/cache"):
+		for fn in os.listdir("misc/cache"):
+			try:
+				os.remove("misc/cache/" + fn)
+			except:
+				pass
 	if os.path.exists("misc/temp.tmp"):
 		try:
 			os.remove("misc/temp.tmp")

@@ -957,9 +957,9 @@ while True:
 			else:
 				bi = bars
 			spectrogram_render(bi)
+			receiver.send(b"\x7f")
 		elif comm == b"~e":
 			ensure_bars(line)
-		receiver.send(b"\x7f")
 		glfwPollEvents()
 	except ConnectionResetError:
 		if parent.is_running() and parent.status() != "zombie":

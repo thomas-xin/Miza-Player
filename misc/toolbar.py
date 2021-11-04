@@ -764,16 +764,16 @@ class Spinny:
 			setattr(self, k, v)
 
 def spinnies():
-	ts = 0
-	while "progress" not in globals():
-		time.sleep(0.1)
-	t = pc()
-	while True:
-		while is_minimised():
+	try:
+		while "progress" not in globals():
 			time.sleep(0.1)
-		dur = max(0.001, min(t - ts, 0.125))
-		ts = t
-		try:
+		ts = 0
+		t = pc()
+		while True:
+			while is_minimised():
+				time.sleep(0.1)
+			dur = max(0.001, min(t - ts, 0.125))
+			ts = t
 			ratio = 1 + 1 / (dur * 8)
 			progress.vis = (progress.vis * (ratio - 1) + player.pos) / ratio
 			diff = 1 - abs(player.pos - progress.vis) / player.end
@@ -814,8 +814,8 @@ def spinnies():
 			if pc() - t < d:
 				time.sleep(max(0, t - pc() + d))
 			t = max(t + d, pc() - 0.5)
-		except:
-			print_exc()
+	except:
+		print_exc()
 submit(spinnies)
 
 def render_spinnies():

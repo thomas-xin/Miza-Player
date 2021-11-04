@@ -3507,7 +3507,7 @@ try:
 						else:
 							col = (255, 0, 0)
 						s = f"Loading lyrics for {entry.name}..."
-						size = max(20, min(40, (screensize[0] - sidebar_width) * 3 // len(s)))
+						size = max(20, min(40, (screensize[0] - sidebar_width) * 2 // len(s)))
 						Enqueue(
 							message_display,
 							s,
@@ -3531,7 +3531,7 @@ try:
 							(8, 92),
 						)
 						s = entry.lyrics[0]
-						size = max(20, min(40, (screensize[0] - sidebar_width) * 3 // len(s)))
+						size = max(20, min(40, (screensize[0] - sidebar_width) * 2 // len(s)))
 						Enqueue(
 							message_display,
 							s,
@@ -3564,7 +3564,7 @@ try:
 							s = f"No lyrics found for {entry.name}."
 						else:
 							s = entry.lyrics[0]
-						size = max(20, min(40, (screensize[0] - sidebar_width) * 3 // len(s)))
+						size = max(20, min(40, (screensize[0] - sidebar_width) * 2 // len(s)))
 						Enqueue(
 							message_display,
 							s,

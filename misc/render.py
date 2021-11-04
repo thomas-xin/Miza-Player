@@ -1,11 +1,11 @@
-import time, numpy, math, random, orjson, collections, colorsys, traceback, subprocess, itertools, weakref
+import time, numpy, math, random, orjson, collections, colorsys, traceback, subprocess, itertools, weakref, ctypes
 from math import *
 from traceback import print_exc
 np = numpy
 deque = collections.deque
 from PIL import Image
 import concurrent.futures
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=9)
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=12)
 submit = exc.submit
 
 def pyg2pil(surf):
@@ -330,6 +330,9 @@ def animate_prism(changed=False):
 		colarray = np.empty((len(bars), len(prism_setup), 4), dtype=np.float32)
 	hexarray.append([colarray, vertarray])
 
+	if skipping:
+		return
+
 	hexagon = np.array([[cos(z), sin(z), 0] for z in (i * tau / 6 for i in range(6))] * 2, dtype=np.float32)
 	b = (0, 0, 0, 1 / 6)
 	bc = np.array([b, b], dtype=np.float32)
@@ -575,6 +578,9 @@ def animate_polytope(changed=False):
 	mult *= alpha
 	colours.T[-1][:] = mult
 
+	if skipping:
+		return
+
 	maxb = sqrt(max(bar.height for bar in bars))
 	ratio = min(48, max(8, 36864 / (len(poly) + 2 >> 1)))
 	barm = sorted(((bar.height, i) for i, bar in enumerate(bars) if sqrt(bar.height) > maxb / ratio), reverse=True)
@@ -711,6 +717,10 @@ def animate_ripple(changed=False):
 	rva = np.repeat(vertarray, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
 	linearray.append([colours, rva])
 	r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
+
+	if skipping:
+		return
+
 	for c, verts in linearray:
 		glColorPointer(4, GL_FLOAT, 0, c.ravel())
 		verts.T[-1][:] = hi
@@ -824,17 +834,6 @@ def ensure_bars(b):
 	for i, pwr in enumerate(amp):
 		bi[i].ensure(pwr / 4)
 
-ssize2 = (0, 0)
-specs = 0
-D = 9
-specsize = (1, 1)#(barcount * D - D,) * 2
-
-import glfw
-from glfw.GLFW import *
-from OpenGL.GL import *
-from OpenGL.GLU import *
-from OpenGL.GLUT import *
-
 def setup_window(size):
 	glfw.window_hint(glfw.VISIBLE, False)
 	window = glfw.create_window(*size, "render", None, None)
@@ -874,85 +873,100 @@ def _render_toolbar(x):
 	sys.__stdout__.buffer.write(b"~r" + x)
 	sys.__stdout__.flush()
 
-glfw.init()
-window = setup_window(specsize)
-
 def event():
-	global window, specsize, last_changed, ssize2, specs, vertices, dur, pc_
-	import psutil
-	parent = psutil.Process(os.getppid())
-	receiver, _ = server.accept()
+	global tool_lock
 	while True:
 		try:
-			comm = receiver.recv(2)
-			i = receiver.recv(8)
-			while len(i) < 8:
-				i += receiver.recv(8 - i)
-			nbytes = int(np.frombuffer(i, dtype=np.float64))
-			line = receiver.recv(nbytes)
-			while len(line) < nbytes:
-				line += receiver.recv(nbytes - len(line))
-			if comm == b"~r":
-				ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
-				if ssize2 != specsize:
-					if last_changed <= 0:
-						specsize = ssize2
-						glfw.destroy_window(window)
-						window = setup_window(specsize)
-						last_changed = 8
-					else:
-						last_changed -= 1
-						continue
-				elif last_changed:
-					last_changed -= 1
-				if specs == 2:
-					bi = bars3
-				elif specs == 4:
-					bi = bars2
-				else:
-					bi = bars
-				spectrogram_render(bi)
-			elif comm == b"~e":
-				ensure_bars(line)
-		except ConnectionResetError:
-			if parent.is_running() and parent.status() != "zombie":
-				time.sleep(0.5)
-				receiver, _ = server.accept()
-			else:
-				psutil.Process().terminate()
+			line = sys.stdin.buffer.read(2)
+			if line == b"~t":
+				x = sys.stdin.buffer.readline()[1:]
+				if globals().get("rtool"):
+					rtool.result()
+				globals()["rtool"] = submit(_render_toolbar, x)
+			if line == b"~a":
+				x = sys.stdin.buffer.readline().rstrip().split(b"~", 1)
+				i = int(x[0])
+				if i == 2:
+					tool_lock.result()
+					tool_lock = concurrent.futures.Future()
+				while locks[i] > 0:
+					time.sleep(0.004)
+				locks[i] += 1
+				sys.__stdout__.buffer.write(b"~r" + x[1] + b"\n")
+				sys.__stdout__.flush()
+			if line == b"~r":
+				i = int(sys.stdin.buffer.read(1))
+				locks[i] = 0
+				if i == 2:
+					tool_lock.set_result(None)
+			elif not line:
+				break
 		except:
 			print_exc()
-submit(event)
 
+ssize2 = (0, 0)
+specs = 0
+D = 9
+specsize = (1, 1)#(barcount * D - D,) * 2
+
+import glfw
+from glfw.GLFW import *
+from OpenGL.GL import *
+from OpenGL.GLU import *
+from OpenGL.GLUT import *
+
+glfw.init()
+window = setup_window(specsize)
 locks = globals()["spec-locks"].buf
 last_changed = 0
+skipping = False
+
+submit(event)
+
+import psutil
+parent = psutil.Process(os.getppid())
+receiver, _ = server.accept()
+
 while True:
 	try:
-		line = sys.stdin.buffer.read(2)
-		if line == b"~t":
-			x = sys.stdin.buffer.readline()[1:]
-			if globals().setdefault("rtool", None):
-				rtool.result()
-			rtool = submit(_render_toolbar, x)
-		if line == b"~a":
-			x = sys.stdin.buffer.readline().rstrip().split(b"~", 1)
-			i = int(x[0])
-			if i == 2:
-				tool_lock.result()
-				tool_lock = concurrent.futures.Future()
-			while locks[i] > 0:
-				time.sleep(0.004)
-			locks[i] += 1
-			sys.__stdout__.buffer.write(b"~r" + x[1] + b"\n")
-			sys.__stdout__.flush()
-		if line == b"~r":
-			i = int(sys.stdin.buffer.read(1))
-			locks[i] = 0
-			if i == 2:
-				tool_lock.set_result(None)
-		elif not line:
-			break
+		comm = receiver.recv(2)
+		i = receiver.recv(8)
+		while len(i) < 8:
+			i += receiver.recv(8 - i)
+		nbytes = int(np.frombuffer(i, dtype=np.float64))
+		line = receiver.recv(nbytes)
+		while len(line) < nbytes:
+			line += receiver.recv(nbytes - len(line))
+		if comm == b"~r":
+			ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
+			if ssize2 != specsize:
+				if last_changed <= 0:
+					specsize = ssize2
+					glfw.destroy_window(window)
+					window = setup_window(specsize)
+					last_changed = 8
+				else:
+					last_changed -= 1
+					continue
+			elif last_changed:
+				last_changed -= 1
+			if specs == 2:
+				bi = bars3
+			elif specs == 4:
+				bi = bars2
+			else:
+				bi = bars
+			spectrogram_render(bi)
+		elif comm == b"~e":
+			ensure_bars(line)
+		receiver.send(b"\x7f")
 		glfwPollEvents()
+	except ConnectionResetError:
+		if parent.is_running() and parent.status() != "zombie":
+			time.sleep(0.5)
+			receiver, _ = server.accept()
+		else:
+			psutil.Process().terminate()
 	except:
 		print_exc()
 

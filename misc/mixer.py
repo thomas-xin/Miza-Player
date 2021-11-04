@@ -324,8 +324,8 @@ def sc_player(d):
 	def play(self):
 		while True:
 			if self.closed or paused and not paused.done() or not fut and not alphakeys or cleared:
-				if len(self._data_) > 3200 * cc:
-					self._data_ = self._data_[-3200 * cc:]
+				if len(self._data_) > 4800 * cc:
+					self._data_ = self._data_[-4800 * cc:]
 				return
 			towrite = self._render_available_frames()
 			if towrite < 50 * cc:
@@ -348,7 +348,11 @@ def sc_player(d):
 		channel = self.Channel(0)
 		while self._data_:
 			if self.closed or paused and not paused.done() or not fut and not alphakeys or cleared:
-				self._data_ = ()
+				sound = None
+				while len(self._data_) >= 4:
+					sound = self._data_.popleft()
+				if sound is not None:
+					channel.queue(sound)
 				return
 			if self._data_ and not channel.get_queue():
 				channel.queue(self._data_.popleft())
@@ -388,6 +392,7 @@ def sc_player(d):
 	player.write = write
 	def close():
 		if player.type == "pygame":
+			player._data_ = ()
 			return pygame.mixer.pause()
 		player.closed = True
 		try:
@@ -397,10 +402,10 @@ def sc_player(d):
 	player.close = close
 	def wait():
 		if player.type == "pygame":
-			channel = player.Channel(0)
+			verify()
 			while len(player._data_) >= 4:
 				async_wait()
-			return verify()
+			return
 		if not len(player._data_):
 			return
 		verify()
@@ -1037,9 +1042,8 @@ def spectrogram_render():
 		except:
 			print_exc()
 			globals()["sender"] = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
-		if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
-			spec_update_fut = submit(spectrogram_render)
-			packet_advanced2 = False
+		else:
+			sender.recv(1)
 	except:
 		print_exc()
 
@@ -1089,13 +1093,7 @@ def spectrogram_update():
 				print_exc()
 				globals()["sender"] = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
 		spec_buffer *= (1 / 3) ** dur
-		if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
-			spec_update_fut = submit(spectrogram_render)
-			packet_advanced2 = False
-		ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
-		if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
-			spec2_fut = submit(spectrogram_update)
-			packet_advanced3 = False
+		spectrogram_render()
 	except:
 		print_exc()
 
@@ -1117,9 +1115,7 @@ def spectrogram():
 			spec_buffer[:-len(buffer)] = spec_buffer[len(buffer):]
 			spec_buffer[-len(buffer):] = buffer
 			ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
-			if packet_advanced3 and ssize[0] and ssize[1] and not is_minimised() and (not spec2_fut or spec2_fut.done()):
-				spec2_fut = submit(spectrogram_update)
-				packet_advanced3 = None
+			spectrogram_update()
 	except:
 		print_exc()
 
@@ -1172,13 +1168,6 @@ def render():
 						if packet:
 							point("~x " + " ".join(map(str, out)))
 
-					if settings.spectrogram >= 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
-						if is_strict_minimised():
-							spec2_fut = submit(spectrogram_update)
-			elif packet_advanced:
-				if settings.spectrogram >= 0 and ssize[0] and ssize[1] and (not spec2_fut or spec2_fut.done()):
-					if is_strict_minimised():
-						spec2_fut = submit(spectrogram_update)
 			packet_advanced = False
 			dur = sleep + t - pc()
 			if dur > 0:
@@ -1823,9 +1812,9 @@ while not sys.stdin.closed and failed < 8:
 				paused = concurrent.futures.Future()
 				channel.pause()
 			elif not i and paused:
-				channel.resume()
 				paused.set_result(None)
 				paused = None
+				channel.resume()
 			packet_advanced = paused
 			if paused:
 				pt2 = time.perf_counter() - pt

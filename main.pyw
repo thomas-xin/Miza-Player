@@ -2853,7 +2853,8 @@ def draw_menu():
 				mixer.submit(f"~setting spectrogram {options.spectrogram}")
 				if not options.spectrogram and queue:
 					submit(render_lyrics, queue[0])
-					player.spec.fill((0, 0, 0))
+					if player.get("spec"):
+						player.spec.fill((0, 0, 0))
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
 		# if globals().get("sidebar_rendered"):
 			# sidebar_rendered.result()

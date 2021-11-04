@@ -724,17 +724,17 @@ def animate_ripple(changed=False):
 	linearray.append([colours, rva])
 	r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
 
-	for c, verts in linearray:
-		if not skipping:
-			glColorPointer(4, GL_FLOAT, 0, c.ravel())
-		verts.T[-1][:] = hi
-		if not skipping:
-			glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
-			glDrawArrays(GL_LINES, 0, len(c))
-		c.T[-1] *= r
-
 	if skipping:
+		for c in linearray:
+			c.T[-1] *= r
 		return
+
+	for c, verts in linearray:
+		glColorPointer(4, GL_FLOAT, 0, c.ravel())
+		verts.T[-1][:] = hi
+		glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
+		glDrawArrays(GL_LINES, 0, len(c))
+		c.T[-1] *= r
 
 	return "glReadPixels"
 
@@ -968,7 +968,7 @@ def special():
 						if BarSem >= 2:
 							raise TimeoutError
 						BarSem += 1
-						BarOutput.result(timeout=0.03)
+						BarOutput.result(timeout=0.06)
 					except (TimeoutError, concurrent.futures.TimeoutError):
 						globals()["skipping"] = True
 						BarOutput.result()

@@ -60,7 +60,6 @@ except ValueError:
 import socket
 server = socket.create_server(("127.0.0.1", hwnd % 32768 + 16384))
 server.listen(1)
-receiver, _ = server.accept()
 
 is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 
@@ -882,6 +881,7 @@ def event():
 	global window, specsize, last_changed, ssize2, specs, vertices, dur, pc_
 	import psutil
 	parent = psutil.Process(os.getppid())
+	receiver, _ = server.accept()
 	while True:
 		try:
 			comm = receiver.recv(2)
@@ -917,6 +917,7 @@ def event():
 		except ConnectionResetError:
 			if parent.is_running() and parent.status() != "zombie":
 				time.sleep(0.5)
+				receiver, _ = server.accept()
 			else:
 				psutil.Process().terminate()
 		except:

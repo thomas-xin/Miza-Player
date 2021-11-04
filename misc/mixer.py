@@ -1022,7 +1022,11 @@ def spectrogram_render():
 		d2 = 1 / 30
 		b = b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2)))
 		binfo = b"~r" + np.float64(len(b)).data + b
-		sender.sendall(binfo)
+		try:
+			sender.sendall(binfo)
+		except:
+			print_exc()
+			globals()["sender"] = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
 		if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
 			spec_update_fut = submit(spectrogram_render)
 			packet_advanced2 = False
@@ -1069,7 +1073,11 @@ def spectrogram_update():
 			amp = np.asanyarray(amp, dtype=np.float32)
 			b = amp.data
 			binfo = b"~e" + np.float64(b.nbytes).data + b
-			sender.sendall(binfo)
+			try:
+				sender.sendall(binfo)
+			except:
+				print_exc()
+				globals()["sender"] = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
 		spec_buffer *= (1 / 3) ** dur
 		if packet_advanced2 and not is_minimised() and (not spec_update_fut or spec_update_fut.done()):
 			spec_update_fut = submit(spectrogram_render)

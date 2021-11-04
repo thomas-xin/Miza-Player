@@ -968,7 +968,7 @@ def special():
 						if BarSem >= 2:
 							raise TimeoutError
 						BarSem += 1
-						BarOutput.result(timeout=0.03)
+						BarOutput.result(timeout=0.015)
 					except (TimeoutError, concurrent.futures.TimeoutError):
 						globals()["skipping"] = True
 						BarOutput.result()

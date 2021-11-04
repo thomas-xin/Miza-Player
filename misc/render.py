@@ -725,7 +725,7 @@ def animate_ripple(changed=False):
 	r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
 
 	if skipping:
-		for c in linearray:
+		for c, _ in linearray:
 			c.T[-1] *= r
 		return
 

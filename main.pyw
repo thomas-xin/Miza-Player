@@ -1663,15 +1663,18 @@ def mixer_stdout():
 		while mixer:
 			s = None
 			while not s and mixer and mixer.is_running():
-				s = as_str(mixer.stdout.readline()).rstrip()
+				s = as_str(mixer.stdout.readline())
 				if s:
 					if s[0] != "~":
 						if s[0] in "'\"":
 							s = ast.literal_eval(s)
-						print(s)
+						sys.stdout.write(s)
 						s = ""
 					else:
+						s = s.rstrip()
 						break
+				else:
+					return
 			else:
 				if not mixer or not mixer.is_running():
 					time.sleep(0.25)

@@ -563,7 +563,7 @@ def download(url, fn):
 				print(f"[DEBUG] Pre-emptive download returned empty.")
 				return
 			url = fi
-		if url.endswith(".pcm") and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
+		if url.endswith(".pcm") and fn.endswith(".pcm") and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
 			if url != fn:
 				os.rename(url, fn)
 			return

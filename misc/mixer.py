@@ -65,7 +65,7 @@ deque = collections.deque
 suppress = contextlib.suppress
 
 async_wait = lambda: time.sleep(0.005)
-sys.setswitchinterval(0.008)
+sys.setswitchinterval(0.005)
 
 is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
 globals()["unfocus-time"] = 0
@@ -562,6 +562,10 @@ def download(url, fn):
 				print(f"[DEBUG] Pre-emptive download returned empty.")
 				return
 			url = fi
+		if url.endswith(".pcm") and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
+			if url != fn:
+				os.rename(url, fn)
+			return
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".pcm"):
 			cmd += ("-f", "s16le")

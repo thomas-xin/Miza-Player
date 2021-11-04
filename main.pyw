@@ -1667,7 +1667,7 @@ def mixer_stdout():
 					if s[0] != "~":
 						if s[0] in "'\"":
 							s = ast.literal_eval(s)
-						print(s, end="")
+						print(s)
 						s = ""
 					else:
 						break
@@ -2599,11 +2599,15 @@ def draw_menu():
 	elif CTRL(kheld) and (kc2[K_a] or kc2[K_s] or mc2[0]) or sidebar.get("last_selected") is not None:
 		cond = True
 	else:
-		if toolbar.editor:
-			q = sidebar.instruments
+		fut = common.__dict__.get("repo-update")
+		if fut and not isinstance(fut, bool):
+			cond = True
 		else:
-			q = queue
-		cond = any(i != e.get("pos", 0) or e.get("selected") or e.get("flash") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
+			if toolbar.editor:
+				q = sidebar.instruments
+			else:
+				q = queue
+			cond = any(i != e.get("pos", 0) or e.get("selected") or e.get("flash") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
 	if cond:
 		globals()["last-cond"] = True
 	elif not tick & 7 and globals().get("last-cond"):
@@ -2614,9 +2618,11 @@ def draw_menu():
 		cond = True
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
 		if toolbar.editor:
-			globals()["sidebar_rendered"] = Enqueue(render_sidebar_2, dur)
+			render_sidebar_2(dur)
+			# globals()["sidebar_rendered"] = Enqueue(render_sidebar_2, dur)
 		else:
-			globals()["sidebar_rendered"] = Enqueue(render_sidebar, dur)
+			render_sidebar(dur)
+			# globals()["sidebar_rendered"] = Enqueue(render_sidebar, dur)
 		offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
 		Z = -sidebar.scroll.pos
 		maxb = (sidebar_width - 12) // 44
@@ -2814,10 +2820,10 @@ def draw_menu():
 				if not options.spectrogram and queue:
 					submit(render_lyrics, queue[0])
 					player.spec.fill((0, 0, 0))
-	if (tick + 4 & 7 or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
-		if globals().get("sidebar_rendered"):
-			sidebar_rendered.result()
-			globals()["sidebar_rendered"] = None
+	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
+		# if globals().get("sidebar_rendered"):
+			# sidebar_rendered.result()
+			# globals()["sidebar_rendered"] = None
 		maxb = (sidebar_width - 12) // 44
 		for i, button in enumerate(sidebar.buttons[:maxb]):
 			if button.get("rect"):
@@ -2891,71 +2897,84 @@ def draw_menu():
 		for i, button in enumerate(toolbar.buttons):
 			if i and toolbar.editor:
 				break
+			if not button.get("rect"):
+				continue
+			if in_rect(mpos, button.rect):
+				lum = 191
+			else:
+				lum = 96
+			lum += button.get("flash", 0)
+			hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
+			light = 1 - (1 - hls[1]) / 4
+			if hls[2]:
+				sat = 1 - (1 - hls[2]) / 2
+			else:
+				sat = 0
+			col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
+			rounded_bev_rect(
+				DISP,
+				col,
+				button.rect,
+				3,
+				background=toolbar.colour,
+			)
+			if i == 2:
+				val = control.shuffle
+			elif i == 1:
+				val = control.loop
+			else:
+				val = -1
+			if val == 2:
+				size = button.sprite.get_size()
+				if i > 1:
+					sprite = quadratic_gradient(size, pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
+				else:
+					sprite = radial_gradient(size, -pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
+				sprite.blit(
+					button.sprite,
+					(0, 0),
+					special_flags=pygame.BLEND_RGBA_MULT,
+				)
+			elif val == 1:
+				sprite = button.on
+			elif val == 0:
+				sprite = button.off
+			else:
+				sprite = button.sprite
+			blit_complex(
+				DISP,
+				sprite,
+				(button.rect[0] + 3, button.rect[1] + 3),
+			)
+			if val == 2:
+				message_display(
+					"1",
+					12,
+					(button.rect[0] + button.rect[2] - 4, button.rect[1] + button.rect[3] - 8),
+					colour=(0,) * 3,
+					surface=DISP,
+					font="Comic Sans MS",
+					cache=True,
+				)
+		for i, button in enumerate(toolbar.buttons):
+			if i and toolbar.editor:
+				break
 			if button.get("rect"):
 				if in_rect(mpos, button.rect):
-					lum = 191
-				else:
-					lum = 96
-				lum += button.get("flash", 0)
-				hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
-				light = 1 - (1 - hls[1]) / 4
-				if hls[2]:
-					sat = 1 - (1 - hls[2]) / 2
-				else:
-					sat = 0
-				col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
-				rounded_bev_rect(
-					DISP,
-					col,
-					button.rect,
-					3,
-					background=toolbar.colour,
-				)
-				if i == 2:
-					val = control.shuffle
-				elif i == 1:
-					val = control.loop
-				else:
-					val = -1
-				if val == 2:
-					size = button.sprite.get_size()
-					if i > 1:
-						sprite = quadratic_gradient(size, pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
-					else:
-						sprite = radial_gradient(size, -pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
-					sprite.blit(
-						button.sprite,
-						(0, 0),
-						special_flags=pygame.BLEND_RGBA_MULT,
+					cm = abs(pc() % 1 - 0.5) * 0.328125
+					c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
+					hovertext = cdict(
+						text=button.name,
+						size=15,
+						colour=c,
+						font="Rockwell",
+						offset=-19,
 					)
-				elif val == 1:
-					sprite = button.on
-				elif val == 0:
-					sprite = button.off
-				else:
-					sprite = button.sprite
-				blit_complex(
-					DISP,
-					sprite,
-					(button.rect[0] + 3, button.rect[1] + 3),
-				)
-				if val == 2:
-					message_display(
-						"1",
-						12,
-						(button.rect[0] + button.rect[2] - 4, button.rect[1] + button.rect[3] - 8),
-						colour=(0,) * 3,
-						surface=DISP,
-						font="Comic Sans MS",
-						cache=True,
-					)
+					crosshair |= 4
 		modified.add(toolbar.rect)
 	if toolbar.editor:
 		editor_toolbar()
-	if not tick + 6 & 7 and sidebar.get("dragging"):
-		if globals().get("sidebar_rendered"):
-			sidebar_rendered.result()
-			globals()["sidebar_rendered"] = None
+	if not tick & 7 and sidebar.get("dragging"):
 		if toolbar.editor:
 			Enqueue(render_dragging_2)
 		else:
@@ -2977,9 +2996,9 @@ def draw_menu():
 			pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
 			sidebar.resizer = False
 	if crosshair & 1 and (not tick + 4 & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
-		if globals().get("sidebar_rendered"):
-			sidebar_rendered.result()
-			globals()["sidebar_rendered"] = None
+		# if globals().get("sidebar_rendered"):
+			# sidebar_rendered.result()
+			# globals()["sidebar_rendered"] = None
 		if crosshair & 3:
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
@@ -3380,21 +3399,6 @@ try:
 				finally:
 					Release(2)
 				toolbar_wait = Enqueue(Toolbar)
-				for i, button in enumerate(toolbar.buttons):
-					if i and toolbar.editor:
-						break
-					if button.get("rect"):
-						if in_rect(mpos, button.rect):
-							cm = abs(pc() % 1 - 0.5) * 0.328125
-							c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
-							hovertext = cdict(
-								text=button.name,
-								size=15,
-								colour=c,
-								font="Rockwell",
-								offset=-19,
-							)
-							crosshair |= 4
 			if not tick + 2 & 7 and not toolbar.editor:
 				locks = globals()["spec-locks"].buf
 				if options.get("spectrogram") and locks[0] != 255:
@@ -3441,11 +3445,12 @@ try:
 						Release(0)
 					modified.add(player.rect)
 			if not tick & 3:
-				try:
-					globals()["menu-drawer"].result()
-				except KeyError:
-					pass
-				globals()["menu-drawer"] = Enqueue(draw_menu)
+				draw_menu()
+				# try:
+					# globals()["menu-drawer"].result()
+				# except KeyError:
+					# pass
+				# globals()["menu-drawer"] = Enqueue(draw_menu)
 			if not queue and not is_active() and not any(kheld):
 				player.pos = 0
 				player.end = inf
@@ -3818,7 +3823,10 @@ except Exception as ex:
 					if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 3 or utc() - s.st_mtime > 86400 * 14:
 						futs.add(submit(os.remove, e.path))
 			else:
-				futs.add(submit(os.remove, e.path))
+				try:
+					os.remove(e.path)
+				except:
+					pass
 	for fn in os.listdir("misc/cache"):
 		try:
 			os.remove("misc/cache/" + fn)

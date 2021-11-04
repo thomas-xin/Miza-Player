@@ -539,6 +539,11 @@ def setup_buttons():
 				futs = deque()
 				for fn in os.listdir("cache"):
 					futs.append(submit(os.remove, "cache/" + fn))
+				for fn in os.listdir("misc/cache"):
+					try:
+						os.remove("misc/cache/" + fn)
+					except:
+						pass
 				for fut in futs:
 					try:
 						fut.result()
@@ -2607,12 +2612,11 @@ def draw_menu():
 			globals()["last-cond"] = True
 	elif not tick % 240:
 		cond = True
-	sidebar_rendered = None
 	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
 		if toolbar.editor:
-			sidebar_rendered = Enqueue(render_sidebar_2, dur)
+			globals()["sidebar_rendered"] = Enqueue(render_sidebar_2, dur)
 		else:
-			sidebar_rendered = Enqueue(render_sidebar, dur)
+			globals()["sidebar_rendered"] = Enqueue(render_sidebar, dur)
 		offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
 		Z = -sidebar.scroll.pos
 		maxb = (sidebar_width - 12) // 44
@@ -2810,9 +2814,11 @@ def draw_menu():
 				if not options.spectrogram and queue:
 					submit(render_lyrics, queue[0])
 					player.spec.fill((0, 0, 0))
-	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
-		if sidebar_rendered:
+	if (tick + 4 & 7 or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
+		if globals().get("sidebar_rendered"):
 			sidebar_rendered.result()
+			globals()["sidebar_rendered"] = None
+		maxb = (sidebar_width - 12) // 44
 		for i, button in enumerate(sidebar.buttons[:maxb]):
 			if button.get("rect"):
 				if in_rect(mpos, button.rect):
@@ -2873,8 +2879,9 @@ def draw_menu():
 		options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
 		mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
 	tc = toolbar.colour
-	if tc and toolbar_wait:
+	if tc and toolbar_wait and tick + 4 & 7:
 		toolbar_wait.result()
+		globals()["toolbar_wait"] = None
 		surf = toolbar.surf
 		blit_complex(
 			DISP,
@@ -2945,14 +2952,15 @@ def draw_menu():
 		modified.add(toolbar.rect)
 	if toolbar.editor:
 		editor_toolbar()
-	if sidebar_rendered and sidebar.get("dragging"):
-		sidebar_rendered.result()
+	if not tick + 6 & 7 and sidebar.get("dragging"):
+		if globals().get("sidebar_rendered"):
+			sidebar_rendered.result()
+			globals()["sidebar_rendered"] = None
 		if toolbar.editor:
 			Enqueue(render_dragging_2)
 		else:
 			Enqueue(render_dragging)
-		return
-	if not tick & 7 or toolbar.rect in modified:
+	if not tick + 4 & 7 or toolbar.rect in modified:
 		if toolbar.resizing:
 			pygame.draw.rect(DISP, (255, 0, 0), toolbar.rect[:3] + (4,))
 			if not mheld[0]:
@@ -2960,7 +2968,7 @@ def draw_menu():
 		elif toolbar.resizer:
 			pygame.draw.rect(DISP, (191, 127, 255), toolbar.rect[:3] + (4,))
 			toolbar.resizer = False
-	if not tick & 7 or sidebar.rect in modified:
+	if not tick + 4 & 7 or sidebar.rect in modified:
 		if sidebar.resizing:
 			pygame.draw.rect(DISP, (255, 0, 0), sidebar.rect[:2] + (4, sidebar.rect[3]))
 			if not mheld[0]:
@@ -2968,9 +2976,10 @@ def draw_menu():
 		elif sidebar.resizer:
 			pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
 			sidebar.resizer = False
-	if crosshair & 1 and (not tick & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
-		if sidebar_rendered:
+	if crosshair & 1 and (not tick + 4 & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
+		if globals().get("sidebar_rendered"):
 			sidebar_rendered.result()
+			globals()["sidebar_rendered"] = None
 		if crosshair & 3:
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
@@ -3305,9 +3314,6 @@ try:
 				update_menu()
 			if not toolbar.ripples and not sidebar.ripples and pc() - globals()["h-timer"] >= 8:
 				globals()["h-cache"].clear()
-			if globals().get("toolbar_wait"):
-				toolbar_wait.result()
-			toolbar_wait = None
 			if (toolbar.updated or not tick & 7) and toolbar.colour:
 				tc = toolbar.colour
 				highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
@@ -3813,8 +3819,16 @@ except Exception as ex:
 						futs.add(submit(os.remove, e.path))
 			else:
 				futs.add(submit(os.remove, e.path))
+	for fn in os.listdir("misc/cache"):
+		try:
+			os.remove("misc/cache/" + fn)
+		except:
+			pass
 	if os.path.exists("misc/temp.tmp"):
-		futs.add(submit(os.remove, "misc/temp.tmp"))
+		try:
+			os.remove("misc/temp.tmp")
+		except:
+			pass
 	for fut in futs:
 		try:
 			fut.result(timeout=1)

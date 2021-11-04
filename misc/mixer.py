@@ -52,7 +52,7 @@ class MultiAutoImporter:
 importer = MultiAutoImporter(
 	"numpy, math, cffi, soundcard, pygame, random, hashlib, orjson, time, traceback, base64",
 	"httpx, contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
-	"psutil", "subprocess",
+	"psutil", "subprocess, re",
 	pool=exc,
 	_globals=globals(),
 )
@@ -302,7 +302,10 @@ def sc_player(d):
 		player.dtype = np.int16
 		player.peak = 32767
 		player.resume = player.unpause
-		player.stop = player.pause
+		def stop():
+			player.pause()
+			player._data_ = ()
+		player.stop = stop
 	else:
 		player.__enter__()
 		player.type = "soundcard"
@@ -340,6 +343,15 @@ def sc_player(d):
 			if self.closed:
 				return
 			self.fut.set_result(None)
+	def play2(self):
+		channel = self.Channel(0)
+		while self._data_:
+			if self.closed or paused and not paused.done() or not fut and not alphakeys or cleared:
+				self._data_ = ()
+				return
+			if self._data_ and not channel.get_queue():
+				channel.queue(self._data_.popleft())
+			async_wait()
 	def write(data):
 		if player.closed:
 			return
@@ -355,7 +367,15 @@ def sc_player(d):
 				data = data.reshape((len(data) // cc, cc))
 			sound = pygame.sndarray.make_sound(data)
 			player.wait()
-			return player.Channel(0).queue(sound)
+			channel = player.Channel(0)
+			if channel.get_queue():
+				try:
+					player._data_.append(sound)
+				except AttributeError:
+					player._data_ = deque((sound,))
+				return verify()
+			channel.queue(sound)
+			return verify()
 		player.wait()
 		if not len(player._data_):
 			player._data_ = data
@@ -376,19 +396,21 @@ def sc_player(d):
 	player.close = close
 	def wait():
 		if player.type == "pygame":
-			while player.Channel(0).get_queue():
+			channel = player.Channel(0)
+			while len(player._data_) >= 4:
 				async_wait()
-			return
+			return verify()
 		if not len(player._data_):
 			return
 		verify()
-		while len(player._data_) > 3200 * cc:
+		while len(player._data_) > 6400 * cc:
 			async_wait()
 		while player.fut and not player.fut.done():
 			player.fut.result()
 	def verify():
 		if not player.playing or player.playing.done():
-			player.playing = submit(play, player)
+			func = play2 if player.type == "pygame" else play
+			player.playing = submit(func, player)
 	player.wait = wait
 	return player
 
@@ -518,44 +540,27 @@ def duration_est():
 			print_exc()
 		time.sleep(0.5)
 
+is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
+downloading = set()
 def download(url, fn):
 	try:
+		if fn in downloading:
+			return
 		cmd = ffmpeg_start
-		if is_url(url):
-			import random
-			youtube_base = "CONSENT=YES+cb.20210328-17-p0.en+FX"
-			headers = {
-				"Cookie": "%03d" % random.randint(0, 999) + ";",
-				"User-Agent": f"Mozilla/5.{random.randint(1, 9)}",
-				"DNT": "1",
-				"X-Forwarded-For": ".".join(str(random.randint(1, 254)) for _ in range(4)),
-			}
-			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
-			with reqx.stream("GET", url, follow_redirects=True, timeout=24, headers=headers) as resp:
-				if resp.status_code not in range(200, 400):
-					print(f"[DEBUG] Pre-emptive download terminated with HTTP status {resp.status_code}.")
-					return
-				try:
-					fsize = int(resp.headers["Content-Length"])
-				except (KeyError, ValueError):
-					fsize = 0
-				it = resp.iter_bytes()
-				with open(fi, "wb") as f:
-					if fsize:
-						f.truncate(fsize)
-					while True:
-						try:
-							b = next(it)
-							if not b:
-								raise StopIteration
-						except StopIteration:
-							break
-						except httpx.ReadTimeout:
-							continue
-						f.write(b)
-				if not os.path.getsize(fi):
-					print(f"[DEBUG] Pre-emptive download terminated with HTTP status {resp.status_code}.")
-					return
+		if is_youtube_stream(url):
+			downloading.add(fn)
+			try:
+				fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
+				args = (sys.executable, "downloader.py", "-q", "-threads", "3", "-attempts", "13", url, "../" + fi)
+				print(args)
+				subprocess.run(args, universal_newlines=True, cwd="misc")
+			except:
+				raise
+			finally:
+				downloading.discard(fn)
+			if not os.path.getsize(fi):
+				print(f"[DEBUG] Pre-emptive download returned empty.")
+				return
 			url = fi
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".pcm"):

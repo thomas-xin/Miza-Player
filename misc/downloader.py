@@ -131,7 +131,6 @@ def header():
 COLOURS = ["\x1b[38;5;16m█"]
 COLOURS.extend(f"\x1b[38;5;{i}m█" for i in range(232, 256))
 COLOURS.append("\x1b[38;5;15m█")
-updated = False
 
 def download(url, fn, resp=None, index=0, start=None, end=None):
 	size = 0
@@ -140,9 +139,6 @@ def download(url, fn, resp=None, index=0, start=None, end=None):
 		f = open(fn, "wb")
 	except:
 		f = open(fn, "rb+")
-	# if not random.randint(0, 16):
-	# 	print(f"Intentionally blocking thread {index}...")
-	# 	time.sleep(86400)
 	with f:
 		while True:
 			try:
@@ -161,6 +157,8 @@ def download(url, fn, resp=None, index=0, start=None, end=None):
 					if index and resp.code >= 400:
 						if resp.code in (429, 500, 503):
 							time.sleep(7 + random.random() * 4 + index / 2)
+						else:
+							globals()["attempts"] += 1
 						err = prio.submit(resp.read)
 						raise ConnectionError(resp.code, err.result(timeout=4).decode("utf-8").rstrip())
 					while True:
@@ -179,6 +177,8 @@ def download(url, fn, resp=None, index=0, start=None, end=None):
 						f.write(b)
 						size += len(b)
 						progress[index] = size
+						if quiet:
+							continue
 						total = sum(progress.values())
 						percentage = round(total / fsize * 100, 4)
 						s = f"\r{percentage}%"
@@ -191,7 +191,6 @@ def download(url, fn, resp=None, index=0, start=None, end=None):
 							s = "\n" + s[1:]
 						s += "\x1b[38;5;7m"
 						print(s, end="")
-						updated = True
 			except StopIteration:
 				break
 			except:
@@ -219,9 +218,13 @@ def upload(url, fn, resp=None, index=0, start=None, end=None):
 				if index and resp.status_code >= 400:
 					if resp.code in (429, 500, 503):
 						time.sleep(7 + random.random() * 4 + index / 2)
+					else:
+						globals()["attempts"] += 1
 					raise ConnectionError(resp.code, resp.text.rstrip())
 				size = end - start
 				progress[index] = size
+				if quiet:
+					continue
 				total = sum(progress.values())
 				ratio = total / fsize
 				percentage = round(ratio * 100, 4)
@@ -236,7 +239,6 @@ def upload(url, fn, resp=None, index=0, start=None, end=None):
 					s = "\n" + s[1:]
 				s += "\x1b[38;5;7m"
 				print(s, end="")
-				updated = True
 				raise StopIteration
 			except StopIteration:
 				break
@@ -248,7 +250,9 @@ def upload(url, fn, resp=None, index=0, start=None, end=None):
 	return fn
 
 
-uploading = verbose = notrain = False
+uploading = verbose = notrain = quiet = False
+attempts = 0
+max_attempts = float("inf")
 fn = None
 if len(sys.argv) < 2:
 	url = input("Please enter a URL to download from: ")
@@ -258,6 +262,9 @@ else:
 	if "-v" in args:
 		args.remove("-v")
 		verbose = True
+	if "-q" in args:
+		args.remove("-q")
+		quiet = True
 	if "-u" in args:
 		args.remove("-u")
 		uploading = True
@@ -270,6 +277,12 @@ else:
 		args = args[:i] + args[i + 2:]
 	else:
 		threads = 1
+	if "-attempts" in args:
+		i = args.index("-attempts")
+		max_attempts = int(args[i + 1])
+		args = args[:i] + args[i + 2:]
+	else:
+		max_attempts = 1
 	url = args[1] if len(args) > 1 else None
 	if not url:
 		url = input("Please enter a URL to download from: ")
@@ -341,7 +354,7 @@ if uploading:
 	print(f"{fs} bytes successfully uploaded in {time_disp(s)}, average download speed {bps}bps")
 	raise SystemExit
 
-
+PID = os.getpid()
 if not os.path.exists("cache"):
 	os.mkdir("cache")
 if not os.path.exists("files"):
@@ -411,6 +424,9 @@ if threads > 1:
 	workers = [None] * threads
 	load = math.ceil(fsize / threads)
 	delay = 1
+	tt = utc() - t
+	if tt < 1:
+		time.sleep(1 - tt)
 	tt = None
 	for i in range(threads):
 		start = i * load
@@ -418,7 +434,7 @@ if threads > 1:
 			end = None
 		else:
 			end = min(start + load, fsize)
-		workers[i] = submit(download, url, f"cache/thread-{i}", resp, index=i, start=start, end=end)
+		workers[i] = submit(download, url, f"cache/${PID}-{i}", resp, index=i, start=start, end=end)
 		resp = None
 		try:
 			j = max(0, i - 2)
@@ -433,6 +449,13 @@ if threads > 1:
 		fut = workers[0]
 		if tt is None and fut.done():
 			tt = utc() - t
+		if attempts > max_attempts:
+			try:
+				import psutil
+			except ModuleNotFoundError:
+				subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "psutil"])
+				import psutil
+			psutil.Process().kill()
 	if os.path.exists(fn):
 		os.remove(fn)
 	fi = fut.result()
@@ -441,6 +464,13 @@ if threads > 1:
 	os.rename(fi, fn)
 	with open(fn, "ab") as f:
 		for i, fut in enumerate(workers[1:]):
+			if attempts > max_attempts:
+				try:
+					import psutil
+				except ModuleNotFoundError:
+					subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "psutil"])
+					import psutil
+				psutil.Process().kill()
 			for x in range(2147483648):
 				try:
 					fi = fut.result(timeout=tt)
@@ -453,7 +483,7 @@ if threads > 1:
 							end = None
 						else:
 							end = min(start + load, fsize)
-						fut = workers[i + 1] = prio.submit(download, url, f"cache/thread-{i + 1}", resp, index=i + 1, start=start, end=end)
+						fut = workers[i + 1] = prio.submit(download, url, f"cache/${PID}-{i + 1}", resp, index=i + 1, start=start, end=end)
 					continue
 				else:
 					if x:

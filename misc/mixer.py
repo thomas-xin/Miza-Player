@@ -304,6 +304,7 @@ def sc_player(d):
 		player.resume = player.unpause
 		def stop():
 			player._data_ = ()
+		player.pause = stop
 		player.stop = stop
 		try:
 			player.resume()
@@ -350,13 +351,6 @@ def sc_player(d):
 	def play2(self):
 		channel = self.Channel(0)
 		while True:
-			if self.closed or paused and not paused.done() or not fut and not alphakeys or cleared:
-				sound = None
-				while len(self._data_) >= 4:
-					sound = self._data_.popleft()
-				if sound is not None:
-					channel.queue(sound)
-				return
 			if self._data_ and not channel.get_queue():
 				channel.queue(self._data_.popleft())
 			async_wait()

@@ -2923,7 +2923,7 @@ def draw_menu():
 		options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
 		mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
 	tc = toolbar.colour
-	if tc and toolbar_wait and tick + 4 & 7:
+	if tc and globals().get("toolbar_wait") and tick + 4 & 7:
 		toolbar_wait.result()
 		globals()["toolbar_wait"] = None
 		surf = toolbar.surf

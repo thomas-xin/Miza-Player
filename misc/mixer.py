@@ -303,8 +303,6 @@ def sc_player(d):
 		player.peak = 32767
 		player.resume = player.unpause
 		def stop():
-			player.pause()
-			# pygame.mixer.Channel(0).stop()
 			player._data_ = ()
 		player.stop = stop
 		try:

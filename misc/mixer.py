@@ -553,6 +553,59 @@ def duration_est():
 			print_exc()
 		time.sleep(0.5)
 
+def proxy_download(url, fn=None, download=True, timeout=24):
+	reqx = globals().get("reqx")
+	if not reqx:
+		import httpx
+		try:
+			reqx = httpx.Client(http2=True)
+		except:
+			reqx = httpx.Client(http2=False)
+	print(url, fn)
+	loc = random.choice(("eu", "us"))
+	i = random.randint(1, 17)
+	resp = reqx.post(
+		f"https://{loc}{i}.proxysite.com/includes/process.php?action=update",
+		data=dict(d=url, allowCookies="on"),
+	)
+	while resp.status_code == 302:
+		print("Proxy download redirecting", resp)
+		if resp.status_code not in range(200, 400):
+			raise ConnectionError(resp.status_code, resp)
+		if not download:
+			resp = reqx.head(resp.headers["Location"], timeout=timeout)
+			if resp.status_code in range(200, 300):
+				return str(resp.url)
+			continue
+		if not fn:
+			resp = reqx.get(resp.headers["Location"], timeout=timeout)
+			if resp.status_code in range(200, 300):
+				return resp.content
+			continue
+		with reqx.stream("GET", resp.headers["Location"], timeout=timeout) as resp:
+			if resp.status_code in range(200, 300):
+				it = resp.iter_bytes()
+				if isinstance(fn, str):
+					with open(fn, "wb") as f:
+						try:
+							while True:
+								b = next(it)
+								if not b:
+									break
+								f.write(b)
+						except StopIteration:
+							pass
+				else:
+					try:
+						while True:
+							b = next(it)
+							if not b:
+								break
+							f.write(b)
+					except StopIteration:
+						pass
+				return
+
 is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
 downloading = set()
 def download(url, fn):
@@ -562,19 +615,20 @@ def download(url, fn):
 		cmd = ffmpeg_start
 		if is_youtube_stream(url):
 			downloading.add(fn)
+			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 			try:
-				fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
-				args = (sys.executable, "downloader.py", "-q", "-threads", "3", "-attempts", "13", url, "../" + fi)
-				print(args)
-				subprocess.run(args, timeout=1800, universal_newlines=True, cwd="misc")
-			except:
-				raise
-			finally:
-				downloading.discard(fn)
-			if not os.path.getsize(fi):
-				print(f"[DEBUG] Pre-emptive download returned empty.")
+				proxy_download(url, fi)
+			except ConnectionError as ex:
+				print(f"[DEBUG] Pre-emptive download errored out with status {ex.errno}.")
 				return
-			url = fi
+			if os.path.getsize(fi):
+				with open(fi, "rb") as f:
+					if f.read(15) != b"<!DOCTYPE html>":
+						url = fi
+					else:
+						print("[DEBUG] Pre-emptive download returned invalid HTML.")
+			else:
+				print("[DEBUG] Pre-emptive download returned empty.")
 		if url.endswith(".pcm") and fn.endswith(".pcm") and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
 			if url != fn:
 				os.rename(url, fn)
@@ -1370,18 +1424,19 @@ def play(pos):
 						fut = submit(channel.write, sample)
 						fut.result(timeout=0.8)
 					except:
-						if paused:
-							break
-						print_exc()
-						print(f"{channel.type} timed out.")
-						globals()["waiting"] = concurrent.futures.Future()
-						if i > 1:
-							PROC.terminate()
-						else:
-							channel.close()
-						globals()["channel"] = get_channel()
-						globals()["waiting"], w = None, waiting
-						w.set_result(None)
+						PROC.terminate()
+						# if paused:
+							# break
+						# print_exc()
+						# print(f"{channel.type} timed out.")
+						# globals()["waiting"] = concurrent.futures.Future()
+						# if i > 1:
+							# PROC.terminate()
+						# else:
+							# channel.close()
+						# globals()["channel"] = get_channel()
+						# globals()["waiting"], w = None, waiting
+						# w.set_result(None)
 					else:
 						break
 				if OUTPUT_VIDEO and settings.spectrogram > 0:
@@ -1590,16 +1645,17 @@ def piano_player():
 						fut = submit(channel.write, sample)
 						fut.result(timeout=0.8)
 					except:
-						print_exc()
-						print(f"{channel.type} timed out.")
-						globals()["waiting"] = concurrent.futures.Future()
-						if i > 1:
-							PROC.terminate()
-						else:
-							channel.close()
-						globals()["channel"] = get_channel()
-						globals()["waiting"], w = None, waiting
-						w.set_result(None)
+						PROC.terminate()
+						# print_exc()
+						# print(f"{channel.type} timed out.")
+						# globals()["waiting"] = concurrent.futures.Future()
+						# if i > 1:
+							# PROC.terminate()
+						# else:
+							# channel.close()
+						# globals()["channel"] = get_channel()
+						# globals()["waiting"], w = None, waiting
+						# w.set_result(None)
 					else:
 						break
 				if OUTPUT_VIDEO and settings.spectrogram > 0:

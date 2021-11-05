@@ -586,25 +586,18 @@ def proxy_download(url, fn=None, download=True, timeout=24):
 			if resp.status_code in range(200, 300):
 				it = resp.iter_bytes()
 				if isinstance(fn, str):
-					with open(fn, "wb") as f:
-						try:
-							while True:
-								b = next(it)
-								if not b:
-									break
-								f.write(b)
-						except StopIteration:
-							pass
+					f = open(fn, "wb")
 				else:
-					try:
-						while True:
-							b = next(it)
-							if not b:
-								break
-							f.write(b)
-					except StopIteration:
-						pass
-				return
+					f = fn
+				try:
+					while True:
+						b = next(it)
+						if not b:
+							break
+						f.write(b)
+				except StopIteration:
+					pass
+				return fn
 
 is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
 downloading = set()

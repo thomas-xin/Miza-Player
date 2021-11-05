@@ -1673,8 +1673,8 @@ def mixer_stdout():
 					else:
 						s = s.rstrip()
 						break
-				else:
-					return
+				elif mixer and not mixer.is_running():
+					restart_mixer()
 			else:
 				if not mixer or not mixer.is_running():
 					time.sleep(0.25)

@@ -211,7 +211,7 @@ def render_sidebar(dur=0):
 			lq = nan
 		for i, entry in enumerate(queue[base:base + maxitems], base):
 			if options.control.presearch and i > 1 and (entry.duration is None or entry.get("research")) and (queue[i - 1].duration or i == base):
-				ensure_next(i)
+				ensure_next(entry)
 			if entry.get("selected") and sidebar.get("dragging"):
 				x = 4 + offs
 				y = round(Z + entry.get("pos", 0) * 32)

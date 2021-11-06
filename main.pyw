@@ -1372,8 +1372,12 @@ def start_player(pos=None, force=False):
 		entry = queue[0]
 	except IndexError:
 		return skip()
-	if len(queue) > 1 and control.loop < 2:
-		ensure_next(1)
+	if control.loop < 2 and len(queue) > 1:
+		if control.shuffle:
+			ensure_next(queue[1])
+		else:
+			for e in queue[1:min(len(queue), 4)]:
+				ensure_next(e)
 	duration = entry.duration or 300
 	if pos is None:
 		if audio.speed >= 0:
@@ -1744,17 +1748,19 @@ def mixer_stdout():
 
 submit(mixer_stdout)
 
-def ensure_next(i=1):
-	if i <= 1 or all(e.done() for e in enext):
-		enext.clear()
-		if len(queue) > i:
-			e = queue[i]
-			e.duration = e.get("duration") or False
-			e.pop("research", None)
-			enext.add(submit(prepare, e, force=i <= 1, download=i <= 1))
-			if i <= 1 and not e.get("lyrics_loading") and not e.get("lyrics"):
-				e.lyrics_loading = True
-				enext.add(submit(render_lyrics, e))
+enext = {}
+def ensure_next(e):
+	i = e.get("url")
+	if not i:
+		return
+	if i in enext:
+		return
+	enext[i] = submit(prepare, e, force=True, download=True)
+	e.duration = e.get("duration") or False
+	e.pop("research", None)
+	if not e.get("lyrics_loading") and not e.get("lyrics"):
+		e.lyrics_loading = True
+		submit(render_lyrics, e)
 
 def enqueue(entry, start=True):
 	try:
@@ -3137,7 +3143,6 @@ K_PERIOD = 55
 K_SLASH = 56
 K_DELETE = 76
 reset_menu()
-enext = set()
 foc = True
 minimised = False
 mpos = mpos2 = mpprev = (-inf,) * 2
@@ -3510,7 +3515,7 @@ try:
 						else:
 							col = (255, 0, 0)
 						s = f"Loading lyrics for {entry.name}..."
-						size = max(20, min(40, (screensize[0] - sidebar_width) * 2 // len(s)))
+						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
 						Enqueue(
 							message_display,
 							s,
@@ -3534,7 +3539,7 @@ try:
 							(8, 92),
 						)
 						s = entry.lyrics[0]
-						size = max(20, min(40, (screensize[0] - sidebar_width) * 2 // len(s)))
+						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
 						Enqueue(
 							message_display,
 							s,
@@ -3567,7 +3572,7 @@ try:
 							s = f"No lyrics found for {entry.name}."
 						else:
 							s = entry.lyrics[0]
-						size = max(20, min(40, (screensize[0] - sidebar_width) * 2 // len(s)))
+						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
 						Enqueue(
 							message_display,
 							s,

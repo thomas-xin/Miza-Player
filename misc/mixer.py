@@ -605,7 +605,7 @@ def download(url, fn):
 				proxy_download(url, fi)
 			except ConnectionError as ex:
 				print(f"[DEBUG] Pre-emptive download errored out with status {ex.errno}.")
-				return
+				raise StopIteration
 			if os.path.getsize(fi):
 				with open(fi, "rb") as f:
 					if f.read(15) != b"<!DOCTYPE html>":
@@ -626,8 +626,12 @@ def download(url, fn):
 		cmd += ("-ar", "48k", "-ac", "2", fn)
 		print(cmd)
 		subprocess.run(cmd)
+	except StopIteration:
+		pass
 	except:
 		print_exc()
+	if is_url(url) and (not os.path.exists(fn) or os.path.getsize(fn) < 48000):
+		point(f"~R {url}")
 
 
 removing = set()

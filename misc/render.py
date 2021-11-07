@@ -882,9 +882,9 @@ def _render_toolbar(x):
 		print_exc()
 	finally:
 		locks[2] = 0
-	tool_lock.set_result(None)
-	sys.__stdout__.buffer.write(b"~r" + x)
-	sys.__stdout__.flush()
+		tool_lock.set_result(None)
+		sys.__stdout__.buffer.write(b"~r" + x)
+		sys.__stdout__.flush()
 
 def event():
 	global tool_lock

@@ -1376,7 +1376,7 @@ def start_player(pos=None, force=False):
 		if control.shuffle:
 			ensure_next(queue[1])
 		else:
-			for e in queue[1:min(len(queue), 4)]:
+			for e in queue[1:min(len(queue), 8)]:
 				ensure_next(e)
 	duration = entry.duration or 300
 	if pos is None:
@@ -1716,6 +1716,16 @@ def mixer_stdout():
 				submit(start_player, 0, True)
 				print("Re-evaluating file stream...")
 				submit(reevaluate)
+				continue
+			if s[0] == "R":
+				url = s[2:]
+				for e in queue:
+					if e.url == url or e.get("stream") == url:
+						break
+				else:
+					continue
+				submit(prepare, e, force=2, download=True)
+				print("Re-evaluating file download...")
 				continue
 			if s == "V":
 				globals()["video-render"].set_result(None)

@@ -605,15 +605,15 @@ def download(url, fn):
 				proxy_download(url, fi)
 			except ConnectionError as ex:
 				print(f"[DEBUG] Pre-emptive download errored out with status {ex.errno}.")
-				raise StopIteration
-			if os.path.getsize(fi):
-				with open(fi, "rb") as f:
-					if f.read(15) != b"<!DOCTYPE html>":
-						url = fi
-					else:
-						print("[DEBUG] Pre-emptive download returned invalid HTML.")
 			else:
-				print("[DEBUG] Pre-emptive download returned empty.")
+				if os.path.getsize(fi):
+					with open(fi, "rb") as f:
+						if f.read(15) != b"<!DOCTYPE html>":
+							url = fi
+						else:
+							print("[DEBUG] Pre-emptive download returned invalid HTML.")
+				else:
+					print("[DEBUG] Pre-emptive download returned empty.")
 		if url.endswith(".pcm") and fn.endswith(".pcm") and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
 			if url != fn:
 				os.rename(url, fn)

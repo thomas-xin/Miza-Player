@@ -623,6 +623,7 @@ def download(url, fn):
 		if url.endswith(".pcm") and fn.endswith(".pcm") and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
 			if url != fn:
 				os.rename(url, fn)
+			downloading.discard(fn)
 			return
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".pcm"):
@@ -642,6 +643,7 @@ def download(url, fn):
 		except:
 			pass
 		point(f"~R {url}")
+	downloading.discard(fn)
 
 
 removing = set()

@@ -559,6 +559,7 @@ def proxy_download(url, fn=None, download=True, timeout=24):
 	resp = reqx.post(
 		f"https://{loc}{i}.proxysite.com/includes/process.php?action=update",
 		data=dict(d=url, allowCookies="on"),
+		timeout=timeout,
 	)
 	while resp.status_code == 302:
 		print("Proxy download redirecting", resp)

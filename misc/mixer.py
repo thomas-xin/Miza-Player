@@ -614,6 +614,11 @@ def download(url, fn):
 							print("[DEBUG] Pre-emptive download returned invalid HTML.")
 				else:
 					print("[DEBUG] Pre-emptive download returned empty.")
+				if url != fi:
+					try:
+						os.remove(fi)
+					except:
+						pass
 		if url.endswith(".pcm") and fn.endswith(".pcm") and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
 			if url != fn:
 				os.rename(url, fn)
@@ -631,6 +636,10 @@ def download(url, fn):
 	except:
 		print_exc()
 	if is_url(url) and (not os.path.exists(fn) or os.path.getsize(fn) < 48000):
+		try:
+			os.remove(fn)
+		except:
+			pass
 		point(f"~R {url}")
 
 

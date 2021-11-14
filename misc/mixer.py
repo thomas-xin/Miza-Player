@@ -598,14 +598,16 @@ def download(url, fn):
 	try:
 		if fn in downloading:
 			return
+		downloading.add(fn)
 		cmd = ffmpeg_start
-		if is_youtube_stream(url):
-			downloading.add(fn)
+		if is_youtube_stream(url) and len(downloading) > 1:
 			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 			try:
 				proxy_download(url, fi)
 			except ConnectionError as ex:
 				print(f"[DEBUG] Pre-emptive download errored out with status {ex.errno}.")
+			except:
+				print_exc()
 			else:
 				if os.path.getsize(fi):
 					with open(fi, "rb") as f:
@@ -1067,7 +1069,7 @@ res_scale = 84000
 dfts = res_scale // 2 + 1
 fff = np.fft.fftfreq(res_scale, 1 / 48000)[:dfts]
 fftrans = np.zeros(dfts, dtype=np.uint16)
-freqscale = 7
+freqscale = 4
 
 bins = barcount * freqscale - 1
 for i, x in enumerate(fff):
@@ -1142,8 +1144,6 @@ def spectrogram_update():
 		if settings.spectrogram > 0:
 			if settings.spectrogram == 2:
 				amp = supersample(amp, barcount // 4 + 1, in_place=True)
-			elif settings.spectrogram == 4:
-				amp = supersample(amp, barcount * 2 - 1, in_place=True)
 			else:
 				amp = supersample(amp, barcount, in_place=True)
 			amp = np.asanyarray(amp, dtype=np.float32)

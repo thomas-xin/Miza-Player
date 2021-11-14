@@ -113,8 +113,7 @@ while lower_bound[0] not in "0123456789-":
 lowest_note += int(lower_bound) * 12 - 11
 
 barcount = int(highest_note - lowest_note) + 1 + 2
-barcount2 = barcount * 2 - 1
-barcount3 = barcount // 4 + 1
+barcount2 = barcount // 4 + 1
 barheight = 720
 
 PARTICLES = set()
@@ -259,7 +258,7 @@ prism_setup = np.fromiter(map(int, """
 
 def animate_prism(changed=False):
 	glClear(GL_COLOR_BUFFER_BIT)
-	bars = bars3
+	bars = bars2
 	x = len(bars)
 	try:
 		if changed:
@@ -603,7 +602,7 @@ def animate_ripple(changed=False):
 		return
 	V, R = vertices
 	glClear(GL_COLOR_BUFFER_BIT)
-	bars = bars2[::-1]
+	bars = globals()["bars"][::-1]
 	try:
 		if changed:
 			raise KeyError
@@ -622,8 +621,8 @@ def animate_ripple(changed=False):
 			glMatrixMode(GL_MODELVIEW)
 			glLoadIdentity()
 			ar = ssize2[0] / ssize2[1]
-			w = 1 if ar >= 1 else ar
-			h = 1 if ar <= 1 else 1 / ar
+			w = 1 if ar <= 1 else ar
+			h = 1 if ar >= 1 else 1 / ar
 			glOrtho(-w, w, -h, h, -1, 1)
 		else:
 			glLoadIdentity()
@@ -641,7 +640,7 @@ def animate_ripple(changed=False):
 		spec.R = R
 	w, h = specsize
 	depth = 3
-	glLineWidth(specsize[0] / 64 / depth)
+	glLineWidth(specsize[0] / 144 / depth)
 	if R:
 		rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
 		ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
@@ -740,7 +739,6 @@ def animate_ripple(changed=False):
 
 bars = [Bar(i - 1, barcount) for i in range(barcount)]
 bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
-bars3 = [Bar(i - 1, barcount3) for i in range(barcount3)]
 last = None
 # r = 23 / 24
 # s = 1 / 48
@@ -838,8 +836,6 @@ def spectrogram_render(bars):
 def ensure_bars(b):
 	amp = np.frombuffer(b, dtype=np.float32)
 	if specs == 2:
-		bi = bars3
-	elif specs == 4:
 		bi = bars2
 	else:
 		bi = bars
@@ -958,14 +954,12 @@ def special():
 			if comm == b"~r":
 				ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
 				if specs == 2:
-					bi = bars3
-				elif specs == 4:
 					bi = bars2
 				else:
 					bi = bars
 				if BarInput:
 					try:
-						if BarSem >= 2:
+						if BarSem >= 8:
 							raise TimeoutError
 						BarSem += 1
 						BarOutput.result(timeout=0.03)

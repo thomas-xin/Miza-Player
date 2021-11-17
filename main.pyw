@@ -1265,6 +1265,10 @@ def render_lyrics(entry):
 def prepare(entry, force=False, download=False):
 	if not entry.url:
 		return
+	fn = "cache/~" + shash(entry.url) + ".pcm"
+	if os.path.exists(fn) and os.path.getsize(fn):
+		entry.stream = fn
+		return fn
 	stream = entry.get("stream", "")
 	if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
 		if not is_url(entry.url):
@@ -1275,7 +1279,6 @@ def prepare(entry, force=False, download=False):
 				duration = info[0]
 				if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
 					fi = stream
-					fn = "cache/~" + shash(entry.url) + ".pcm"
 					if not os.path.exists(fn):
 						fn = select_and_convert(fi)
 					duration = get_duration_2(fn)[0]
@@ -1292,7 +1295,6 @@ def prepare(entry, force=False, download=False):
 		except requests.ConnectionError:
 			return time.sleep(2)
 		except:
-			fn = "cache/~" + shash(entry.url) + ".pcm"
 			if os.path.exists(fn):
 				duration = get_duration_2(fn)[0]
 				stream = entry.stream = fn
@@ -1338,7 +1340,6 @@ def prepare(entry, force=False, download=False):
 			duration = info[0]
 			if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
 				fi = stream
-				fn = "cache/~" + shash(entry.url) + ".pcm"
 				if not os.path.exists(fn):
 					fn = select_and_convert(fi)
 				duration = get_duration_2(fn)[0]
@@ -1355,7 +1356,6 @@ def prepare(entry, force=False, download=False):
 		duration = info[0]
 		if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
 			fi = stream
-			fn = "cache/~" + shash(entry.url) + ".pcm"
 			if not os.path.exists(fn):
 				fn = select_and_convert(fi)
 			duration = get_duration_2(fn)[0]

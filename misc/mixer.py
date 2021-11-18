@@ -1097,8 +1097,8 @@ def spectrogram_render():
 			vertices = settings.get("spiral-vertices")
 		else:
 			vertices = 0
-		t2 = frame / 30
 		d2 = 1 / 30
+		t2 = round_random(frame) / 30
 		b = b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2)))
 		binfo = b"~r" + np.float64(len(b)).data + b
 		try:
@@ -1358,9 +1358,13 @@ def play(pos):
 						except:
 							sample = sample * settings.volume
 					if s is not None:
-						if s.dtype != channel.dtype:
-							s *= channel.peak
-							s = s.astype(channel.dtype)
+						if sample.dtype != np.float32:
+							try:
+								globals()["s-temp32"][:] = sample
+							except KeyError:
+								globals()["s-temp32"] = sample.astype(np.float32)
+							sample = globals()["s-temp32"]
+							s *= 32767
 						s += sample
 						sample = s
 				if s is not None:

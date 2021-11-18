@@ -1,4 +1,5 @@
 import pygame.gfxdraw as gfxdraw
+# import pyglet
 pc = time.perf_counter
 
 FLAGS = 0
@@ -819,7 +820,14 @@ def spinnies():
 submit(spinnies)
 
 def render_spinnies():
-	sfut.result()
+	# try:
+		# window = globals()["toolbar-window"]
+		# if window.get_size() != DISP.get_size():
+			# window.close()
+			# raise KeyError
+	# except KeyError:
+		# window = globals()["toolbar-window"] = pyglet.window.Window(*DISP.get_size(), visible=False)
+		# window.switch_to()
 	length = progress.length
 	width = progress.width
 	x = progress.pos[0] + round(length * progress.vis / player.end) - width // 2 if not progress.seeking or player.end < inf else mpos2[0]
@@ -827,6 +835,7 @@ def render_spinnies():
 	r = max(1, progress.spread * toolbar.pause.radius)
 	if r < 2 and not progress.particles and not is_active():
 		return
+	sfut.result()
 	ripple_f = globals().get("s-ripple", concentric_circle)
 	ripple_f(
 		DISP,
@@ -839,11 +848,14 @@ def render_spinnies():
 		if not p:
 			continue
 		col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*p.hsv)]
-		a = round(min(255, (p.life - 2.5) * 12))
+		a = round_random(min(255, (p.life - 2.5) * 12))
 		for j in shuffle(range(3)):
+			if not a:
+				continue
 			point = [cos(p.angle + j * tau / 3) * p.rad, sin(p.angle + j * tau / 3) * p.rad]
 			pos = [round_random(x) for x in (p.centre[0] + point[0], p.centre[1] + point[1])]
-			ri = max(1, round_random(p.life ** 1.2 * p.r ** 0.7 / 16 + 0.5))
+			li = p.life ** 1.2 * p.r ** 0.7 / 16 + 0.5
+			ri = max(1, round_random(li))
 			if ri > 2:
 				reg_polygon_complex(
 					DISP,
@@ -857,6 +869,13 @@ def render_spinnies():
 					repetition=ri - 2,
 					soft=True,
 				)
+			elif ri > 1:
+				gfxdraw.filled_circle(
+					DISP,
+					*pos,
+					1,
+					col + [a],
+				)
 			else:
 				gfxdraw.aacircle(
 					DISP,
@@ -869,10 +888,11 @@ def render_spinnies():
 	d = abs(pc() % 2 - 1)
 	hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
 	col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
+	al = 159 if r else 255
 	for i in shuffle(range(3)):
 		a = progress.angle + i / 3 * tau
 		point = [cos(a) * r, sin(a) * r]
-		p = (x + point[0], progress.pos[1] + point[1])
+		p = (round_random(x + point[0]), round_random(progress.pos[1] + point[1]))
 		ri = max(7, round_random(r ** 0.7 / 1.2 + 2))
 		reg_polygon_complex(
 			DISP,
@@ -881,11 +901,14 @@ def render_spinnies():
 			0,
 			ri,
 			ri,
-			alpha=159 if r else 255,
+			alpha=al,
 			thickness=2,
 			repetition=ri - 2,
 			soft=True,
 		)
+	# im = pyglet.image.get_buffer_manager().get_color_buffer().get_image_data()
+	# surf = pygame.image.frombuffer(im.get_data(), window.get_size(), "RGBA")
+	# return surf
 
 globals()["tool-vals"] = multiprocessing.shared_memory.SharedMemory(
 	name=f"Miza-Player-{hwnd}-tool-vals",
@@ -1175,7 +1198,9 @@ def render_toolbar():
 			font="Comic Sans MS",
 			colour=c,
 		)
-		fut = render_spinnies()
+		surf = render_spinnies()
+		if surf:
+			DISP.blit(surf, (0, 0))
 		a = int(progress.alpha)
 		if a >= 16:
 			n = round(progress.num)

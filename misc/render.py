@@ -705,7 +705,7 @@ def animate_ripple(changed=False):
 	if "linearray" not in globals() or linearray.maxlen != maxlen + 1:
 		globals()["linearray"] = deque(maxlen=maxlen + 1)
 	elif len(linearray) > maxlen:
-		vertarray = linearray.popleft()[-1].swapaxes(0, 1)[:len(bars)].swapaxes(0, 1)
+		vertarray = linearray.popleft()[1]
 	if vertarray is None:
 		vertarray = np.empty((depth * V, len(bars), 3), dtype=np.float32)
 	angle = spec.angle + tau - tau / V
@@ -720,15 +720,15 @@ def animate_ripple(changed=False):
 		spec.angle = (spec.angle + x) % tau
 		zs += x
 	rva = np.repeat(vertarray, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
-	linearray.append([colours, rva])
+	linearray.append([colours, vertarray, rva])
 	r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
 
 	if skipping:
-		for c, _ in linearray:
+		for c, _, _ in linearray:
 			c.T[-1] *= r
 		return
 
-	for c, verts in linearray:
+	for c, _, verts in linearray:
 		glColorPointer(4, GL_FLOAT, 0, c.ravel())
 		verts.T[-1][:] = hi
 		glVertexPointer(3, GL_FLOAT, 0, verts.ravel())

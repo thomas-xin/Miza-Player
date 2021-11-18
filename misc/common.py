@@ -472,7 +472,7 @@ def start_mixer():
 	return mixer
 
 def start_display():
-	global DISP, screensize2, ICON, ICON_DISP, user32
+	global screensize2, ICON, ICON_DISP, user32
 	appid = "Miza Player \x7f"
 	ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
 	user32 = ctypes.windll.user32
@@ -483,12 +483,10 @@ def start_display():
 		ICON_DISP = ""
 		pygame.display.set_icon(ICON)
 	pygame.display.set_caption("Miza Player")
-	# import glfw
-	# globals()["glfw"] = glfw
-	# glfw.init()
-	# glutInitDisplayMode(GL_RGB)
-	globals()["FLAGS"] = 0# | pygame.HWSURFACE | pygame.DOUBLEBUF | pygame.OPENGL
-	DISP = pygame.display.set_mode(options.screensize, FLAGS | pygame.RESIZABLE, vsync=True)
+	import pyglet
+	globals()["FLAGS"] = 0
+	# globals()["DISP"] = pyglet.window.Window(screensize, )
+	globals()["DISP"] = pygame.display.set_mode(options.screensize, FLAGS | pygame.RESIZABLE, vsync=True)
 	screensize2 = list(options.screensize)
 	pygame.display.set_allow_screensaver(True)
 
@@ -569,15 +567,14 @@ def get_focused(replace=False):
 	if is_unfocused():
 		return
 	mpc = pygame.mouse.get_pos()
-	# if not in_rect(mpc, (0, 0, *window.get_size())):
-	#	 return
-	if replace and not mouse_pos_check:
-		mouse_pos_check = mpc
 	if mpc != mouse_pos_check:
 		if replace:
 			mouse_pos_check = mpc
 		return True
-	if any(i < 0 for i in mouse_rel_pos(False)):
+	mpos = mouse_rel_pos(False)
+	if any(i < 0 for i in mpos):
+		return
+	if any(i >= j for i, j in zip(mpos, screensize)):
 		return
 	return True
 

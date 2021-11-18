@@ -1270,9 +1270,13 @@ def prepare(entry, force=False, download=False):
 		entry.stream = fn
 		return fn
 	stream = entry.get("stream", "")
+	if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
+		entry.pop("stream", None)
+		stream = ""
 	if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
 		if not is_url(entry.url):
-			entry.stream = os.path.exists(entry.url) and entry.url
+			if os.path.exists(entry.url):
+				stream = entry.stream = entry.url
 			duration = entry.duration
 			if not duration:
 				info = get_duration_2(stream)
@@ -1333,7 +1337,7 @@ def prepare(entry, force=False, download=False):
 			stream = ytdl.get_stream(entry, force=True, download=False)
 		globals()["queue-length"] = -1
 	elif not is_url(stream) and not os.path.exists(stream):
-		entry.stream = os.path.exists(entry.url) and entry.url
+		entry.stream = entry.url
 		duration = entry.duration
 		if not duration:
 			info = get_duration_2(stream)
@@ -2346,7 +2350,7 @@ def render_settings(dur, ignore=False):
 			rv = round_min(math.round(v * 32) / 32)
 			if type(rv) is int and rv not in srange:
 				v = rv
-		if hovered and not hovertext:
+		if hovered and not hovertext or aediting[opt]:
 			hovertext = cdict(
 				text=str(round(v * 100, 2)) + "%",
 				size=10,
@@ -2948,83 +2952,6 @@ def draw_menu():
 			surf,
 			toolbar.rect[:2],
 		)
-		for i, button in enumerate(toolbar.buttons):
-			if i and toolbar.editor:
-				break
-			if not button.get("rect"):
-				continue
-			if in_rect(mpos, button.rect):
-				lum = 191
-			else:
-				lum = 96
-			lum += button.get("flash", 0)
-			hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
-			light = 1 - (1 - hls[1]) / 4
-			if hls[2]:
-				sat = 1 - (1 - hls[2]) / 2
-			else:
-				sat = 0
-			col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
-			rounded_bev_rect(
-				DISP,
-				col,
-				button.rect,
-				3,
-				background=toolbar.colour,
-			)
-			if i == 2:
-				val = control.shuffle
-			elif i == 1:
-				val = control.loop
-			else:
-				val = -1
-			if val == 2:
-				size = button.sprite.get_size()
-				if i > 1:
-					sprite = quadratic_gradient(size, pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
-				else:
-					sprite = radial_gradient(size, -pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
-				sprite.blit(
-					button.sprite,
-					(0, 0),
-					special_flags=pygame.BLEND_RGBA_MULT,
-				)
-			elif val == 1:
-				sprite = button.on
-			elif val == 0:
-				sprite = button.off
-			else:
-				sprite = button.sprite
-			blit_complex(
-				DISP,
-				sprite,
-				(button.rect[0] + 3, button.rect[1] + 3),
-			)
-			if val == 2:
-				message_display(
-					"1",
-					12,
-					(button.rect[0] + button.rect[2] - 4, button.rect[1] + button.rect[3] - 8),
-					colour=(0,) * 3,
-					surface=DISP,
-					font="Comic Sans MS",
-					cache=True,
-				)
-		for i, button in enumerate(toolbar.buttons):
-			if i and toolbar.editor:
-				break
-			if button.get("rect"):
-				if in_rect(mpos, button.rect):
-					cm = abs(pc() % 1 - 0.5) * 0.328125
-					c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
-					hovertext = cdict(
-						text=button.name,
-						size=15,
-						colour=c,
-						font="Rockwell",
-						offset=-19,
-					)
-					crosshair |= 4
 		modified.add(toolbar.rect)
 	if toolbar.editor:
 		editor_toolbar()
@@ -3447,6 +3374,85 @@ try:
 								fill_ratio=1 / 3,
 								alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
 							)
+					for i, button in enumerate(toolbar.buttons):
+						if i and toolbar.editor:
+							break
+						if not button.get("rect"):
+							continue
+						if in_rect(mpos, button.rect):
+							lum = 191
+						else:
+							lum = 96
+						lum += button.get("flash", 0)
+						hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
+						light = 1 - (1 - hls[1]) / 4
+						if hls[2]:
+							sat = 1 - (1 - hls[2]) / 2
+						else:
+							sat = 0
+						col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
+						rect = list(button.rect)
+						rect[1] += toolbar_height - screensize[1]
+						rounded_bev_rect(
+							surf,
+							col,
+							rect,
+							3,
+							background=toolbar.colour,
+						)
+						if i == 2:
+							val = control.shuffle
+						elif i == 1:
+							val = control.loop
+						else:
+							val = -1
+						if val == 2:
+							size = button.sprite.get_size()
+							if i > 1:
+								sprite = quadratic_gradient(size, pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
+							else:
+								sprite = radial_gradient(size, -pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
+							sprite.blit(
+								button.sprite,
+								(0, 0),
+								special_flags=pygame.BLEND_RGBA_MULT,
+							)
+						elif val == 1:
+							sprite = button.on
+						elif val == 0:
+							sprite = button.off
+						else:
+							sprite = button.sprite
+						blit_complex(
+							surf,
+							sprite,
+							(rect[0] + 3, rect[1] + 3),
+						)
+						if val == 2:
+							message_display(
+								"1",
+								12,
+								(rect[0] + rect[2] - 4, rect[1] + rect[3] - 8),
+								colour=(0,) * 3,
+								surface=surf,
+								font="Comic Sans MS",
+								cache=True,
+							)
+					for i, button in enumerate(toolbar.buttons):
+						if i and toolbar.editor:
+							break
+						if button.get("rect"):
+							if in_rect(mpos, button.rect):
+								cm = abs(pc() % 1 - 0.5) * 0.328125
+								c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
+								hovertext = cdict(
+									text=button.name,
+									size=15,
+									colour=c,
+									font="Rockwell",
+									offset=-19,
+								)
+								crosshair |= 4
 				except:
 					raise
 				finally:

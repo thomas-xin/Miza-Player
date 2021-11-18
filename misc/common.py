@@ -483,7 +483,7 @@ def start_display():
 		ICON_DISP = ""
 		pygame.display.set_icon(ICON)
 	pygame.display.set_caption("Miza Player")
-	import pyglet
+	# import pyglet
 	globals()["FLAGS"] = 0
 	# globals()["DISP"] = pyglet.window.Window(screensize, )
 	globals()["DISP"] = pygame.display.set_mode(options.screensize, FLAGS | pygame.RESIZABLE, vsync=True)

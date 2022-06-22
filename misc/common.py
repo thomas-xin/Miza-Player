@@ -1801,6 +1801,9 @@ for k, v in easygui.__dict__.items():
 
 import PIL
 from PIL import Image, ImageOps, ImageChops
+Resampling = getattr(Image, "Resampling", Image)
+Transpose = getattr(Image, "Transpose", Image)
+Transform = getattr(Image, "Transform", Image)
 np = numpy
 deque = collections.deque
 suppress = contextlib.suppress
@@ -2125,7 +2128,7 @@ def pyg2pgl(surf):
 
 def pil2pgl(im):
 	mode = im.mode
-	b = im.tobytes()
+	b = im.transpose(Transpose.FLIP_TOP_BOTTOM).tobytes()
 	return pyglet.image.ImageData(*im.size, mode, b)
 
 class HWSurface:

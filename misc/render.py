@@ -131,13 +131,25 @@ def animate_bars(changed=False):
 		note = highest_note - bar.x + 9
 		if note % 12 in (1, 3, 6, 8, 10):
 			dark = True
-		if dark:
 			colour = [i / 2 for i in colour]
+		verts.extend((
+			(x, 0),
+			(x + w, 0),
+			(x + w, y / 3),
+			(x, y / 3),
+		))
+		cols.extend((
+			colour,
+			colour,
+			colour,
+			colour,
+		))
+		if dark:
 			verts.extend((
-				(x, 0),
-				(x + w, 0),
-				(x + w, y / 2),
-				(x, y / 2),
+				(x, y / 3),
+				(x + w, y / 3),
+				(x + w, y * 2 / 3),
+				(x, y * 2 / 3),
 			))
 			cols.extend((
 				colour,
@@ -146,8 +158,8 @@ def animate_bars(changed=False):
 				colour,
 			))
 			verts.extend((
-				(x, y / 2),
-				(x + w, y / 2),
+				(x, y * 2 / 3),
+				(x + w, y * 2 / 3),
 				(x + w, y),
 				(x, y),
 			))
@@ -159,8 +171,8 @@ def animate_bars(changed=False):
 			))
 		else:
 			verts.extend((
-				(x, 0),
-				(x + w, 0),
+				(x, y / 3),
+				(x + w, y / 3),
 				(x + w, y),
 				(x, y),
 			))
@@ -266,7 +278,7 @@ def animate_prism(changed=False):
 	glDisable(GL_DEPTH_TEST)
 	glDisable(GL_CULL_FACE)
 	glEnable(GL_BLEND)
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE)
 	glEnableClientState(GL_VERTEX_ARRAY)
 	glEnableClientState(GL_COLOR_ARRAY)
 	w, h = ssize

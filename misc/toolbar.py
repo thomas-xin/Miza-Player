@@ -212,7 +212,7 @@ def render_oscilloscope():
 	if not osize or not all(osize):
 		return
 
-	glBlendFunc(GL_ONE, GL_ONE)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE)
 	osci_rect = list(map(round, (toolbar.rect[2] - 4 - progress.box, toolbar.rect[3] + 4) + osize))
 	if not options.get("oscilloscope", 0) or not is_active():
 
@@ -312,7 +312,7 @@ def sidebar_ripples():
 		glBindTexture(texture.target, texture.id)
 		glGenerateMipmap(texture.target)
 		glEnable(GL_BLEND)
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE)
 
 		count = len(sidebar.ripples)
 		verts = np.zeros((count, 4, 2), dtype=np.float32)
@@ -370,7 +370,7 @@ def toolbar_ripples():
 		glBindTexture(texture.target, texture.id)
 		glGenerateMipmap(texture.target)
 		glEnable(GL_BLEND)
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE)
 
 		count = len(toolbar.ripples)
 		verts = np.zeros((count, 4, 2), dtype=np.float32)

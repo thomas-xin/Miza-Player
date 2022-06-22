@@ -2410,7 +2410,7 @@ def load_spinner(spinner_path):
 			try:
 				surf = globals()["s-cache"][diameter]
 			except KeyError:
-				im = globals()["s-img"].resize((diameter,) * 2, resample=Image.LANCZOS)
+				im = globals()["s-img"].resize((diameter,) * 2, resample=Resampling.LANCZOS)
 				if "RGB" not in im.mode:
 					im = im.convert("RGBA")
 				surf = pil2pyg(im)
@@ -2722,7 +2722,7 @@ def render_settings(dur, ignore=False):
 			arr = arr.astype(np.uint8)
 			im = pyg2pil(surf)
 			a = im.getchannel("A")
-			a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Image.NEAREST)
+			a2 = Image.fromarray(arr, "L").resize(mrect[2:], resample=Resampling.NEAREST)
 			A = ImageChops.multiply(a, a2)
 			im.putalpha(A)
 			surf = pil2pyg(im)

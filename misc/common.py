@@ -1,11 +1,5 @@
 import os, sys, subprocess, time, concurrent.futures
 
-if os.name != "nt":
-	raise NotImplementedError("This program is currently implemented to use Windows API and filesystem only.")
-
-async_wait = lambda: time.sleep(0.005)
-sys.setswitchinterval(0.008)
-utc = time.time
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 from concurrent.futures import thread
 
@@ -52,16 +46,15 @@ settimeout = lambda *args, **kwargs: submit(_settimeout, *args, **kwargs)
 
 from rainbow_print import *
 
-write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
-
-
 class MultiAutoImporter:
 
 	class ImportedModule:
 
-		def __init__(self, module, pool, _globals):
+		def __init__(self, module, pool, _globals, start=True):
 			object.__setattr__(self, "__module", module)
-			object.__setattr__(self, "__fut", pool.submit(__import__, module))
+			if start:
+				fut = pool.submit(__import__, module)
+				object.__setattr__(self, "__fut", fut)
 			object.__setattr__(self, "__globals", _globals)
 
 		def __getattr__(self, k):
@@ -75,7 +68,10 @@ class MultiAutoImporter:
 		def force(self):
 			module = object.__getattribute__(self, "__module")
 			_globals = object.__getattribute__(self, "__globals")
-			_globals[module] = m = object.__getattribute__(self, "__fut").result()
+			try:
+				_globals[module] = m = object.__getattribute__(self, "__fut").result()
+			except AttributeError:
+				_globals[module] = m = __import__(module)
 			return m
 
 	def __init__(self, *args, pool=None, _globals=None):
@@ -88,16 +84,36 @@ class MultiAutoImporter:
 		else:
 			futs = []
 			for arg in args:
-				futs.append(self.ImportedModule(arg, pool, _globals))
+				futs.append(self.ImportedModule(arg, pool, _globals, start=len(futs) < 3))
+			self.futs = futs
 			_globals.update(zip(args, futs))
+			submit(self.scan)
+
+	def scan(self):
+		for i, sub in enumerate(self.futs):
+			object.__getattribute__(sub, "__fut").result()
+			for j in range(i + 1, len(self.futs)):
+				try:
+					object.__getattribute__(self.futs[j], "__fut")
+				except AttributeError:
+					module = object.__getattribute__(self.futs[j], "__module")
+					fut = self.pool.submit(__import__, module)
+					# sys.stderr.write(str(fut) + "\n")
+					object.__setattr__(self.futs[j], "__fut", fut)
+					break
 
 importer = MultiAutoImporter(
-	"psutil", "soundcard", "ctypes, struct, io", "requests", "PIL, easygui, easygui_qt, numpy, math, traceback",
+	"PIL, numpy, traceback",
 	"cffi, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, zipfile",
-	"pygame, pickle, PyQt5, hashlib, base64, urllib, weakref, orjson, copy, json",
+	"pickle, hashlib, base64, urllib, weakref, orjson, copy, json",
 	pool=exc,
 	_globals=globals(),
 )
+import requests, psutil, soundcard, ctypes, struct, io
+
+async_wait = lambda: time.sleep(0.005)
+sys.setswitchinterval(0.008)
+utc = time.time
 
 
 ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
@@ -112,7 +128,6 @@ except FileNotFoundError:
 	update_collections = True
 
 hasmisc = os.path.exists("misc")
-argp = [sys.executable]
 pyv = sys.version_info[1]
 print_exc = traceback.print_exc
 from install_update_p import *
@@ -132,6 +147,25 @@ def import_audio_downloader():
 		print_exc()
 		downloader.set_exception(ex)
 		lyrics_scraper.set_exception(ex)
+
+
+if os.name == "nt":
+	user32 = ctypes.windll.user32
+	shell32 = ctypes.windll.shell32
+	user32.SetProcessDPIAware()
+
+
+import pyglet
+from pyglet.gl import *
+from pyglet.math import *
+pyglet.options["debug_gl"] = False
+pyglet.options["debug_win32"] = False
+pyglet.options["debug_lib"] = False
+pyglet.options["debug_trace"] = False
+pyglet.options["debug_font"] = False
+pyglet.options["debug_graphics_batch"] = False
+import math
+from math import *
 
 
 def astype(obj, t, *args, **kwargs):
@@ -181,14 +215,13 @@ if update_collections:
 		subprocess.Popen(sox, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 		subprocess.Popen(org2xm, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 	except FileNotFoundError:
-		url = "https://dl.dropboxusercontent.com/s/q34exu54opnilli/sndlib.zip?dl=1"
-		subprocess.run((sys.executable, "downloader.py", url, "ffmpeg.zip"), cwd="misc")
-		with zipfile.ZipFile("misc/ffmpeg.zip", "r") as z:
+		url = "https://mizabot.xyz/d/Bdb_Q4Sjqg"
+		subprocess.run((sys.executable, "-O", "downloader.py", "-threads", "8", url, "sndlib.zip"), cwd="misc")
+		with zipfile.ZipFile("misc/sndlib.zip", "r") as z:
 			z.extractall("sndlib")
-		os.remove("misc/ffmpeg.zip")
+		os.remove("misc/sndlib.zip")
 		add_to_path()
 		print("Sound library extraction complete.")
-
 
 def state(i):
 	mixer.stdin.write(f"~state {int(i)}\n".encode("utf-8"))
@@ -270,7 +303,8 @@ control_default = cdict(
 	shuffle=1,
 	loop=1,
 	silenceremove=0,
-	unfocus=1,
+	blur=1,
+	unfocus=0,
 	presearch=0,
 	preserve=0,
 	ripples=1,
@@ -367,90 +401,70 @@ if not isinstance(options.control.get("spiral-vertices"), list):
 	options.control["spiral-vertices"] = [options.control["spiral-vertices"], 1]
 
 
-sc = soundcard.force()
+import soundcard as sc
 CFFI = cffi.FFI()
 
 DEVICE = sc.default_speaker()
 OUTPUT_DEVICE = DEVICE.name
 reset_menu = lambda *args, **kwargs: None
 
-def start_mixer():
-	global mixer, hwnd
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "TRUE"
+import pygame
+
+def start_mixer(devicename=None):
+	global mixer
 	if "mixer" in globals() and mixer and mixer.is_running():
-		mixer.kill()
+		try:
+			mixer.kill()
+		except psutil.NoSuchProcess:
+			pass
 	restarting = "DISP" in globals()
 	if restarting and getattr(pygame, "closed", None):
 		return
+	if not restarting:
+		pygame.display.init()
+		start_display()
+	else:
+		print("Mixer subprocess has crashed; restarting...")
 	mixer = psutil.Popen(
-		argp + ["misc/mixer.py"],
+		(sys.executable, "-O", "misc/mixer.py"),
 		stdin=subprocess.PIPE,
 		stdout=subprocess.PIPE,
 		bufsize=65536,
 	)
-	if not restarting:
-		sys.stdout.write = write
-		if globals().get("rproc") and rproc.is_running():
-			rproc.kill()
-		globals()["rproc"] = psutil.Popen(
-			(sys.executable, "misc/render.py"),
-			stdin=subprocess.PIPE,
-			stdout=subprocess.PIPE,
-			bufsize=65536,
-		)
-		start_display()
-	else:
-		print("Mixer subprocess has crashed; restarting...")
 	try:
+		pid = os.getpid()
 		mixer.state = lambda i=0: state(i)
 		mixer.clear = lambda: clear()
 		mixer.drop = lambda i=0: drop(i)
 		mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
-		hwnd = pygame.display.get_wm_info()["window"]
 		if hasmisc:
 			if not restarting:
-				rproc.stdin.write(f"%{hwnd}\n".encode("ascii"))
-				rproc.stdin.write(b"\n")
-				rproc.stdin.flush()
-
-				w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
-				length = w * h * 3
+				w, h = pygame.display.list_modes()[0]
 				import multiprocessing.shared_memory
-				globals()["spec-locks"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{hwnd}-spec-locks",
-					create=True,
-					size=3,
-				)
-				locks = globals()["spec-locks"].buf
-				locks[0] = locks[1] = locks[2] = 255
-				globals()["spec-size"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{hwnd}-spec-size",
-					create=True,
-					size=16,
-				)
-				ssize = numpy.frombuffer(globals()["spec-size"].buf[:16], dtype=numpy.uint32)
-				ssize[:] = 1
+				globals()["multiprocessing"] = multiprocessing
+				# Stores computed LDFT buckets to render as spectrogram
 				globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{hwnd}-spec-mem",
+					name=f"Miza-Player-{pid}-spec-mem",
 					create=True,
-					size=length,
+					size=8192,
 				)
+				# Stores computed PCM packets to render as oscilloscope
 				globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{hwnd}-osci-mem",
+					name=f"Miza-Player-{pid}-osci-mem",
 					create=True,
-					size=65536,
+					size=12800,
 				)
-				globals()["tool-vals"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{hwnd}-tool-vals",
+				# 0: minimised | unfocused
+				# 6~8: barcount
+				# 8~12, 12~16: osci width, osci height
+				# 16~20, 20~24: spec width, spec height
+				globals()["stat-mem"] = multiprocessing.shared_memory.SharedMemory(
+					name=f"Miza-Player-{pid}-stat-mem",
 					create=True,
 					size=4096,
 				)
-				globals()["tool-mem"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{hwnd}-tool-mem",
-					create=True,
-					size=length,
-				)
 			s = []
-			s.append(f"%{hwnd}\n")
 			d = options.audio.copy()
 			d.update(options.control)
 			j = orjson.dumps(d).decode("utf-8")
@@ -458,7 +472,9 @@ def start_mixer():
 			s.append(f"~setting spectrogram {options.setdefault('spectrogram', 1)}\n")
 			s.append(f"~setting oscilloscope {options.setdefault('oscilloscope', 1)}\n")
 			s.append(f"~setting insights {options.setdefault('insights', 1)}\n")
-			if OUTPUT_DEVICE:
+			if devicename:
+				s.append(f"~output {devicename}\n")
+			elif OUTPUT_DEVICE:
 				s.append(f"~output {OUTPUT_DEVICE}\n")
 			mixer.stdin.write("".join(s).encode("utf-8"))
 			try:
@@ -471,118 +487,1147 @@ def start_mixer():
 		print_exc()
 	return mixer
 
-def start_display():
-	global screensize2, ICON, ICON_DISP, user32
-	appid = "Miza Player \x7f"
-	ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
-	user32 = ctypes.windll.user32
-	user32.SetProcessDPIAware()
-	if hasmisc:
-		icon = pygame.image.load("misc/icon.png")
-		ICON = pygame.transform.smoothscale(icon, (64, 64))
-		ICON_DISP = ""
-		pygame.display.set_icon(ICON)
-	pygame.display.set_caption("Miza Player")
-	# import pyglet
-	globals()["FLAGS"] = 0
-	# globals()["DISP"] = pyglet.window.Window(screensize, )
-	globals()["DISP"] = pygame.display.set_mode(options.screensize, FLAGS | pygame.RESIZABLE, vsync=True)
-	screensize2 = list(options.screensize)
-	pygame.display.set_allow_screensaver(True)
 
-# from glfw.GLFW import *
-# from OpenGL.GL import *
-# from OpenGL.GLU import *
-# from OpenGL.GLUT import *
-# import pyglet
-# from pyglet.gl import *
+def translate_pos(rect, pos):
+	pos = astype(pos or [0, 0], list)
+	pos[1] = DISP.height - rect[3] - pos[1]
+	return pos
+
+class KeyList(list):
+
+	def __setitem__(self, k, v):
+		if isinstance(k, int):
+			k &= -1073741825
+		return super().__setitem__(k, v)
+
+	def __getitem__(self, k):
+		if isinstance(k, int):
+			k &= -1073741825
+		return super().__getitem__(k)
+
+	def reset(self):
+		self[:] = [False] * len(self)
+
+
+class AreaGroup(pyglet.graphics.OrderedGroup):
+
+	def __init__(self, order, parent=None, area=None):
+		super(self.__class__, self).__init__(parent)
+		self.order = order
+		self.area = area
+
+	def __lt__(self, other):
+		if isinstance(other, pyglet.graphics.OrderedGroup):
+			return self.order < other.order
+		return super(self.__class__, self).__lt__(other)
+
+	def __eq__(self, other):
+		return (
+			self.__class__ is other.__class__ and
+			self.order == other.order and
+			self.parent == other.parent and
+			self.area == other.area
+		)
+
+	def __hash__(self):
+		return hash((self.order, self.parent, self.area))
+
+	def __repr__(self):
+		return '%s(%d)' % (self.__class__.__name__, self.order)
+
+	def set_state(self):
+		if self.area:
+			area = [self.area[0], DISP.height - self.area[3] - self.area[1], self.area[2], self.area[3]]
+			glEnable(GL_SCISSOR_TEST)
+			glScissor(*area)
+		else:
+			glDisable(GL_SCISSOR_TEST)
+
+	def unset_state(self):
+		glDisable(GL_SCISSOR_TEST)
+
+def set_state(self):
+	glEnable(self.texture.target)
+	glBindTexture(self.texture.target, self.texture.id)
+	if self.blend_src in (GL_ONE, GL_SRC_ALPHA) and self.blend_dest == GL_ZERO:
+		glDisable(GL_BLEND)
+	else:
+		glEnable(GL_BLEND)
+		glBlendFunc(self.blend_src, self.blend_dest)
+
+unset_state = lambda self: glDisable(self.texture.target)
+
+pyglet.sprite.SpriteGroup.set_state = lambda self: set_state(self)
+pyglet.sprite.SpriteGroup.unset_state = unset_state
+
+# def _eq(self, other):
+	# return (
+		# other.__class__ is self.__class__ and
+		# self.parent is other.parent and
+		# self.texture.target == other.texture.target and
+		# self.texture.id == other.texture.id and
+		# self.blend_src == other.blend_src and
+		# self.blend_dest == other.blend_dest and
+		# getattr(self, "area", None) == getattr(other, "area", None)
+	# )
+# def _hash(self):
+	# return hash((
+		# id(self.parent),
+		# self.texture.id, self.texture.target,
+		# self.blend_src, self.blend_dest,
+		# getattr(self, "area", None)
+	# ))
+# pyglet.sprite.SpriteGroup.__eq__ = lambda self, other: _eq(self, other)
+# pyglet.sprite.SpriteGroup.__hash__ = lambda self: _hash(self)
+pyglet.image.glFlush = lambda: None
+pyglet.graphics.glFlush = lambda: None
+pyglet.image.glFinish = lambda: None
+pyglet.graphics.glFinish = lambda: None
+
+def delete_sprite(self):
+	if self._vertex_list is not None:
+		self._vertex_list.delete()
+		self._vertex_list = None
+
+pyglet.shapes._ShapeBase.delete = lambda self: delete_sprite(self)
+
+# def proj_set(self, window_width, window_height, viewport_width, viewport_height):
+	# gl.glViewport(0, 0, max(1, viewport_width), max(1, viewport_height))
+	# gl.glMatrixMode(gl.GL_PROJECTION)
+	# gl.glLoadIdentity()
+	# gl.glOrtho(0, max(1, window_width - 1), 0, max(1, window_height), -1, 1)
+	# gl.glMatrixMode(gl.GL_MODELVIEW)
+# pyglet.window.Projection2D.set = lambda *args: proj_set(*args)
+
+class MultiSpriteGroup(pyglet.graphics.Group):
+
+	def __init__(self, blend_src, blend_dest, texture=None, width=None, draw=None, parent=None):
+		super().__init__(parent)
+		self.texture = texture
+		self.width = width
+		self.blend_src = blend_src
+		self.blend_dest = blend_dest
+		self.draw = draw
+
+	def set_state(self):
+		if self.width is not None:
+			glLineWidth(self.width)
+		if self.texture is not None:
+			glEnable(self.texture.target)
+			glBindTexture(self.texture.target, self.texture.id)
+		glEnable(GL_BLEND)
+		glBlendFunc(self.blend_src, self.blend_dest)
+		if self.draw is not None:
+			self.draw()
+
+	def unset_state(self):
+		if self.texture is not None:
+			glDisable(self.texture.target)
+
+	def __eq__(self, other):
+		return self is other
+
+	def __hash__(self):
+		return id(self)
+
+class MultiSprite:
+
+	def __init__(
+		self, img,
+		dests, sources, colours,
+		blend_src=GL_SRC_ALPHA, blend_dest=GL_ONE_MINUS_SRC_ALPHA,
+		batch=None, group=None,
+	):
+		if batch is not None:
+			self._batch = batch
+
+		self._dests = tuple(dests)
+		self.dests = np.array(dests, dtype=np.float32)
+		self._sources = tuple(sources)
+		self.sources = np.array(sources, dtype=np.float32)
+
+		self._texture = img.get_texture()
+		self._group_1 = group
+		self.init(blend_src, blend_dest)
+		self._vertex_list = self._batch.add(0, GL_POINTS, self._group, "v2f")
+
+	def init(self, blend_src=None, blend_dest=None):
+		if blend_src is None:
+			blend_src = self._group.blend_src
+		if blend_dest is None:
+			blend_dest = self._group.blend_dest
+		self._group = MultiSpriteGroup(
+			blend_src, blend_dest,
+			texture=self._texture,
+			draw=self.draw,
+			parent=self._group_1,
+		)
+
+	def delete(self):
+		if self._vertex_list is not None:
+			self._vertex_list.delete()
+		self._vertex_list = None
+		self._texture = None
+		self.draw = None
+		if self._group is not None:
+			self._group.draw = None
+		self._group = None
+
+	__del__ = delete
+
+	def _set_texture(self, texture):
+		if texture.id is not self._texture.id:
+			self._texture = texture
+			self.init()
+
+	@property
+	def batch(self):
+		return self._batch
+
+	@batch.setter
+	def batch(self, batch):
+		if self._batch == batch:
+			return
+		if batch is not None and self._batch is not None:
+			self._batch.migrate(self._vertex_list, GL_POINTS, self._group, batch)
+			self._batch = batch
+		else:
+			self._vertex_list.delete()
+			self._batch = batch
+			self._create_vertex_list()
+
+	@property
+	def group(self):
+		return self._group.parent
+
+	@group.setter
+	def group(self, group):
+		if self._group.parent == group:
+			return
+		self.init(self._group.blend_src, self._group.blend_dest)
+		if self._batch is not None:
+			self._batch.migrate(
+				self._vertex_list,
+				GL_QUADS,
+				self._group,
+				self._batch,
+			)
+
+	@property
+	def image(self):
+		return self._texture
+
+	@image.setter
+	def image(self, img):
+		self._set_texture(img.get_texture())
+
+class WidthShapeGroup(pyglet.graphics.Group):
+
+	def __init__(self, blend_src, blend_dest, width=1, parent=None):
+		super().__init__(parent)
+		self.blend_src = blend_src
+		self.blend_dest = blend_dest
+		self.width = width
+
+	def set_state(self):
+		glEnable(GL_BLEND)
+		glLineWidth(self.width)
+		glDisable(GL_LINE_SMOOTH)
+		glBlendFunc(self.blend_src, self.blend_dest)
+
+	def unset_state(self):
+		pass
+
+	def __eq__(self, other):
+		return (
+			other.__class__ is self.__class__ and
+			self.width == getattr(other, "width", None) and
+			self.parent is other.parent and
+			self.blend_src == other.blend_src and
+			self.blend_dest == other.blend_dest
+		)
+
+	def __hash__(self):
+		return hash((id(self.parent), self.blend_src, self.blend_dest, self.width))
+
+class GL_Lines(pyglet.shapes.Line):
+
+	_width = 1
+	_rotation = 0
+	_colours = ()
+
+	def __init__(self, *coordinates, width=1, color=(255, 255, 255), mode=GL_LINES, batch=None, group=None):
+		self._coordinates = coordinates
+		self._width = width
+		self._rgb = color
+
+		self._mode = mode
+		self._batch = batch or pyglet.graphics.Batch()
+		self.group = group
+		self.init(width=True)
+
+	def init(self, width=True):
+		if width:
+			self._group = WidthShapeGroup(
+				GL_SRC_ALPHA,
+				GL_ONE_MINUS_SRC_ALPHA,
+				self._width,
+				self.group,
+			)
+		self._vertex_list = self._batch.add(
+			len(self._coordinates),
+			self._mode,
+			self._group,
+			"v2f",
+			"c4B",
+		)
+		self._update_position()
+		self.__colours = ()
+		self._update_color()
+
+	def _update_position(self):
+		if not self._visible:
+			self._vertex_list.vertices[:] = (0,) * sum(len(coords) for coords in self.coordinates)
+		else:
+			self._vertex_list.vertices[:] = tuple(itertools.chain(*self._coordinates))
+
+	def _update_color(self):
+		colours = self._colours
+		if len(colours) != len(self._vertex_list.colors):
+			colours = (*self._rgb, int(self._opacity)) * len(self._coordinates)
+		self._vertex_list.colors[:] = colours
+
+	@property
+	def colours(self):
+		try:
+			return self.__colours
+		except AttributeError:
+			return self._colours
+
+	@colours.setter
+	def colours(self, colours):
+		self.__colours = colours
+		self._colours = tuple(map(round_random, itertools.chain(*colours)))
+		self._update_color()
+
+	@property
+	def mode(self):
+		return self._mode
+
+	@mode.setter
+	def mode(self, mode):
+		self.delete()
+		self._mode = mode
+		self.init()
+
+	@property
+	def width(self):
+		return self._width
+
+	@width.setter
+	def width(self, width):
+		self.delete()
+		self._width = width
+		self.init(width=True)
+
+	@property
+	def coordinates(self):
+		return self._coordinates
+
+	@coordinates.setter
+	def coordinates(self, coordinates):
+		coordinates = tuple(coordinates)
+		if len(coordinates) == len(self._coordinates):
+			self._coordinates = coordinates
+			self._update_position()
+			return
+		self.delete()
+		self._coordinates = coordinates
+		self.init()
+
+class GL_Triangles(GL_Lines):
+
+	def __init__(self, *coordinates, color=(255, 255, 255), mode=GL_TRIANGLES, batch=None, group=None):
+		self._coordinates = coordinates
+		self._rotation = 0
+		self._rgb = color
+
+		self._mode = mode
+		self._batch = batch or pyglet.graphics.Batch()
+		self.group = group
+		self._group = pyglet.shapes._ShapeGroup(
+			GL_SRC_ALPHA,
+			GL_ONE_MINUS_SRC_ALPHA,
+			self.group,
+		)
+		self.init()
+
+RAWS = weakref.WeakKeyDictionary()
+SUBSURFS = weakref.WeakKeyDictionary()
+
+def start_display():
+	config = pyglet.gl.Config(sample_buffers=0, samples=0)
+	globals()["FLAGS"] = 0
+	globals()["DISP"] = pyglet.window.Window(
+		*screensize,
+		config=config,
+		resizable=True,
+		visible=True,
+		file_drops=True,
+		vsync=False,
+	)
+	DISP.groups = {}
+	DISP.batches = {}
+	DISP.surfaces = weakref.WeakKeyDictionary()
+	DISP.sprites = weakref.WeakKeyDictionary()
+	DISP.shapes = {}
+	DISP.fonts = {}
+	DISP.active = set()
+
+	def get_batch(i):
+		try:
+			return DISP.batches[i]
+		except KeyError:
+			batch = DISP.batches[i] = pyglet.graphics.Batch()
+		return batch
+	DISP.get_batch = get_batch
+
+	def get_group(i, cls=pyglet.graphics.OrderedGroup, area=None):
+		try:
+			return DISP.groups[(i, cls, area)]
+		except KeyError:
+			if area and cls is pyglet.graphics.OrderedGroup:
+				group = DISP.groups[(i, cls, area)] = AreaGroup(i, area=area)
+			else:
+				group = DISP.groups[(i, cls, area)] = cls(i)
+		return group
+	DISP.get_group = get_group
+
+	globals()["NEW_SPRITES"] = []
+	globals()["NEW_TEXTURES"] = []
+
+	def ensure_texture(surf, texture=True):
+		if surf not in DISP.surfaces:
+			im = pyg2pgl(surf)
+			if texture:
+				im = im.get_texture(rectangle=True)
+			DISP.surfaces[surf] = im
+			globals()["NEW_TEXTURES"].append(surf)
+		return DISP.surfaces[surf]
+	DISP.ensure_texture = ensure_texture
+
+	def display_blit(source, dest=None, area=None, special_flags=0, colour=None, angle=None, scale=None, z=0, redraw=False, permanent=False, sx=None, sy=None, dest_area=None):
+		flags = astype(special_flags, int)
+		if dest is not None:
+			dest = astype(dest, tuple)
+		if source.get_width() <= 0 or source.get_height() <= 0:
+			return
+		if area is not None:
+			area = astype(area, list)
+			different = False
+			if area[0] <= 0:
+				area[0] = 0
+			else:
+				different = True
+			if area[1] <= 0:
+				area[1] = 0
+			else:
+				different = True
+			if area[2] + area[0] >= source.get_width():
+				area[2] = source.get_width() - area[0]
+			else:
+				different = True
+			if area[3] + area[1] >= source.get_height():
+				area[3] = source.get_height() - area[1]
+			else:
+				different = True
+			if area[2] <= 0 or area[3] <= 0:
+				return
+			area = tuple(area)
+			# if different:
+				# try:
+					# source = SUBSURFS[source][area]
+				# except KeyError:
+					# SUBSURFS.setdefault(source, {})[area] = source = source.subsurf(area)
+		if colour is not None:
+			colour = astype(map(round, colour), tuple)
+		batch = get_batch(z // 128)
+		group = get_group(z, area=dest_area)
+		try:
+			if redraw or permanent:
+				raise KeyError
+			if area and different:
+				raise KeyError
+			sprites = DISP.sprites[source]
+			for sp in sprites:
+				if not sp.used and getattr(sp, "flags", 0) == flags and getattr(sp, "area", None) == area:
+					break
+			else:
+				raise KeyError
+		except KeyError:
+			im = DISP.ensure_texture(source, texture=not redraw)
+			if redraw:
+				mode = "RGBA" if source.get_flags() & pygame.SRCALPHA else "RGB"
+				b = RAWS.pop(source, False)
+				if not b:
+					b = pygame.image.tostring(source, mode, True)
+				else:
+					print(source)
+				row = len(mode) * source.get_width()
+				if isinstance(im, pyglet.image.Texture):
+					i = im.get_image_data()
+					i.set_data(mode, row, b)
+					im.image = i
+				else:
+					im.set_data(mode, row, b)
+			sp = None
+			if area:
+				r = list(area)
+				r[1] = source.get_height() - r[3] + r[1]
+				# print(r)
+				try:
+					im = im.get_region(*r)
+				except ZeroDivisionError:
+					return (0,) * 4
+				for sp in DISP.sprites.get(source, ()):
+					if not sp.used and getattr(sp, "flags", 0) == flags and getattr(sp, "area", None) == area:
+						sp.image = im
+						break
+				else:
+					sp = None
+			if flags in (0, pygame.BLEND_PREMULTIPLIED, pygame.BLEND_ALPHA_SDL2):
+				if source.get_flags() & pygame.SRCALPHA:
+					blend_src = GL_SRC_ALPHA
+					blend_dest = GL_ONE_MINUS_SRC_ALPHA
+				else:
+					blend_src = GL_ONE
+					blend_dest = GL_ZERO
+			elif flags in (pygame.BLEND_RGB_MULT, pygame.BLEND_RGBA_MULT):
+				blend_src = GL_ZERO
+				blend_dest = GL_SRC_COLOR
+			elif flags == pygame.BLEND_RGB_ADD:
+				blend_src = GL_ONE
+				blend_dest = GL_ONE
+			elif flags == pygame.BLEND_RGBA_ADD:
+				if source.get_flags() & pygame.SRCALPHA:
+					blend_src = GL_SRC_ALPHA
+					blend_dest = GL_ONE
+				else:
+					blend_src = GL_ONE
+					blend_dest = GL_ONE
+			else:
+				raise NotImplementedError(flags)
+			if not sp:
+				sp = pyglet.sprite.Sprite(im, blend_src=blend_src, blend_dest=blend_dest, batch=batch, group=group)
+				globals()["NEW_SPRITES"].append(sp)
+			sp.flags = flags
+			if not redraw and not permanent and not (area and different):
+				DISP.sprites.setdefault(source, weakref.WeakSet()).add(sp)
+			# print(id(source), dest, area, colour, z)
+		else:
+			# if getattr(sp, "area", None) != area:
+				# im = DISP.ensure_texture(source, texture=True)
+				# if area:
+					# r = list(area)
+					# r[1] = source.get_height() - r[3] + r[1]
+					# try:
+						# im = im.get_region(*r)
+					# except ZeroDivisionError:
+						# return (0,) * 4
+				# if sp.image != im:
+					# sp.image = im
+				# sp.area = area
+			if sp.batch != batch:
+				sp.batch = batch
+			if sp.group != group:
+				sp.group = group
+		batch.used = True
+		sp.used = True
+		DISP.active.add(sp)
+		kwargs = cdict()
+		rect = [0, 0]
+		if area and different:
+			rect.extend(area[2:])
+		else:
+			rect.extend(source.get_size())
+		if scale:
+			kwargs.scale = scale
+			rect[2] *= scale
+			rect[3] *= scale
+		if sx:
+			sw = sx / rect[2]
+			if sw != sp.scale_x:
+				kwargs.scale_x = sw
+			rect[2] *= sw
+		if sy:
+			sh = sy / rect[3]
+			if sh != sp.scale_y:
+				kwargs.scale_y = sh
+			rect[3] *= sh
+		pos = dest[:2]
+		pos = translate_pos(rect, dest)
+		if colour:
+			if len(colour) > 3:
+				if colour[3] <= 0:
+					return sp
+				if 0 < colour[3] < 255 and sp.opacity != colour[3]:
+					sp.opacity = colour[3]
+			if sp.color != colour[:3]:
+				sp.color = colour[:3]
+		if angle:
+			half = (rect[2] / 2, rect[3] / 2)
+			if sp.image.anchor_x != half[0]:
+				sp.image.anchor_x = half[0]
+			if sp.image.anchor_y != half[1]:
+				sp.image.anchor_y = half[1]
+			pos = tuple(x + y for x, y in zip(pos, half))
+			kwargs.rotation = angle * 180 / pi
+		if sp.x != pos[0] or sp.y != pos[1]:
+			kwargs.x, kwargs.y = pos
+		if kwargs:
+			if len(kwargs) > 1:
+				sp.update(**kwargs)
+			else:
+				k, v = next(iter(kwargs.items()))
+				setattr(sp, k, v)
+		if permanent:
+			sp.permanent = permanent
+		return sp
+	DISP.blit = display_blit
+
+	def display_fill(colour, rect=None, special_flags=0, z=0):
+		w, h = DISP.get_size()
+		if rect is not None:
+			rect = astype(rect, list)
+			rect[1] = h - rect[1] - rect[3]
+			rect = astype(rect, tuple)
+		else:
+			rect = (0, 0, w, h)
+		if colour is not None:
+			colour = astype(colour, tuple)
+		batch = get_batch(z // 128)
+		group = get_group(z)
+		t = (z, rect, colour)
+		if t not in DISP.shapes:
+			sp = pyglet.shapes.Rectangle(*rect, [round(i) for i in colour[:3]], batch=batch, group=group)
+			if len(colour) > 3:
+				sp.opacity = colour[3]
+			DISP.shapes[t] = sp
+			globals()["NEW_TEXTURES"].append(sp)
+		else:
+			sp = DISP.shapes[t]
+		batch.used = True
+		sp.used = True
+		if not sp.visible:
+			sp.visible = True
+		DISP.active.add(sp)
+	DISP.fill = display_fill
+
+	def display_shape(func, x, y, *args, z=0, **kwargs):
+		batch = get_batch(z // 128)
+		group = get_group(z)
+		y = DISP.height - y
+		if func is pyglet.shapes.Line:
+			args = (args[0] - x, DISP.height - args[1] - y) + args[2:]
+		if "color" in kwargs:
+			kwargs["color"] = tuple(round(c) for c in kwargs["color"])
+		t = (z, func) + args + tuple(kwargs.values())
+		if t not in DISP.shapes:
+			if func is pyglet.shapes.Line:
+				args = (args[0] + x, args[1] + y) + args[2:]
+			sp = func(x, y, *args, batch=batch, group=group, **kwargs)
+			DISP.shapes[t] = sp
+			globals()["NEW_TEXTURES"].append(sp)
+		else:
+			sp = DISP.shapes[t]
+			if sp.x != x:
+				sp.x = x
+			if sp.y != y:
+				sp.y = y
+			if func is pyglet.shapes.Line:
+				x2 = args[0] + x
+				y2 = args[1] + y
+				if sp.x2 != x2:
+					sp.x2 = x2
+				if sp.y2 != y2:
+					sp.y2 = y2
+		batch.used = True
+		sp.used = True
+		if not sp.visible:
+			sp.visible = True
+		DISP.active.add(sp)
+	DISP.shape = display_shape
+
+	def hardware_font(text, size, pos, colour, background, font, alpha, align, z):
+		fn = "misc/" + font + ".ttf"
+		if not os.path.exists(fn) and font not in loaded_fonts:
+			if font in ("Rockwell", "OpenSansEmoji"):
+				print("Downloading and applying required fonts...")
+				for fnt in ("Rockwell", "OpenSansEmoji"):
+					loaded_fonts.add(fnt)
+					submit(get_font, fnt)
+		if os.path.exists(fn):
+			pyglet.font.add_file(fn)
+		x, y = pos[0], DISP.height - pos[1] - 1
+		if background is not None:
+			background = astype(background, tuple)
+		if colour is not None:
+			colour = astype(colour, tuple)
+			if len(colour) == 3 and alpha:
+				colour += (alpha,)
+		batch = get_batch(z // 128)
+		group = get_group(z)
+		if align == 0:
+			anchor_y = "top"
+			anchor_x = "left"
+		elif align == 1:
+			anchor_y = "center"
+			anchor_x = "center"
+		else:
+			anchor_y = "baseline"
+			anchor_x = "right"
+			y += size / 2
+		# size = size * 4
+		for sp in DISP.fonts.get(z, ()):
+			if not sp.used:
+				if sp.text != text:
+					sp.text = text
+				if sp.x != x:
+					sp.x = x
+				if sp.y != y:
+					sp.y = y
+				if sp.font_name != font:
+					sp.font_name = font
+				if sp.font_size != size:
+					sp.font_size = size
+				if sp.color != colour:
+					sp.color = colour
+				if sp.anchor_x != anchor_x:
+					sp.anchor_x = anchor_x
+				if sp.anchor_y != anchor_y:
+					sp.anchor_y = anchor_y
+				if sp.batch != batch:
+					sp.batch = batch
+				break
+		else:
+			sp = pyglet.text.Label(
+				text,
+				x=x,
+				y=y,
+				font_name=font,
+				font_size=size,
+				color=colour,
+				anchor_x=anchor_x,
+				anchor_y=anchor_y,
+				batch=batch,
+				group=group,
+				dpi=72,
+			)
+			DISP.fonts.setdefault(z, deque()).append(sp)
+			globals()["NEW_TEXTURES"].append(sp)
+		batch.used = True
+		sp.used = True
+		DISP.active.add(sp)
+	DISP.hardware_font = hardware_font
+
+	globals()["CURR_FLAGS"] = 0
+	DISP.get_at_positions = {}
+	def display_get(pos, force=True):
+		x, y = pos
+		cache = os.name != "nt"
+		if not force and cache:
+			try:
+				return DISP.get_at_positions[(x, y)]
+			except KeyError:
+				pass
+		if force:
+			DISP.get_at_positions.clear()
+		if not cache:
+			try:
+				hdc = DISP.hdc
+			except AttributeError:
+				hdc = DISP.hdc = ctypes.windll.user32.GetDC(DISP.canvas.hwnd)
+			c = ctypes.windll.gdi32.GetPixel(hdc, x, y)
+			col = (i & 255 for i in (c, c >> 8, c >> 16))
+		else:
+			col = (GLubyte * 3)(0, 0, 0)
+			glReadPixels(x, DISP.height - y - 1, 1, 1, GL_RGB, GL_UNSIGNED_BYTE, col)
+		col = astype(col, tuple)
+		DISP.get_at_positions[(x, y)] = col
+		return col
+	DISP.get_at = display_get
+
+	def display_update():
+		update_anima_parts()
+		active = 0
+		pops = deque()
+		for sp in DISP.active:
+			if getattr(sp, "permanent", False):
+				active += 1
+				continue
+			if not getattr(sp, "used", False):
+				if hasattr(sp, "batch"):
+					if getattr(sp.batch, "used", None):
+						sp.batch = None
+						pops.append(sp)
+						sp.used = False
+				else:
+					sp.visible = False
+					pops.append(sp)
+					sp.used = False
+			else:
+				active += 1
+				sp.used = False
+		DISP.active.difference_update(pops)
+		batches = 0
+		for i in sorted(DISP.batches):
+			batch = DISP.batches[i]
+			flags = getattr(batch, "flags", 0)
+			if getattr(batch, "used", False):
+				batch.draw()
+				batch.used = False
+				batches += 1
+			elif callable(batch):
+				try:
+					batch()
+				except:
+					print_exc()
+				batches += 1
+			# glFlush()
+		# print(f"{round(DISP.fps, 2)} FPS, {batches} batches, {len(DISP.groups)} groups, {active} sprites, {len(pops)} swapped, {len(NEW_TEXTURES)} new, {len(NEW_SPRITES)} copies, {len(DISP.sprites) + len(DISP.shapes)} cached")
+		globals()["NEW_SPRITES"].clear()
+		globals()["NEW_TEXTURES"].clear()
+		if options.control.get("blur"):
+			mbi = globals().get("-MBI-")
+			mbs = globals().get("-MBS-")
+			if not mbi or mbi.width != DISP.width or mbi.height != DISP.height:
+				mbi = globals()["-MBI-"] = pyglet.image.Texture.create(
+					DISP.width,
+					DISP.height,
+					rectangle=True,
+				)
+			if not mbs:
+				mbs = globals()["-MBS-"] = pyglet.sprite.Sprite(mbi)
+			if mbs.image != mbi:
+				mbs.image = mbi
+			ts = time.perf_counter()
+			dur = max(1 / 60, ts - getattr(mbs, "ts", ts))
+			mbs.opacity = round_random((1 / 360) ** dur * 255)
+			# print(mbs.opacity)
+			mbs.ts = ts
+			if mbs.opacity > 0:
+				mbs.draw()
+			glFinish()
+			glEnable(GL_BLEND)
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+			glEnable(mbi.target)
+			glBindTexture(mbi.target, mbi.id)
+			glCopyTexImage2D(
+				mbi.target,
+				0,
+				GL_RGBA,
+				0,
+				0,
+				DISP.width,
+				DISP.height,
+				0,
+			)
+			glDisable(mbi.target)
+		glFinish()
+		DISP.flip()
+	DISP.update = display_update
+
+	class display_subsurface:
+
+		@classmethod
+		def init(cls, rect=None):
+			if not rect:
+				return DISP
+			self = cls()
+			self.rect = rect
+			return self
+
+		def blit(self, source, dest, area=None, *args, z=0, **kwargs):
+			if dest:
+				dest = astype(dest, list)
+			else:
+				dest = [0, 0]
+			for i in range(2):
+				dest[i] += self.rect[i]
+			return DISP.blit(source, dest, area, *args, z=z, dest_area=self.rect, **kwargs)
+
+		def fill(self, colour, rect=None, special_flags=0, z=0):
+			if rect:
+				rect = astype(rect, list)
+				rect[0] += self.rect[0]
+				rect[1] += self.rect[1]
+				rect[2] = min(rect[0] + rect[2], self.rect[0] + self.rect[2]) - rect[0]
+				rect[3] = min(rect[1] + rect[3], self.rect[1] + self.rect[3]) - rect[1]
+			return DISP.fill(colour, rect, special_flags=special_flags, z=z)
+
+		def __getattribute__(self, k):
+			if k in ("blit", "fill", "rect"):
+				return object.__getattribute__(self, k)
+			return getattr(DISP, k)
+
+	DISP.subsurf = display_subsurface.init
+	DISP.subsurface = display_subsurface
+
+	if hasmisc:
+		appid = "Miza Player \x7f"
+		shell32.SetCurrentProcessExplicitAppUserModelID(appid)
+		icon = pyglet.image.load("misc/icon.png")
+		DISP.set_icon(icon)
+	DISP.set_caption("Miza Player")
+	DISP.switch_to()
+	if options.get("maximised"):
+		DISP.maximize()
+	elif options.get("screenpos"):
+		x, y = options.screenpos
+		w, h = DISP.get_size()
+		if x + w > 0 and y + h > 0:
+			DISP.set_location(x, y)
+		else:
+			options.pop("screenpos")
+	globals()["screenpos2"] = DISP.get_location()
+	globals()["screensize2"] = list(DISP.get_size())
+
+	DISP.focused = True
+	@DISP.event
+	def on_activate():
+		DISP.focused = True
+		rect = get_window_rect()
+		if screenpos2 != rect[:2] and not is_minimised():
+			options.screenpos = rect[:2]
+			globals()["screenpos2"] = None
+	@DISP.event
+	def on_deactivate():
+		DISP.focused = False
+	DISP.minimised = False
+	@DISP.event
+	def on_show():
+		DISP.minimised = False
+		rect = get_window_rect()
+		if screenpos2 != rect[:2] and not is_minimised():
+			options.screenpos = rect[:2]
+			globals()["screenpos2"] = None
+	@DISP.event
+	def on_hide():
+		DISP.minimised = True
+	@DISP.event
+	def on_resize(*size):
+		flags = get_window_flags()
+		if flags == 3:
+			options.maximised = True
+		else:
+			options.pop("maximised", None)
+			screensize2[:] = size
+		screensize[:] = size
+		if screensize[0] < 320:
+			screensize[0] = 320
+		if screensize[1] < 240:
+			screensize[1] = 240
+		globals().pop("rel-pos", None)
+		DISP.reset = True
+
+	DISP.mpos = [-1] * 2
+	@DISP.event
+	def on_mouse_motion(*mpos):
+		DISP.mmoved = True
+		mpos = (mpos[0], DISP.height - mpos[1] - 1)
+		DISP.mpos[:] = mpos
+	@DISP.event
+	def on_mouse_enter(*mpos):
+		DISP.mouse_in = True
+	DISP.mheld = [False] * 5
+	DISP.mclick = list(DISP.mheld)
+	DISP.mrelease = list(DISP.mheld)
+	m_buttons = (pyglet.window.mouse.LEFT, pyglet.window.mouse.RIGHT, pyglet.window.mouse.MIDDLE)
+	@DISP.event
+	def on_mouse_press(x, y, button, modifiers):
+		try:
+			i = m_buttons.index(button)
+		except ValueError:
+			return
+		DISP.mheld[i] = True
+		DISP.mclick[i] = True
+	@DISP.event
+	def on_mouse_release(x, y, button, modifiers):
+		try:
+			i = m_buttons.index(button)
+		except ValueError:
+			return
+		DISP.mheld[i] = False
+		DISP.mrelease[i] = True
+
+	DISP.kheld = KeyList(pygame.key.get_pressed())
+	DISP.kclick = KeyList(DISP.kheld)
+	DISP.krelease = KeyList(DISP.kheld)
+	pygame.key.get_pressed = lambda: [bool(x) for x in DISP.kheld]
+	from pyglet.window import key as K1
+	import pygame.locals as K2
+	for i in range(26):
+		K2.__dict__[f"K_{chr(i + 97)}"] = i + 4
+	for i in range(1, 11):
+		K2.__dict__[f"K_{i % 10}"] = i + 29
+	K2.K_ESCAPE = 41
+	K2.K_BACKSPACE = 42
+	K2.K_SPACE = 44
+	K2.K_EQUALS = 46
+	K2.K_LEFTBRACKET = 47
+	K2.K_RIGHTBRACKET = 48
+	K2.K_BACKSLASH = 49
+	K2.K_SEMICOLON = 51
+	K2.K_BACKQUOTE = 53
+	K2.K_COMMA = 54
+	K2.K_PERIOD = 55
+	K2.K_SLASH = 56
+	K2.K_DELETE = 76
+	globals()["KEYMAP"] = {
+		K1.EQUAL: K2.K_EQUALS,
+		K1.LCOMMAND: K2.K_LCTRL,
+		K1.RCOMMAND: K2.K_RCTRL,
+		K1.LWINDOWS: K2.K_LSUPER,
+		K1.RWINDOWS: K2.K_RSUPER,
+		K1.APOSTROPHE: K2.K_QUOTE,
+		K1.GRAVE: K2.K_BACKQUOTE,
+		K1.BRACKETLEFT: K2.K_LEFTBRACKET,
+		K1.BRACKETRIGHT: K2.K_RIGHTBRACKET,
+		K1.LINEFEED: K2.K_RETURN,
+	}
+	for k in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+		KEYMAP[getattr(K1, k)] = getattr(K2, "K_" + k.lower())
+	for k in "0123456789":
+		KEYMAP[getattr(K1, "_" + k)] = getattr(K2, "K_" + k)
+	for k in range(1, 16):
+		KEYMAP[getattr(K1, f"F{k}")] = getattr(K2, f"K_F{k}")
+	for k in (
+		"RETURN", "SPACE", "TAB", "BACKSPACE", "INSERT", "DELETE", "MINUS",
+		"SLASH", "BACKSLASH", "SEMICOLON", "COMMA", "PERIOD", "ESCAPE",
+		"LEFT", "RIGHT", "UP", "DOWN", "HOME", "END", "PAGEUP", "PAGEDOWN",
+		"LCTRL", "RCTRL", "LSHIFT", "RSHIFT", "LALT", "RALT", "LMETA", "RMETA",
+	):
+		KEYMAP[getattr(K1, k)] = getattr(K2, "K_" + k)
+	@DISP.event
+	def on_key_press(symbol, modifiers):
+		t = pc()
+		try:
+			DISP.kheld[KEYMAP[symbol]] = DISP.kheld[KEYMAP[symbol]] or t
+			DISP.kclick[KEYMAP[symbol]] = t
+		except LookupError:
+			pass
+	@DISP.event
+	def on_key_release(symbol, modifiers):
+		try:
+			DISP.kheld[KEYMAP[symbol]] = 0
+			DISP.krelease[KEYMAP[symbol]] = pc()
+		except LookupError:
+			pass
+
+	@DISP.event
+	def on_context_lost():
+		print("OpenGL context lost. Resetting menu...")
+		DISP.groups.clear()
+		DISP.batches.clear()
+		DISP.surfaces.clear()
+		DISP.sprites.clear()
+		DISP.shapes.clear()
+		DISP.fonts.clear()
+		DISP.active.clear()
+		DISP.reset = True
+	@DISP.event
+	def on_close():
+		if DISP.kclick[K_ESCAPE]:
+			return
+		DISP.cLoSeD = True
+
+	DISP.clear()
+
+if os.name == "nt":
+	psize = struct.calcsize("P")
+	if psize == 8:
+		win = "win_amd64"
+	else:
+		win = "win32"
+
+	_pt = ctypes.wintypes.POINT()
+	_ppt = ctypes.byref(_pt)
+	def mouse_abs_pos():
+		user32.GetCursorPos(_ppt)
+		return (_pt.x, _pt.y)
+	def mouse_rel_pos():
+		if getattr(DISP, "mouse_in", False):
+			DISP.mouse_in = False
+			globals()["rel-pos"] = [x - y for x, y in zip(mouse_abs_pos(), DISP.mpos)]
+		if "rel-pos" in globals():
+			apos = mouse_abs_pos()
+			DISP.mpos[:] = [x - y for x, y in zip(apos, globals()["rel-pos"])]
+		return DISP.mpos
+
+	class WR(ctypes.Structure):
+		_fields_ = [
+			("left", ctypes.c_long),
+			("top", ctypes.c_long),
+			("right", ctypes.c_long),
+			("bottom", ctypes.c_long),
+		]
+	wr = WR()
+	class WP(ctypes.Structure):
+		_fields_ = [
+			("length", ctypes.c_uint),
+			("flags", ctypes.c_uint),
+			("showCmd", ctypes.c_uint),
+			("ptMinPosition", ctypes.c_void_p),
+			("ptMaxPosition", ctypes.c_void_p),
+			("rcNormalPosition", ctypes.c_void_p),
+			("rcDevice", ctypes.c_void_p),
+		]
+	wp = WP()
+	ptMinPosition = WR()
+	ptMaxPosition = WR()
+	rcNormalPosition = WR()
+	rcDevice = WR()
+	wp.length = 44
+	wp.ptMinPosition = ctypes.cast(ctypes.byref(ptMinPosition), ctypes.c_void_p)
+	wp.ptMaxPosition = ctypes.cast(ctypes.byref(ptMaxPosition), ctypes.c_void_p)
+	wp.rcNormalPosition = ctypes.cast(ctypes.byref(rcNormalPosition), ctypes.c_void_p)
+	wp.rcDevice = ctypes.cast(ctypes.byref(rcDevice), ctypes.c_void_p)
+
+	def get_window_rect():
+		user32.GetWindowRect(DISP.canvas.hwnd, ctypes.byref(wr))
+		return wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
+	def get_window_flags():
+		user32.GetWindowPlacement(DISP.canvas.hwnd, ctypes.byref(wp))
+		return wp.showCmd
+else:
+	mouse_rel_pos = lambda: DISP.mpos
+	get_window_rect = lambda: DISP.get_location() + DISP.get_size()
+	get_window_flags = lambda: 0
 
 if hasmisc:
 	submit(import_audio_downloader)
 	mixer = start_mixer()
+
+	class MultiKey:
+
+		__slot__ = ("keys",)
+
+		def __init__(self, *keys):
+			self.keys = keys
+
+		def __call__(self, k):
+			return any(k[i] for i in self.keys) 
+
+		__getitem__ = __call__
+
+	from pygame.locals import *
+	CTRL = MultiKey(K_LCTRL, K_RCTRL)
+	SHIFT = MultiKey(K_LSHIFT, K_RSHIFT)
+	ALT = MultiKey(K_LALT, K_RALT)
 else:
 	mixer = cdict()
 
 PROC = psutil.Process()
-
-IPC = {}
-def lock_ipc():
-	while rproc.is_running():
-		try:
-			b = rproc.stdout.readline()[2:-1]
-			if not b:
-				break
-			k = int(b)
-			IPC.pop(k).set_result(None)
-		except:
-			print_exc()
-submit(lock_ipc)
-def Acquire(i):
-	k = time.time_ns() // 1000
-	IPC[k] = fut = concurrent.futures.Future()
-	rproc.stdin.write(f"~a{i}~{k}\n".encode("ascii"))
-	rproc.stdin.flush()
-	fut.result()
-	return k
-def Release(i):
-	rproc.stdin.write(f"~r{i}".encode("ascii"))
-	rproc.stdin.flush()
-def Toolbar():
-	k = time.time_ns() // 1000
-	IPC[k] = fut = concurrent.futures.Future()
-	rproc.stdin.write(f"~t~{k}\n".encode("ascii"))
-	rproc.stdin.flush()
-	fut.result()
-	return k
-
-psize = struct.calcsize("P")
-if psize == 8:
-	win = "win_amd64"
-else:
-	win = "win32"
-
-class POINT(ctypes.Structure):
-	_fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
-rel = None
-mouse_pointer = POINT()
-
-def mouse_abs_pos():
-	pt = mouse_pointer
-	user32.GetCursorPos(ctypes.byref(pt))
-	return (pt.x, pt.y)
-
-def mouse_rel_pos(force=True):
-	global rel
-	apos = mouse_abs_pos()
-	if not rel or force and get_focused(True):
-		rel = [x - y for x, y in zip(apos, pygame.mouse.get_pos())]
-	return [x - y for x, y in zip(apos, rel)]
-
-mouse_pos_check = None
-def get_focused(replace=False):
-	global mouse_pos_check
-	if not pygame.mouse.get_focused():
-		return
-	if is_unfocused():
-		return
-	mpc = pygame.mouse.get_pos()
-	if mpc != mouse_pos_check:
-		if replace:
-			mouse_pos_check = mpc
-		return True
-	mpos = mouse_rel_pos(False)
-	if any(i < 0 for i in mpos):
-		return
-	if any(i >= j for i, j in zip(mpos, screensize)):
-		return
-	return True
-
-def get_pressed():
-	mheld = [None] * 5
-	for i, n in enumerate((1, 2, 4, 5, 6)):
-		mheld[i] = bool(user32.GetAsyncKeyState(n) & 32768)
-	return mheld
 
 
 in_rect = lambda point, rect: point[0] >= rect[0] and point[0] < rect[0] + rect[2] and point[1] >= rect[1] and point[1] < rect[1] + rect[3]
@@ -676,70 +1721,9 @@ rect_centre = lambda rect: (rect[0] + rect[2] // 2, rect[1] + rect[3] // 2)
 rect_points = lambda rect: (rect[:2], (rect[0] + rect[2], rect[1]), (rect[0], rect[1] + rect[3]), (rect[0] + rect[2], rect[1] + rect[3]))
 point_dist = lambda p, q: hypot(p[0] - q[0], p[1] - q[1])
 
-class WR(ctypes.Structure):
-	_fields_ = [
-		("left", ctypes.c_long),
-		("top", ctypes.c_long),
-		("right", ctypes.c_long),
-		("bottom", ctypes.c_long),
-	]
-
-wr = WR()
-
-def get_window_rect():
-	user32.GetWindowRect(hwnd, ctypes.byref(wr))
-	return wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top
-
-class WP(ctypes.Structure):
-	_fields_ = [
-		("length", ctypes.c_uint),
-		("flags", ctypes.c_uint),
-		("showCmd", ctypes.c_uint),
-		("ptMinPosition", ctypes.c_void_p),
-		("ptMaxPosition", ctypes.c_void_p),
-		("rcNormalPosition", ctypes.c_void_p),
-		("rcDevice", ctypes.c_void_p),
-	]
-
-wp = WP()
-ptMinPosition = WR()
-ptMaxPosition = WR()
-rcNormalPosition = WR()
-rcDevice = WR()
-
-wp.length = 44
-wp.ptMinPosition = ctypes.cast(ctypes.byref(ptMinPosition), ctypes.c_void_p)
-wp.ptMaxPosition = ctypes.cast(ctypes.byref(ptMaxPosition), ctypes.c_void_p)
-wp.rcNormalPosition = ctypes.cast(ctypes.byref(rcNormalPosition), ctypes.c_void_p)
-wp.rcDevice = ctypes.cast(ctypes.byref(rcDevice), ctypes.c_void_p)
-
-def get_window_flags():
-	user32.GetWindowPlacement(hwnd, ctypes.byref(wp))
-	return wp.showCmd
-
-if os.name == "nt":
-	is_minimised = lambda: user32.IsIconic(hwnd)
-	globals()["unfocus-time"] = 0
-	def is_unfocused():
-		if hwnd == user32.GetForegroundWindow(hwnd):
-			globals()["unfocus-time"] = utc()
-			return
-		return utc() - globals()["unfocus-time"] > 3
-else:
-	is_minimised = is_unfocused = lambda: False
-
-if options.get("maximised"):
-	user32.ShowWindow(hwnd, 3)
-elif options.get("screenpos"):# and not options.get("maximised"):
-	x, y = options.screenpos
-	user32.SetWindowPos(hwnd, 0, x, y, -1, -1, 0x4561)
-# else:
-#	 user32.SetWindowPos(hwnd, -1, -1, -1, -1, -1, 0x4563)
-screenpos2 = get_window_rect()[:2]
-
-flash_window = lambda bInvert=True: user32.FlashWindow(hwnd, bInvert)
-
-# shobjidl_core.SetWallpaper(0, os.path.abspath("misc/icon.png"))
+is_minimised = lambda: getattr(DISP, "minimised", None)
+is_unfocused = lambda: not getattr(DISP, "focused", None)
+get_focused = lambda: getattr(DISP, "focused", None)
 
 proglast = (0, 0)
 def taskbar_progress_bar(ratio=1, colour=0):
@@ -757,6 +1741,7 @@ def taskbar_progress_bar(ratio=1, colour=0):
 			print_exc()
 	elif not shobjidl_core:
 		return
+	hwnd = DISP.canvas.hwnd
 	global proglast
 	if ratio <= 0 and not colour & 1 or not colour:
 		ratio = colour = 0
@@ -769,18 +1754,54 @@ def taskbar_progress_bar(ratio=1, colour=0):
 			shobjidl_core.SetProgressValue(hwnd, r, 256)
 
 
-PyQt5.force()
-from PyQt5 import QtCore, QtWidgets
-if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
-	PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
-if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
-	PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
-PIL.force()
+def submit_next(func, cb):
+	fut = submit(func)
+	fut.add_done_callback(lambda fut: cb())
+	return fut
+
+import easygui #, easygui_qt, PyQt5
+# from PyQt5 import QtCore, QtWidgets
+# if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
+	# PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+# if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+	# PyQt5.QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+# easygui.__dict__.update(easygui_qt.easygui_qt.__dict__)
+
+class cbfunc:
+
+	exc = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+	def __init__(self, sub):
+		self.sub = sub
+
+	def __call__(self, *args, **kwargs):
+		DISP.kclick.reset()
+		if easygui2.lock:
+			return
+		easygui2.lock = True
+		self.cb = args[0] if args else None
+		fut = self.exc.submit(self.sub, *args[1:], **kwargs)
+		fut.add_done_callback(self.done)
+		return fut
+
+	def done(self, fut):
+		try:
+			if callable(self.cb):
+				self.cb(fut.result())
+		except:
+			print_exc()
+		finally:
+			easygui2.lock = False
+			DISP.kclick.reset()
+
+easygui2 = cdict(lock=False)
+for k, v in easygui.__dict__.items():
+	if callable(v):
+		easygui2[k] = cbfunc(v)
+
+import PIL
 from PIL import Image, ImageOps, ImageChops
-math.force()
-from math import *
 np = numpy
-easygui.__dict__.update(easygui_qt.easygui_qt.__dict__)
 deque = collections.deque
 suppress = contextlib.suppress
 d2r = pi / 180
@@ -802,7 +1823,7 @@ except:
 	reqx = httpx.Client(http2=False)
 
 def update_repo(force=False):
-	print("Checking for updates...")
+	# print("Checking for updates...")
 	try:
 		resp = reqx.get("https://github.com/thomas-xin/Miza-Player")
 		s = resp.text
@@ -824,7 +1845,6 @@ def update_repo(force=False):
 				raise EOFError
 			if commit != s:
 				print("Update found!")
-				flash_window()
 				if not options.control.autoupdate:
 					globals()["repo-update"] = fut = concurrent.futures.Future()
 					if force:
@@ -881,7 +1901,7 @@ def update_repo(force=False):
 					pass
 				else:
 					globals().pop("repo-update", None)
-				print("No updates found.")
+				# print("No updates found.")
 				return True
 		except EOFError:
 			if commitf == commitr:
@@ -895,7 +1915,7 @@ def update_collections2():
 	b = resp.content
 	with open(collections2f, "wb") as f:
 		f.write(b)
-	print("collections2.tmp updated.")
+	# print("collections2.tmp updated.")
 	if "alist" in globals():
 		return
 	cd = cdict
@@ -1070,9 +2090,9 @@ def limit_size(w, h, wm, hm):
 	h2 = w2 * r
 	return tuple(map(round, (w2, h2)))
 
-from pygame.locals import *
 import pygame.ftfont, pygame.gfxdraw
 gfxdraw = pygame.gfxdraw
+PRINT.start()
 
 a = submit(pygame.ftfont.init)
 b = submit(pygame.font.init)
@@ -1092,22 +2112,21 @@ def pil2pyg(im, convert=None):
 	surf = pygame.image.frombuffer(b, im.size, mode)
 	if convert:
 		if "A" in mode:
-			return surf.convert_alpha()
-		return surf.convert()
+			return surf
+		return surf.convert(32)
 	elif convert is not None:
 		return HWSurface.copy(surf)
 	return surf
 
-# def as_pyg(hws):
-	# if isinstance(hws, pygame.Surface):
-		# return hws
-	# if isinstance(hws, Image.Image):
-		# return pil2pyg(hws)
-	return pygame.image.frombuffer(hws.get_data(), im.size, im.mode)
-	# glfw.make_context_current(hws.wind)
-	# mi = GL_RGB if "A" not in hws.mode else GL_RGBA
-	# b = glReadPixels(0, 0, *hws.size, mi, GL_UNSIGNED_BYTE)
-	# return pygame.image.frombuffer(b, hws.size, hws.mode)
+def pyg2pgl(surf):
+	mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
+	b = pygame.image.tostring(surf, mode, True)
+	return pyglet.image.ImageData(*surf.get_size(), mode, b)
+
+def pil2pgl(im):
+	mode = im.mode
+	b = im.tobytes()
+	return pyglet.image.ImageData(*im.size, mode, b)
 
 class HWSurface:
 
@@ -1169,106 +2188,6 @@ class HWSurface:
 	get_width = lambda self: self.width
 	get_height = lambda self: self.height
 
-	# def fill(self, colour=(0,) * 4):
-		# glfw.make_context_current(self.wind)
-		# glClearColor(*colour)
-		# glClear(GL_COLOR_BUFFER_BIT)
-
-	# def blit(self, source, dest=None, area=None, special_flags=0):
-		# glfw.make_context_current(self.wind)
-		# glEnable(GL_TEXTURE_2D)
-		# try:
-			# size = source.size
-		# except AttributeError:
-			# size = source.get_size()
-			# mode = "RGBA" if source.get_flags() & pygame.SRCALPHA else "RGB"
-		# else:
-			# mode = source.mode
-		# try:
-			# tex = self.cache[source]
-		# except KeyError:
-			# if isinstance(source, self.__class__):
-				# glfw.make_context_current(source.wind)
-				# mi = GL_RGB if "A" not in mode else GL_RGBA
-				# data = glReadPixels(0, 0, *size, mi, GL_UNSIGNED_BYTE)
-			# elif isinstance(source, pygame.Surface):
-				# data = pygame.image.tostring(source, mode, True)
-			# else:
-				# data = source.tobytes()
-			# m = len(mode)
-			# tex = self.cache[source] = glGenTextures(1)
-			# weakref.finalize(source, glDeleteTextures, (tex,))
-			# glBindTexture(GL_TEXTURE_2D, tex)
-			# mi = GL_RGBA if m > 3 else GL_RGB
-			# glTexImage2D(
-				# GL_TEXTURE_2D,
-				# 0,
-				# mi,
-				# *size,
-				# 0,
-				# mi,
-				# GL_UNSIGNED_BYTE,
-				# data,
-			# )
-			# print("Textures:", len(self.cache))
-		# glBindTexture(GL_TEXTURE_2D, tex)
-		# glOrtho(0, *self.size, 0, 0, 1)
-		# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-		# glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-		# if len(mode) > 3:
-			# glEnable(GL_BLEND)
-		# else:
-			# glDisable(GL_BLEND)
-
-		# if area is None:
-			# area = [0, 0]
-			# area.extend(size)
-		# area = astype(area, list)
-		# if len(area) < 4:
-			# area = [0, 0] + area
-		# if dest is None:
-			# dest = [0, 0, *self.size]
-		# dest = astype(dest, list)
-		# if dest[0] < 0:
-			# area[0], dest[0] = -dest[0], 0
-		# if dest[1] < 0:
-			# area[1], dest[1] = -dest[1], 0
-		# if len(dest) < 4:
-			# dest.extend(area[2:])
-		# sx1, sy1, sx2, sy2 = area
-		# dx1, dy1, dx2, dy2 = dest
-		# sx2 += sx1
-		# sy2 += sy1
-		# dx2 += dx1
-		# dy2 += dy1
-		# if dx2 > self.width:
-			# dx2 = sx2 = self.width
-		# if dy2 > self.height:
-			# dy2 = sy2 = self.height
-		# if sx2 > size[0]:
-			# sx2 = dx2 = size[0]
-		# if sy2 > size[1]:
-			# sy2 = dy2 = size[1]
-		# self.v1[:] = (
-			# sx1, sy1,
-			# sx1, sy2,
-			# sx2, sy1,
-			# sx2, sy2,
-		# )
-		# self.v1[::2] /= size[0]
-		# self.v1[1::2] /= size[1]
-		# glTexCoordPointer(2, GL_FLOAT, 0, self.v1)
-		# self.v2[:] = (
-			# dx1, dy1,
-			# dx1, dy2,
-			# dx2, dy1,
-			# dx2, dy2,
-		# )
-		# glVertexPointer(2, GL_FLOAT, 0, self.v2)
-		# glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-		# glEnableClientState(GL_VERTEX_ARRAY)
-		# glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-		# return dest
 
 SURFS = {}
 def load_surface(fn, greyscale=False, size=None, force=False):
@@ -1295,9 +2214,8 @@ def load_surface(fn, greyscale=False, size=None, force=False):
 		if "RGB" not in im2.mode:
 			im2 = im2.convert("RGB" + ("A" if "A" in im.mode else ""))
 		im = im2
-	surf = pil2pyg(im)
+	out = pil2pyg(im)
 	image.close()
-	out = surf.convert_alpha() if "A" in im.mode else surf.convert()
 	if tup:
 		SURFS[tup] = out
 	return out
@@ -1321,8 +2239,9 @@ gradient = ((np.arange(1, 0, -1 / gsize[0], dtype=np.float32)) ** 2 * 256).astyp
 qhue = Image.fromarray(gradient, "L")
 qsat = qval = Image.new("L", gsize, 255)
 QUADS = {}
+QUAD_SCALES = {}
 
-def quadratic_gradient(size=gsize, t=None, curve=None, flags=None, copy=False):
+def quadratic_gradient(size=gsize, t=None, repetition=1, curve=None, flags=None, copy=False, unique=False):
 	if flags is None:
 		flags = FLAGS
 	size = tuple(size)
@@ -1330,25 +2249,34 @@ def quadratic_gradient(size=gsize, t=None, curve=None, flags=None, copy=False):
 		t = pc()
 	quadratics = QUADS.get(flags & pygame.SRCALPHA)
 	if not quadratics:
-		quadratics = QUADS[flags & pygame.SRCALPHA] = [None] * 256
+		quadratics = QUADS[flags & pygame.SRCALPHA] = {}
 	x = int(t * 128) & 255
-	if not quadratics[x]:
-		hue = qhue.point(lambda i: i + x & 255)
-		img = Image.merge("HSV", (hue, qsat, qval)).convert("RGB")
+	xt = (x, repetition)
+	if not quadratics.get(xt):
+		hue = qhue.point(lambda i: round(i * repetition + x) & 255)
+		img = Image.merge("HSV", (hue, qsat, qval))
 		if flags & pygame.SRCALPHA:
-			quadratics[x] = pil2pyg(img).convert_alpha()
+			img = img.convert("RGBA")
 		else:
-			quadratics[x] = pil2pyg(img, convert=True)
-	surf = quadratics[x]
+			img = img.convert("RGB")
+		quadratics[xt] = pil2pyg(img, convert=True)
+	surf = quadratics[xt]
 	if surf.get_size() != size or surf.get_flags() != flags or curve:
-		s2 = HWSurface.any(size, flags)
+		if unique:
+			h = (x, repetition, size, curve)
+			try:
+				return QUAD_SCALES[h]
+			except KeyError:
+				s2 = QUAD_SCALES[h] = pygame.Surface(size, flags)
+		else:
+			s2 = HWSurface.any(size, flags)
 		surf = pygame.transform.scale(surf, size, s2)
 		if curve:
 			h = size[1]
 			m = h + 1 >> 1
 			for i in range(1, m):
 				tx = t - curve * (i / (m - 1))
-				g = quadratic_gradient((size[0], 1), tx)
+				g = quadratic_gradient((size[0], 1), tx, repetition)
 				y = h // 2 - (not h & 1)
 				try:
 					surf.blit(g, (0, y - i))
@@ -1388,11 +2316,12 @@ def radial_gradient(size=(rgw,) * 2, t=None, flags=None, copy=False):
 	x = int(t * 128) & 255
 	if not radials[x]:
 		hue = rhue.point(lambda i: i + x & 255)
-		img = Image.merge("HSV", (hue, rsat, rval)).convert("RGB")
+		img = Image.merge("HSV", (hue, rsat, rval))
 		if flags & pygame.SRCALPHA:
-			radials[x] = pil2pyg(img).convert_alpha()
+			img = img.convert("RGBA")
 		else:
-			radials[x] = pil2pyg(img, convert=True)
+			img = img.convert("RGB")
+		radials[x] = pil2pyg(img, convert=True)
 	surf = radials[x]
 	if surf.get_size() != size or surf.get_flags() != flags:
 		s2 = HWSurface.any(size, flags)
@@ -1401,13 +2330,65 @@ def radial_gradient(size=(rgw,) * 2, t=None, flags=None, copy=False):
 		return HWSurface.copy(surf)
 	return surf
 
-draw_line = pygame.draw.line
-draw_aaline = pygame.draw.aaline
-draw_hline = gfxdraw.hline
-draw_vline = gfxdraw.vline
-draw_polygon = pygame.draw.polygon
+def draw_line(dest, colour, start, end, width=1, z=0):
+	if dest is DISP or isinstance(dest, DISP.subsurface):
+		return DISP.shape(pyglet.shapes.Line, *start, *end, width=width, color=colour, z=z)
+	else:
+		return pygame.draw.line(dest, colour, start, end, width=width)
+def draw_aaline(dest, colour, start, end, width=1, z=0):
+	if dest is DISP or isinstance(dest, DISP.subsurface):
+		return DISP.shape(pyglet.shapes.Line, *start, *end, width=width, color=colour, z=z)
+	else:
+		return pygame.draw.aaline(dest, colour, start, end)
+def draw_hline(dest, x1, x2, y, colour, width=1, z=0):
+	if dest is DISP or isinstance(dest, DISP.subsurface):
+		return DISP.shape(pyglet.shapes.Line, x1, y, x2, y, width=width, color=colour, z=z)
+	else:
+		return gfxdraw.hline(dest, x1, x2, y, colour)
+def draw_vline(dest, x, y1, y2, colour, width=1, z=0):
+	if dest is DISP or isinstance(dest, DISP.subsurface):
+		return DISP.shape(pyglet.shapes.Line, x, y1, x, y2, width=width, color=colour, z=z)
+	else:
+		return gfxdraw.vline(dest, x, y1, y2, colour)
+def draw_polygon(dest, colour, points, z=0):
+	if dest is DISP or isinstance(dest, DISP.subsurface):
+		if len(colour) > 3:
+			alpha = colour[3]
+			colour = colour[:3]
+		else:
+			alpha = 255
+		colour = tuple(round(c) for c in colour)
+		points = tuple((p[0], screensize[1] - p[1]) for p in points)
+		t = (z, pyglet.shapes.Polygon)
+		batch = DISP.get_batch(z // 128)
+		for sp in DISP.shapes.get(t, ()):
+			if not sp.used:
+				if tuple(sp._coordinates) != points:
+					sp._coordinates = list(points)
+					sp._update_position()
+					sp._update_color()
+				if sp.color != colour:
+					sp.color = colour
+				break
+		else:
+			sp = pyglet.shapes.Polygon(
+				*points,
+				color=colour,
+				batch=batch,
+				group=DISP.get_group(z),
+			)
+			DISP.shapes.setdefault(t, weakref.WeakSet()).add(sp)
+		if sp.opacity != alpha:
+			sp.opacity = alpha
+		DISP.active.add(sp)
+		batch.used = True
+		sp.used = True
+		if not sp.visible:
+			sp.visible = True
+		return sp
+	else:
+		return pygame.draw.polygon(dest, colour, points)
 draw_tpolygon = gfxdraw.textured_polygon
-
 def draw_arc(surf, colour, pos, radius, start_angle=0, stop_angle=0):
 	start_angle = int(start_angle % 360)
 	stop_angle = int(stop_angle % 360)
@@ -1511,11 +2492,11 @@ def custom_scale(source, size, dest=None, antialias=False, hwany=False):
 	return scalef(source, dsize)
 
 def garbage_collect(cache, lim=4096):
-	while len(cache) >= lim:
-		try:
-			del cache[next(iter(cache))]
-		except:
-			return
+	if len(cache) >= lim * 2:
+		items = tuple(cache.items())
+		cache.clear()
+		cache.update(dict(items[-lim:]))
+		return len(items) - lim
 
 QUEUED = deque()
 def Enqueue(func, *args, **kwargs):
@@ -1531,7 +2512,7 @@ def Finish():
 
 cb_cache = weakref.WeakKeyDictionary()
 ALPHA = BASIC = 0
-def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True, cache=True):
+def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, colour=(255,) * 3, area=None, copy=True, cache=True, z=0):
 	pos = position
 	if len(pos) > 2:
 		pos = pos[:2]
@@ -1540,9 +2521,11 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
 		s2 = dest.get_size()
 		if pos[0] >= s2[0] or pos[1] >= s2[1] or pos[0] <= -s1[0] or pos[1] <= -s1[1]:
 			return
-	alpha = round_random(min(alpha / 3, 85)) * 3
 	if alpha <= 0:
 		return
+	if dest is DISP or isinstance(dest, DISP.subsurface):
+		return dest.blit(source, pos, area=area, colour=astype(colour, tuple) + (alpha,), angle=angle, z=z)
+	alpha = round_random(min(alpha / 3, 85)) * 3
 	s = source
 	if alpha != 255 or any(i != 255 for i in colour) or dest is None:
 		if copy:
@@ -1555,13 +2538,7 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
 				else:
 					raise KeyError
 			except KeyError:
-				try:
-					if alpha == 255 and not s.get_flags() & pygame.SRCALPHA:
-						s = source.convert()
-					else:
-						s = source.convert_alpha()
-				except:
-					s = source.copy()
+				s = source.copy()
 				try:
 					cb_cache[source].append((s, colour, alpha))
 				except KeyError:
@@ -1594,60 +2571,186 @@ def blit_complex(dest, source, position=(0, 0), alpha=255, angle=0, scale=1, col
 		return dest.blit(s, pos, area)
 	return s
 
-def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0):
+def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0, z=0):
+	if len(colour) > 3:
+		alpha = (alpha * colour[3] / 255)
+		colour = colour[:3]
 	alpha = max(0, min(255, round_random(alpha)))
 	width = round(abs(width))
+	if dest is DISP or isinstance(dest, DISP.subsurface):
+		p = [rect[0], screensize[1] - rect[1] - rect[3]]
+		q = [rect[0] + rect[2], screensize[1] - rect[1]]
+		if dest is not DISP:
+			p[0] += dest.rect[0]
+			p[1] -= dest.rect[1]
+			q[0] += dest.rect[0]
+			q[1] -= dest.rect[1]
+		width = q[0] - p[0]
+		height = q[1] - p[1]
+		x, y = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2
+		anchor_x = width / 2
+		anchor_y = height / 2
+		colour = tuple(map(round, colour))
+		t = (z, pyglet.shapes.Rectangle)
+		batch = DISP.get_batch(z // 128)
+		for sp in DISP.shapes.get(t, ()):
+			if not sp.used:
+				if sp.position != (x, y):
+					sp.position = (x, y)
+				if sp.width != width:
+					sp.width = width
+				if sp.height != height:
+					sp.height = height
+				if sp.color != colour:
+					sp.color = colour
+				break
+		else:
+			sp = pyglet.shapes.Rectangle(
+				x, y,
+				width, height,
+				colour,
+				batch=batch,
+				group=DISP.get_group(z),
+			)
+			DISP.shapes.setdefault(t, weakref.WeakSet()).add(sp)
+		if sp.anchor_x != anchor_x:
+			sp.anchor_x = anchor_x
+		if sp.anchor_y != anchor_y:
+			sp.anchor_y = anchor_y
+		if sp.opacity != alpha:
+			sp.opacity = alpha
+		r = angle / pi * 180
+		if sp.rotation != r:
+			sp.rotation = r
+		DISP.active.add(sp)
+		batch.used = True
+		sp.used = True
+		if not sp.visible:
+			sp.visible = True
+		return sp
 	if width > 0:
 		if angle != 0 or alpha != 255:
 			ssize = [i + width for i in rect[2:]]
 			s = pygame.Surface(ssize, FLAGS)
 			srec = [i + width // 2 for i in rect[2:]]
 			pygame.draw.rect(s, colour, srec, width)
-			blit_complex(dest, s, rect[:2], alpha, angle)
+			blit_complex(dest, s, rect[:2], alpha, angle, z=z)
 			#raise NotImplementedError("Alpha blending and rotation of rectangles with variable width is not implemented.")
 		else:
 			pygame.draw.rect(dest, colour, width)
 	else:
-		if angle != 0:
-			bevel_rectangle(dest, colour, rect, 0, alpha, angle)
+		rect = astype(rect, list)
+		if rect[0] < 0:
+			rect[2] += rect[0]
+			rect[0] = 0
+		if rect[1] < 0:
+			rect[3] += rect[1]
+			rect[1] = 0
+		if alpha != 255:
+			dest.fill((255 - alpha,) * 4, rect, special_flags=BLEND_RGBA_MULT)
+			dest.fill([min(i + alpha / 255, 255) for i in colour] + [alpha], rect, special_flags=BLEND_RGBA_ADD)
 		else:
-			rect = astype(rect, list)
-			if rect[0] < 0:
-				rect[2] += rect[0]
-				rect[0] = 0
-			if rect[1] < 0:
-				rect[3] += rect[1]
-				rect[1] = 0
-			if alpha != 255:
-				dest.fill((255 - alpha,) * 4, rect, special_flags=BLEND_RGBA_MULT)
-				dest.fill([min(i + alpha / 255, 255) for i in colour] + [alpha], rect, special_flags=BLEND_RGBA_ADD)
-			else:
-				dest.fill(colour, rect)
+			dest.fill(colour, rect)
 
-def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, cache=True, copy=True):
+BR_SPLIT = {}
+
+def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, filled=True, cache=True, copy=True, z=0):
 	rect = list(map(round, rect))
 	if len(colour) > 3:
 		colour, alpha = colour[:-1], colour[-1]
 	if min(alpha, rect[2], rect[3]) <= 0:
 		return
-	s = dest.get_size()
-	r = (0, 0) + s
-	if not int_rect(r, rect):
-		return
+	if dest:
+		s = dest.get_size()
+		r = (0, 0) + s
+		if not int_rect(r, rect):
+			return
+	if not cache and (dest is DISP or isinstance(dest, DISP.subsurface)):
+		if dest is not DISP:
+			rect = (
+				dest.rect[0] + rect[0],
+				dest.rect[1] + rect[1],
+				*rect[2:],
+			)
+		if bevel:
+			lines = []
+			colours = []
+			for i in range(bevel):
+				p = [rect[0] + i + 1, screensize[1] - rect[1] - i - 1]
+				q = [rect[0] + rect[2] - i, screensize[1] - rect[1] - rect[3] + i]
+				v1 = 128 - i / bevel * 128
+				v2 = i / bevel * 96 - 96
+				col1 = col2 = colour
+				if v1:
+					col1 = tuple(min(x + v1, 255) for x in col1)
+				if v2:
+					col2 = tuple(max(x + v2, 0) for x in col1)
+				col1 += (alpha,)
+				col2 += (alpha,)
+				lines.append((p[0] - 1, p[1]))
+				colours.append(col1)
+				lines.append((q[0], p[1]))
+				colours.append(col1)
+				lines.append((q[0], p[1]))
+				colours.append(col2)
+				lines.append((q[0], q[1]))
+				colours.append(col2)
+				lines.append((q[0], q[1]))
+				colours.append(col2)
+				lines.append((p[0], q[1]))
+				colours.append(col2)
+				lines.append((p[0], q[1]))
+				colours.append(col1)
+				lines.append((p[0], p[1]))
+				colours.append(col1)
+			lines = tuple(lines)
+			colours = tuple(colours)
+			t = (z, GL_Lines)
+			batch = DISP.get_batch(z // 128)
+			for sp in DISP.shapes.get(t, ()):
+				if not sp.used:
+					if sp.coordinates != lines:
+						sp.coordinates = lines
+					if sp.colours != colours:
+						sp.colours = colours
+					break
+			else:
+				sp = GL_Lines(
+					*lines,
+					batch=batch,
+					group=DISP.get_group(z),
+				)
+				sp.colours = colours
+				DISP.shapes.setdefault(t, weakref.WeakSet()).add(sp)
+			DISP.active.add(sp)
+			batch.used = True
+			sp.used = True
+			if not sp.visible:
+				sp.visible = True
+		if filled:
+			lines = []
+			draw_rect(
+				DISP,
+				colour,
+				(rect[0] + bevel, rect[1] + bevel, rect[2] - bevel * 2, rect[3] - bevel * 2),
+				alpha=alpha,
+				z=z,
+			)
+		return rect
 	br_surf = globals().setdefault("br_surf", {})
 	colour = verify_colour(colour)
 	if alpha == 255 and angle == 0 and (any(i > 160 for i in colour) or all(i in (0, 16, 32, 48, 64, 96, 127, 159, 191, 223, 255) for i in colour)):
 		if cache:
-			data = tuple(rect[2:]) + (grad_col, grad_angle, tuple(colour), filled)
+			data = tuple(rect[2:]) + (tuple(colour), filled)
 		else:
 			data = None
 		try:
 			surf = br_surf[data]
 		except KeyError:
-			surf = pygame.Surface(rect[2:], FLAGS)
-			if not filled:
-				surf.fill((1, 2, 3))
-				surf.set_colorkey((1, 2, 3))
+			if filled:
+				surf = pygame.Surface(rect[2:], FLAGS)
+			else:
+				surf = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)
 			r = rect
 			rect = [0] * 2 + rect[2:]
 			for c in range(bevel):
@@ -1668,26 +2771,20 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
 				except:
 					print_exc()
 			if filled:
-				if grad_col is None:
-					draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
-				else:
-					gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+				draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
 			rect = r
 			if data:
-				garbage_collect(br_surf, 64)
 				br_surf[data] = surf
 		if dest:
-			return blit_complex(dest, surf, rect[:2])
-		return surf.convert() if copy else surf
+			return blit_complex(dest, surf, rect[:2], z=z)
+		return surf.copy() if copy else surf
 	ctr = max(colour)
 	contrast = min(round(ctr) + 2 >> 2 << 2, 255)
-	data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
+	data = tuple(rect[2:]) + (contrast, filled)
 	s = br_surf.get(data)
 	if s is None:
 		colour2 = (contrast,) * 3
-		s = pygame.Surface(rect[2:], FLAGS)
-		s.fill((1, 2, 3))
-		s.set_colorkey((1, 2, 3))
+		s = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)
 		for c in range(bevel):
 			p = [c, c]
 			q = [i - c - 1 for i in rect[2:]]
@@ -1703,20 +2800,16 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=No
 			draw_hline(s, p[0], q[0], q[1], col2)
 			draw_vline(s, q[0], p[1], q[1], col2)
 		if filled:
-			if grad_col is None:
-				draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
-			else:
-				gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+			draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
 		if cache:
-			garbage_collect(br_surf, 64)
 			br_surf[data] = s
 	if ctr > 0:
 		colour = tuple(round(i * 255 / ctr) for i in colour)
 	else:
 		colour = (0,) * 3
-	return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
+	return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour, z=z)
 
-def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, background=None, cache=True, copy=True):
+def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=None, grad_angle=0, filled=True, background=None, cache=True, copy=True, z=0):
 	rect = list(map(round, rect))
 	if len(colour) > 3:
 		colour, alpha = colour[:-1], colour[-1]
@@ -1739,12 +2832,12 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
 			surf = rb_surf[data]
 		except KeyError:
 			if background:
-				surf = pygame.Surface(rect[2:], FLAGS)
-				if not filled:
-					surf.fill((1, 2, 3))
-					surf.set_colorkey((1, 2, 3))
-				elif any(background):
-					surf.fill(background)
+				if filled:
+					surf = pygame.Surface(rect[2:], FLAGS)
+					if any(background):
+						surf.fill(background)
+				else:
+					surf = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)
 			else:
 				surf = pygame.Surface(rect[2:], FLAGS | pygame.SRCALPHA)
 			r = rect
@@ -1773,16 +2866,15 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
 					draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
 			if filled:
 				if grad_col is None:
-					draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+					draw_rect(surf, colour, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], alpha=alpha)
 				else:
-					gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+					gradient_rectangle(surf, [rect[0] + bevel, rect[1] + bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle, alpha=alpha)
 			rect = r
 			if data:
-				garbage_collect(rb_surf, 256)
 				rb_surf[data] = surf
 		if dest:
-			return blit_complex(dest, surf, rect[:2])
-		return surf.convert() if copy else surf
+			return blit_complex(dest, surf, rect[:2], z=z)
+		return surf.copy() if copy else surf
 	ctr = max(colour)
 	contrast = min(round(ctr) + 2 >> 2 << 2, 255)
 	data = tuple(rect[2:]) + (grad_col, grad_angle, contrast, filled)
@@ -1813,49 +2905,53 @@ def rounded_bev_rect(dest, colour, rect, bevel=0, alpha=255, angle=0, grad_col=N
 				draw_arc(s, col2, [q[0] - b, q[1] - b], b, 0, 90)
 		if filled:
 			if grad_col is None:
-				draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel])
+				draw_rect(s, colour2, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], alpha=alpha)
 			else:
-				gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle)
+				gradient_rectangle(s, [bevel, bevel, rect[2] - 2 * bevel, rect[3] - 2 * bevel], grad_col, grad_angle, alpha=alpha)
 		if cache:
-			garbage_collect(rb_surf, 256)
 			rb_surf[data] = s
 	if ctr > 0:
 		colour = tuple(round_random(i * 255 / ctr) for i in colour)
 	else:
 		colour = (0,) * 3
-	return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour)
+	return blit_complex(dest, s, rect[:2], angle=angle, alpha=alpha, colour=colour, z=z)
 
-reg_polygon_cache = {}
+rp_surf = {}
 
-def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4, alpha=255, thickness=0, repetition=1, filled=False, rotation=0, soft=False, attempts=128, cache=True):
+def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4, alpha=255, thickness=0, repetition=1, filled=False, rotation=0, soft=False, hard=False, attempts=128, cache=True, z=0):
 	width = max(round(width), 0)
 	height = max(round(height), 0)
 	repetition = int(repetition)
-	if sides:
+	acolour = verify_colour(colour)
+	colour = (255, 255, 255)
+	if dest and width == height and not rotation:
+		rotation = angle
+		angle = pi / 4
+	elif sides:
 		angle %= tau / sides
 	else:
 		angle = 0
 	cache |= angle % (pi / 4) == 0
 	if cache:
-		colour = tuple(min(255, round_random(i / 5) * 5) for i in colour)
+		# colour = tuple(min(255, round_random(i / 5) * 5) for i in colour)
 		angle = round_random(angle / tau * 144) * tau / 144
 		if soft and soft is not True:
 			soft = astype(soft, tuple)
-		h = (colour, sides, width, height, angle, thickness, repetition, filled, soft)
+		h = (sides, width, height, angle, thickness, repetition, filled, soft)
 		try:
-			newS = reg_polygon_cache[h]
+			newS = rp_surf[h]
 		except KeyError:
 			pass
 		else:
 			pos = [centre[0] - width, centre[1] - height]
-			return blit_complex(dest, newS, pos, alpha, rotation, copy=True)
+			return blit_complex(dest, newS, pos, alpha, rotation, colour=acolour, copy=True, z=z)
 	construct = pygame.Surface if cache else HWSurface.any
-	if not soft:
-		newS = construct((width << 1, height << 1), FLAGS)
-		newS.set_colorkey((1, 2, 3))
-		newS.fill((1, 2, 3))
-	elif soft is True:
+	if soft is True or hard is True or not soft:
 		newS = construct((width << 1, height << 1), FLAGS | pygame.SRCALPHA)
+	# elif not soft:
+		# newS = construct((width << 1, height << 1), FLAGS)
+		# newS.set_colorkey((1, 2, 3))
+		# newS.fill((1, 2, 3))
 	else:
 		newS = construct((width << 1, height << 1), FLAGS)
 		if any(soft):
@@ -1884,10 +2980,10 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
 		move_direction = loop / repetition + 0.2
 		points = []
 		if soft is True:
-			colourU = tuple(colour) + (min(round(255 * move_direction + 8), 255),)
+			colourU = astype(colour, tuple) + (min(round(255 * move_direction + 8), 255),)
 		else:
 			colourU = (colour[0] * move_direction + 8, colour[1] * move_direction + 8, colour[2] * move_direction + 8)
-			colourU = list(map(lambda c: min(c, 255), colourU))
+			colourU = [min(c, 255) for c in colourU]
 		try:
 			size = (min(width, height) - loop)
 			thickness = int(min(thickness, size))
@@ -1912,72 +3008,92 @@ def reg_polygon_complex(dest, centre, colour, sides, width, height, angle=pi / 4
 		loop += draw_direction
 	pos = [centre[0] - width, centre[1] - height]
 	if cache:
-		garbage_collect(reg_polygon_cache, 16384)
-		reg_polygon_cache[h] = newS
-		# print(len(reg_polygon_cache), h)
-	return blit_complex(dest, newS, pos, alpha, rotation, copy=cache, cache=False)
+		rp_surf[h] = newS
+		# print(len(rp_surf), h)
+	return blit_complex(dest, newS, pos, alpha, rotation, colour=acolour, copy=cache, cache=False, z=z)
 
-def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=255, gradient=False, filled=False, cache=True):
+def draw_circle(dest, colour, pos, radius, width=0, z=0):
+	radius = round(radius)
+	if radius <= 0:
+		return
+	width = round(width)
+	dc_surf = globals().setdefault("dc_surf", {})
+	colour = verify_colour(colour)
+	data = (radius, width)
+	s = dc_surf.get(data)
+	if not s:
+		size = (ceil(radius + width / 2) * 2 + 1,) * 2
+		s = pygame.Surface(size, FLAGS | pygame.SRCALPHA)
+		pygame.draw.circle(s, (255,) * 3, (size[0] >> 1, size[1] >> 1), radius, width)
+		dc_surf[data] = s
+	p = [x - ceil(y / 2) for x, y in zip(pos, s.get_size())]
+	return blit_complex(dest, s, p, colour=colour, z=z)
+
+def concentric_circle(dest, colour, pos, radius, width=0, fill_ratio=1, alpha=255, gradient=False, filled=False, z=0, cache=True):
 	reverse = fill_ratio < 0
 	radius = max(0, round(radius * 2) / 2)
-	if min(alpha, radius) > 0:
-		cc_surf = globals().setdefault("cc_surf", {})
-		width = max(0, min(width, radius))
-		tw = width / radius
-		fill_ratio = min(1, abs(fill_ratio))
-		cr = bit_crush(round(fill_ratio * 64), 3)
-		wr = bit_crush(round(tw * 64), 3)
-		colour = verify_colour(colour)
-		data = (radius, wr, cr, gradient, filled)
-		s = cc_surf.get(data)
-		if s == 0:
-			cache = False
-		if not s:
-			radius2 = min(128, bit_crush(radius, 5, ceil))
-			width2 = max(2, round(radius2 * tw))
-			colour2 = (255,) * 3
-			data2 = tuple(colour2) + (radius2 * 2, wr, cr, gradient, filled)
-			s2 = cc_surf.get(data2)
-			if not s2:
-				width2 = round(width2)
-				size = [radius2 * 2] * 2
-				size2 = [round(radius2 * 4), round(radius2 * 4) + 1]
-				s2 = pygame.Surface(size2, FLAGS | pygame.SRCALPHA)
-				circles = round(radius2 * 2 * fill_ratio / width2)
-				col = colour2
-				r = radius2 * 2
-				for i in range(circles):
-					if reverse:
-						it = (i + 1) / circles
-					else:
-						it = 1 - i / circles
-					if filled and i == circles - 1:
-						width2 = 0
-					if gradient:
-						col = adj_colour(colour2, 0, it)
-					c = col + (round(255 * min(1, (it + gradient))),)
-					pygame.draw.circle(s2, c, [i - 1 for i in size], r, min(r, width2 + (width2 > 0)))
-					r -= width2
-				cc_surf[data2] = s2
-			size3 = [round(radius * 2) for i in range(2)]
-			s = custom_scale(s2, size3, antialias=1)
-			if cache:
-				cc_surf[data] = s
-		p = [i - radius for i in pos]
-		return blit_complex(dest, s, p, alpha=alpha, colour=colour)
+	if min(alpha, radius) <= 0:
+		return
+	cc_surf = globals().setdefault("cc_surf", {})
+	width = max(0, min(width, radius))
+	tw = width / radius
+	fill_ratio = min(1, abs(fill_ratio))
+	cr = bit_crush(round(fill_ratio * 64), 3)
+	wr = bit_crush(round(tw * 64), 3)
+	colour = verify_colour(colour)
+	data = (radius, wr, cr, gradient, filled)
+	s = cc_surf.get(data)
+	if s == 0:
+		cache = False
+	if not s:
+		radius2 = min(128, bit_crush(radius, 5, ceil))
+		width2 = max(2, round(radius2 * tw))
+		colour2 = (255,) * 3
+		data2 = tuple(colour2) + (radius2 * 2, wr, cr, gradient, filled)
+		s2 = cc_surf.get(data2)
+		if not s2:
+			width2 = round(width2)
+			size = [radius2 * 2] * 2
+			size2 = [round(radius2 * 4), round(radius2 * 4) + 1]
+			s2 = pygame.Surface(size2, FLAGS | pygame.SRCALPHA)
+			circles = round(radius2 * 2 * fill_ratio / width2)
+			col = colour2
+			r = radius2 * 2
+			for i in range(circles):
+				if reverse:
+					it = (i + 1) / circles
+				else:
+					it = 1 - i / circles
+				if filled and i == circles - 1:
+					width2 = 0
+				if gradient:
+					col = adj_colour(colour2, 0, it)
+				c = col + (round(255 * min(1, (it + gradient))),)
+				pygame.draw.circle(s2, c, [i - 1 for i in size], r, min(r, width2 + (width2 > 0)))
+				r -= width2
+			cc_surf[data2] = s2
+		size3 = [round(radius * 2) for i in range(2)]
+		s = custom_scale(s2, size3, antialias=1)
+		if cache:
+			cc_surf[data] = s
+	p = [i - radius for i in pos]
+	return blit_complex(dest, s, p, alpha=alpha, colour=colour, z=z)
 
-def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, ratio=0, reduction=0.3):
+anima_parts = {}
+
+def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, ratio=0, reduction=0.2, z=1):
 	s = surface.get_size()
 	r = (-4, -4, s[0] + 8, s[1] + 8)
 	if not int_rect(r, rect):
 		return
+	az = (z // 128) + 0.05
 	if flash:
 		n = 4
 		a = (ratio * speed * n) % (flash * n)
 		if a < speed:
 			pos = round((a * 4 / flash - 1) * rect[3])
-			bevel_rectangle(surface, (255,) * 3, (rect[0], rect[1] + max(pos, 0), rect[2], min(rect[3] + pos, rect[3]) - max(pos, 0)), 0, 159)
-			bevel_rectangle(surface, (255,) * 3, (rect[0], rect[1] + max(pos + 8, 0), rect[2], min(rect[3] + pos, rect[3]) - max(pos + 16, 0)), 0, 159)
+			bevel_rectangle(surface, (255,) * 3, (rect[0], rect[1] + max(pos, 0), rect[2], min(rect[3] + pos, rect[3]) - max(pos, 0)), 0, 159, z=z+0.5)
+			bevel_rectangle(surface, (255,) * 3, (rect[0], rect[1] + max(pos + 8, 0), rect[2], min(rect[3] + pos, rect[3]) - max(pos + 16, 0)), 0, 159, z=z+0.5)
 	perimeter = rect[2] * 2 + rect[3] * 2
 	increment = 3
 	orig = frame
@@ -2004,8 +3120,16 @@ def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, rat
 				r = [round(rect[0] + rect[2] - pos), round(rect[1] + rect[3] + 0.5)]
 			else:
 				r = [round(rect[0]), round(rect[1] + rect[3] - pos + 0.5)]
-			r_rect = [r[0] - round(frame), r[1] - round(frame), round(frame) << 1, round(frame) << 1]
-			pygame.draw.rect(surface, adj_colour(c, (frame - f) * 16), r_rect)
+			if surface is DISP or isinstance(surface, DISP.subsurface):
+				if surface is not DISP:
+					r[0] += surface.rect[0]
+					r[1] = DISP.height - surface.rect[1] - r[1]
+				else:
+					r[1] = DISP.height - r[1]
+				anima_parts.setdefault(az, []).append((r, frame * 2, adj_colour(c, (frame - f) * 16)))
+			else:
+				r_rect = [r[0] - round(frame), r[1] - round(frame), round(frame) << 1, round(frame) << 1]
+				draw_rect(surface, adj_colour(c, (frame - f) * 16), r_rect, z=z)
 		frame -= reduction
 		increment += 3
 	frame = orig
@@ -2029,8 +3153,84 @@ def anima_rectangle(surface, colour, rect, frame, count=2, speed=1, flash=1, rat
 			r = [round(rect[0] + rect[2] - pos), round(rect[1] + rect[3] + 0.5)]
 		else:
 			r = [round(rect[0]), round(rect[1] + rect[3] - pos + 0.5)]
-		r_rect = [r[0] - round(frame) - 1, r[1] - round(frame) - 1, round(frame) + 1 << 1, round(frame) + 1 << 1]
-		bevel_rectangle(surface, colour, r_rect, 3)
+		if surface is DISP or isinstance(surface, DISP.subsurface):
+			if surface is not DISP:
+				r[0] += surface.rect[0]
+				r[1] = DISP.height - surface.rect[1] - r[1]
+			else:
+				r[1] = DISP.height - r[1]
+			anima_parts.setdefault(az, []).append((r, (frame - 1) * 2, adj_colour(c, (frame - f) * 16)))
+		else:
+			r_rect = [r[0] - round(frame) - 1, r[1] - round(frame) - 1, round(frame) + 1 << 1, round(frame) + 1 << 1]
+			bevel_rectangle(surface, colour, r_rect, 3, z=z)
+
+surf = reg_polygon_complex(
+	None,
+	(0, 0),
+	(255, 255, 255),
+	0,
+	32,
+	32,
+	alpha=255,
+	thickness=2,
+	repetition=29,
+	soft=True,
+)
+spinny_im = pyg2pgl(surf)
+texture = spinny_im.get_texture()
+glEnable(texture.target)
+glBindTexture(texture.target, texture.id)
+glGenerateMipmap(texture.target)
+glDisable(texture.target)
+
+def render_anima_parts(particles):
+	texture = spinny_im.get_texture()
+	glEnableClientState(GL_VERTEX_ARRAY)
+	glEnableClientState(GL_COLOR_ARRAY)
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+	glEnable(texture.target)
+	glBindTexture(texture.target, texture.id)
+	glEnable(GL_BLEND)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+	count = len(particles)
+	verts = np.zeros((count, 4, 2), dtype=np.float32)
+	cols = np.zeros((count, 4, 3), dtype=np.float32)
+	texs = np.tile(np.array([
+		[0, 0],
+		[1, 0],
+		[1, 1],
+		[0, 1],
+	], dtype=np.float32), (count, 1, 1))
+
+	for i, p in enumerate(particles):
+		verts[i] = [
+			(p[0][0] - p[1], p[0][1] - p[1]),
+			(p[0][0] + p[1], p[0][1] - p[1]),
+			(p[0][0] + p[1], p[0][1] + p[1]),
+			(p[0][0] - p[1], p[0][1] + p[1]),
+		]
+		cols[i] = [
+			[c / 255 / 3 * 2 for c in p[2]],
+		] * 4
+
+	count = len(particles)
+	glVertexPointer(2, GL_FLOAT, 0, verts[:count].ctypes)
+	glColorPointer(3, GL_FLOAT, 0, cols[:count].ctypes)
+	glTexCoordPointer(2, GL_FLOAT, 0, texs[:count].ctypes)
+	glDrawArrays(GL_QUADS, 0, 4 * count)
+	glDisable(texture.target)
+	glDisableClientState(GL_VERTEX_ARRAY)
+	glDisableClientState(GL_COLOR_ARRAY)
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY)
+	particles.clear()
+
+def update_anima_parts():
+
+	def curry(a):
+		return lambda: render_anima_parts(a)
+
+	for k, v in anima_parts.items():
+		DISP.batches[k] = curry(v)
 
 def text_objects(text, font, colour, background):
 	text_surface = font.render(text, True, colour, background)
@@ -2040,14 +3240,14 @@ def get_font(font):
 	try:
 		fn = "misc/" + font + ".ttf"
 		if font == "OpenSansEmoji":
-			resp = reqx.get("https://drive.google.com/u/0/uc?id=1OZs0gQ4J3vm9rEKzECatlgh5z3wfbNcZ&export=download")
+			resp = reqs.get("https://drive.google.com/u/0/uc?id=1OZs0gQ4J3vm9rEKzECatlgh5z3wfbNcZ&export=download", timeout=60)
 			g = io.BytesIO(resp.content)
 			with open(fn, "wb") as f:
 				with zipfile.ZipFile(g) as z:
 					content = z.read(font + ".ttf")
 					f.write(content)
 		elif font == "Rockwell":
-			resp = reqx.get("https://drive.google.com/u/0/uc?id=1Lxr25oC003hfgjyzkVAjKUGuaEw9MCSf&export=download")
+			resp = reqs.get("https://drive.google.com/u/0/uc?id=1Lxr25oC003hfgjyzkVAjKUGuaEw9MCSf&export=download", timeout=60)
 			g = io.BytesIO(resp.content)
 			with open(fn, "wb") as f:
 				with zipfile.ZipFile(g) as z:
@@ -2068,13 +3268,14 @@ font_reload = False
 def sysfont(font, size, unicode=False):
 	func = pygame.ftfont if unicode else pygame.font
 	fn = "misc/" + font + ".ttf"
-	if not os.path.exists(fn) and font not in loaded_fonts:
+	exists = os.path.exists(fn) and os.path.getsize(fn)
+	if not exists and font not in loaded_fonts:
 		if font in ("Rockwell", "OpenSansEmoji"):
 			print("Downloading and applying required fonts...")
 			for fnt in ("Rockwell", "OpenSansEmoji"):
 				loaded_fonts.add(fnt)
 				submit(get_font, fnt)
-	if os.path.exists(fn):
+	if exists:
 		return func.Font(fn, size)
 	return func.SysFont(font, size)
 
@@ -2116,19 +3317,69 @@ def text_size(text, size, font="OpenSansEmoji"):
 				raise
 			f = ct_font[data] = sysfont(font, size, unicode=not asc)
 
+m_split = re.compile(r"[\s.\-/\\|:'%]")
 md_font = {}
-def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False):
+def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False, z=0):
 	# text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
-	text = str(text if type(text) is not float else round_min(text))
+	text = str(text if type(text) is not float else round_min(text)).replace("\u200b", "").strip()
+	if not text:
+		return [0] * 4
+	if not cache and (surface is DISP or isinstance(surface, DISP.subsurface)):
+		if isinstance(surface, DISP.subsurface):
+			pos = astype(pos, list)
+			for i in range(2):
+				pos[i] += surface.rect[i]
+		return DISP.hardware_font(text, size, pos, colour, background, font, alpha, align, z)
+	sep = cache < 0 and len(text) > 1 and re.search(m_split, text)
+	if surface and sep and align == 0:
+		pos = astype(pos, tuple)
+		x, y = pos
+		rect = pos + (0, 0)
+		while text:
+			offs = 0
+			while text.startswith(" "):
+				text = text[1:]
+				offs += 1
+			x += rect[2] + offs * size / 4
+			m = re.search(m_split, text)
+			if m:
+				i = m.start()
+				if i:
+					s = text[:i]
+					text = text[i:]
+				else:
+					s = text[0]
+					text = text[1:]
+			else:
+				s = text
+				text = ""
+			if len(s) > 2 and s[:2].isnumeric():
+				text = s[2:] + text
+				s = s[:2]
+			if s:
+				rect = message_display(
+					s,
+					size,
+					(x, y),
+					colour=colour,
+					background=background,
+					surface=surface,
+					font=font,
+					alpha=alpha,
+					align=align,
+					cache=True,
+					z=z,
+				)
+		return pos + (x, rect[3])
 	colour = tuple(verify_colour(colour))
-	data = (text, colour, background, size, font)
+	data = (text, background, size, hash(font))
+	args = (text, (255,) * 3, background, size, font)
 	try:
 		resp = md_font[data]
 	except KeyError:
-		resp = surface_font(*data)
+		resp = surface_font(*args)
 	TextSurf, TextRect = resp
 	if cache:
-		garbage_collect(md_font, 4096)
 		md_font[data] = resp
 	if surface:
 		if align == 1:
@@ -2137,7 +3388,7 @@ def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, 
 			TextRect = astype(pos, list) + TextRect[2:]
 		elif align == 2:
 			TextRect = [y - x for x, y in zip(TextRect[2:], pos)] + TextRect[2:]
-		blit_complex(surface, TextSurf, TextRect, alpha, copy=alpha != 255 and cache)
+		blit_complex(surface, TextSurf, TextRect, colour=colour, alpha=alpha, copy=cache, z=z)
 		return TextRect
 	else:
 		return TextSurf
@@ -2150,31 +3401,6 @@ def char_display(char, size, font="OpenSansEmoji"):
 	if not f:
 		f = surface_font(char, (255,) * 3, size, font)[0]
 	return f
-
-
-class KeyList(list):
-
-	def __getitem__(self, k):
-		return super().__getitem__(k & -1073741825)
-
-class MultiKey:
-
-	__slot__ = ("keys",)
-
-	def __init__(self, *keys):
-		self.keys = keys
-
-	def __call__(self, k):
-		return any(k[i] for i in self.keys) 
-
-	__getitem__ = __call__
-
-CTRL = MultiKey(K_LCTRL, K_RCTRL)
-SHIFT = MultiKey(K_LSHIFT, K_RSHIFT)
-ALT = MultiKey(K_LALT, K_RALT)
-
-
-PRINT.start()
 
 
 # Runs ffprobe on a file or url, returning the duration if possible.
@@ -2471,7 +3697,7 @@ def png2wav(png):
 	ts = ts_us()
 	r_png = f"cache/{ts}"
 	r_wav = f"cache/{ts}.wav"
-	args = [sys.executable, "png2wav.py", "../" + r_png, "../" + r_wav]
+	args = [sys.executable, "-O", "png2wav.py", "../" + r_png, "../" + r_wav]
 	with open(r_png, "wb") as f:
 		f.write(png)
 	print(args)
@@ -2592,6 +3818,6 @@ def expired(stream):
 		if int(stream.replace("/", "=").split("expire=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) < utc() + 60:
 			return True
 
-is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
+is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r+[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
 is_youtube_url = lambda url: url and re.findall("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+", url)
 # Regex moment - Smudge

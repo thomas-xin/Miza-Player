@@ -1,0 +1,17 @@
+bs4>=0.0.1
+easygui>=0.98.2
+easygui_qt>=0.9.3
+httpx[http2,brotli]>=0.23.0
+numpy>=1.22.4
+orjson>=3.6.8
+pillow>=9.1.1
+psutil>=5.9.1
+pygame>=2.1.2
+pyglet>=1.5.21
+pyperclip>=1.8.2
+python-magic-bin>=0.4.14
+PyQt5>=5.15.6
+requests>=2.27.1
+samplerate>=0.1.0
+scipy>=1.8.1
+soundcard>=0.4.2

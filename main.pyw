@@ -126,11 +126,13 @@ toolbar = cdict(
 		maxspeed=5,
 	),
 	progress=cdict(
+		pos=None,
 		vis=0,
 		angle=0,
 		spread=0,
 		alpha=0,
 		num=0,
+		spare=deque(),
 		particles=alist(),
 		seeking=False,
 	),
@@ -144,7 +146,6 @@ toolbar = cdict(
 queue = sidebar.queue
 progress = toolbar.progress
 downloading = toolbar.downloading
-modified = set()
 
 
 button_sources = (
@@ -171,7 +172,7 @@ button_images = cdict((i, submit(load_surface, "misc/" + i + ".png")) for i in b
 
 def load_pencil():
 	globals()["pencilw"] = load_surface("misc/pencil.png")
-	globals()["pencilb"] = pencilw.convert_alpha()
+	globals()["pencilb"] = pencilw.copy()
 	pencilb.fill((0, 0, 0), special_flags=BLEND_RGB_MULT)
 addp = submit(load_pencil)
 
@@ -261,27 +262,36 @@ def setup_buttons():
 			default = None
 			if options.get("path"):
 				default = options.path.rstrip("/") + "/"
-			files = easygui.fileopenbox(
+			def enqueue_local_a(files):
+				if files:
+					submit(_enqueue_local, *files, index=sidebar.get("lastsel"))
+			easygui2.fileopenbox(
+				enqueue_local_a,
 				"Open an audio or video file here!",
 				"Miza Player",
 				default=default,
 				filetypes=ftypes,
 				multiple=True,
 			)
-			if files:
-				submit(_enqueue_local, *files)
 		def enqueue_menu():
 			def enqueue_folder():
 				default = None
 				if options.get("path"):
 					default = options.path.rstrip("/") + "/"
-				files = easygui.diropenbox(
+				def enqueue_folder_a(files):
+					if files:
+						submit(
+							_enqueue_local,
+							*(files + "/" + f for f in os.listdir(files)),
+							probe=False,
+							index=sidebar.get("lastsel"),
+						)
+				easygui2.diropenbox(
+					enqueue_folder_a,
 					"Open an audio or video file here!",
 					"Miza Player",
 					default=default,
 				)
-				if files:
-					submit(_enqueue_local, *(files + "/" + f for f in os.listdir(files)), probe=False)
 			sidebar.menu = cdict(
 				buttons=(
 					("Open file", enqueue_local),
@@ -292,15 +302,17 @@ def setup_buttons():
 			default = None
 			if options.get("path2"):
 				default = options.path.rstrip("/") + "/"
-			file = easygui.fileopenbox(
+			def load_project_file_a(file):
+				if file:
+					submit(load_project, file)
+			easygui2.fileopenbox(
+				load_project_file_a,
 				"Open a music project file here!",
 				"Miza Player",
 				default=default,
 				filetypes=(".mpp",),
 				multiple=False,
 			)
-			if file:
-				submit(load_project, file)
 		sidebar.buttons.append(cdict(
 			name="Open",
 			sprite=folder,
@@ -311,18 +323,20 @@ def setup_buttons():
 		hyperlink = button_images.hyperlink.result()
 		plus = button_images.plus.result()
 		def enqueue_search(q=None):
-			query = easygui.get_string(
+			def enqueue_search_a(query):
+				if query:
+					if not is_url(query):
+						if q == "sc":
+							query = "scsearch:" + query.replace(":", "-")
+						elif q:
+							query = q + "search:" + query
+					submit(_enqueue_search, query, index=sidebar.get("lastsel"))
+			easygui2.enterbox(
+				enqueue_search_a,
 				"Search for one or more songs online!",
-				"Miza Player",
-				"",
+				title="Miza Player",
+				default="",
 			)
-			if query:
-				if not is_url(query):
-					if q == "sc":
-						query = "scsearch:" + query.replace(":", "-")
-					elif q:
-						query = q + "search:" + query
-				submit(_enqueue_search, query)
 		def select_search():
 			sidebar.menu = cdict(
 				buttons=(
@@ -347,95 +361,22 @@ def setup_buttons():
 			items = deque()
 			for item in (item for item in os.listdir("playlists") if item.endswith(".json") or item.endswith(".zip")):
 				u = unquote(item.rsplit(".", 1)[0])
-				fn = "playlists/" + quote(u)[:245] + "." + item.rsplit(".", 1)[-1]
+				fn = "playlists/" + quote(u)[:244] + "." + item.rsplit(".", 1)[-1]
 				fn2 = "playlists/" + item
 				if fn != fn2 or not os.path.exists(fn):
 					os.rename(fn2, fn)
 				items.append(u)
 			if not items:
-				return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
-			choice = easygui.get_choice("Select a locally saved playlist here!", "Miza Player", items)
-			if choice:
-				sidebar.loading = True
-				start = len(queue)
-				fn = "playlists/" + quote(choice)[:245] + ".zip"
-				if not os.path.exists(fn):
-					fn = fn[:-4] + ".json"
-				if os.path.exists(fn) and os.path.getsize(fn):
-					with open(fn, "rb") as f:
-						if zipfile.is_zipfile(f):
-							f.seek(0)
-							data = orjson.loads(zip2bytes(f.read()))
-						else:
-							f.seek(0)
-							data = json.load(f)
-					q = data.get("queue", ())
-					options.history.appendleft((choice, tuple(e["url"] for e in q)))
-					options.history = options.history.uniq(sort=False)[:64]
-					entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
-					queue.extend(entries)
-				if control.shuffle and len(queue) > 1:
-					queue[1:].shuffle()
-				sidebar.loading = False
-		def playlist_menu():
-			def create_playlist():
-				text = (easygui.textbox(
-					"Enter a list of URLs or file paths to include in the playlist!",
-					"Miza Player",
-				) or "").strip()
-				if text:
-					urls = text.splitlines()
-					entries = deque()
-					for url in urls:
-						if url:
-							name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
-							entries.append(dict(name=name, url=url))
-					if entries:
-						entries = list(entries)
-						ytdl = downloader.result()
-						url = entries[0]["url"]
-						if is_url(url):
-							name = None
-							if url in ytdl.searched:
-								resp = ytdl.searched[url].data
-								if len(resp) == 1:
-									name = resp[0].get("name")
-							if not name:
-								resp = ytdl.downloader.extract_info(url, download=False, process=False)
-								name = resp.get("title") or entries[0].get("name")
-							if name:
-								entries[0]["name"] = name
-						else:
-							name = entries[0].name
-						if len(entries) > 1:
-							name += f" +{len(entries) - 1}"
-						text = (easygui.get_string(
-							"Enter a name for your new playlist!",
-							"Miza Player",
-							name,
-						) or "").strip()
-						if text:
-							data = dict(queue=entries, stats={})
-							fn = "playlists/" + quote(text)[:245] + ".json"
-							if len(entries) > 1024:
-								fn = fn[:-5] + ".zip"
-								b = bytes2zip(orjson.dumps(data))
-								with open(fn, "wb") as f:
-									f.write(b)
-							else:
-								with open(fn, "w", encoding="utf-8") as f:
-									json.dump(data, f, separators=(",", ":"))
-							easygui.show_message(
-								f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
-								"Success!",
-							)
-			def edit_playlist():
-				items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json") or item.endswith(".zip")]
-				if not items:
-					return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
-				choice = easygui.get_choice("Select a playlist to edit", "Miza Player", items)
+				return easygui2.msgbox(
+					None,
+					"Right click this button to create, edit, or remove a playlist!",
+					title="Playlist folder is empty.",
+				)
+			def get_playlist_a(choice):
 				if choice:
-					fn = "playlists/" + quote(choice)[:245] + ".zip"
+					sidebar.loading = True
+					start = len(queue)
+					fn = "playlists/" + quote(choice)[:244] + ".zip"
 					if not os.path.exists(fn):
 						fn = fn[:-4] + ".json"
 					if os.path.exists(fn) and os.path.getsize(fn):
@@ -446,57 +387,183 @@ def setup_buttons():
 							else:
 								f.seek(0)
 								data = json.load(f)
-						s = "\n".join(e["url"] for e in data.get("queue", ()) if e.get("url"))
-					else:
-						print(fn)
-						s = ""
-					text = easygui.textbox(
-						"Enter a list of URLs or file paths to include in the playlist!",
-						"Miza Player",
-						s,
-					)
-					if text is not None:
-						if not text:
-							os.remove(fn)
-							easygui.show_message(
-								f"Playlist {repr(choice)} has been removed!",
-								"Success!",
+						q = data.get("queue", ())
+						options.history.appendleft((choice, tuple(e["url"] for e in q)))
+						options.history = options.history.uniq(sort=False)[:64]
+						entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
+						queue.extend(entries)
+					if control.shuffle and len(queue) > 1:
+						queue[bool(start):].shuffle()
+					elif index is not None:
+						temp = list(queue[start:])
+						queue[index + len(temp):] = queue[index:-len(temp)]
+						queue[index:index + len(temp)] = temp
+						if index < 1:
+							submit(enqueue, queue[0])
+					sidebar.loading = False
+			easygui2.choicebox(
+				get_playlist_a,
+				"Select a locally saved playlist here!",
+				title="Miza Player",
+				choices=items,
+			)
+		def playlist_menu():
+			def create_playlist():
+				def create_playlist_a(text):
+					text = (text or "").strip()
+					if text:
+						urls = text.splitlines()
+						entries = deque()
+						for url in urls:
+							if url:
+								name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+								entries.append(dict(name=name, url=url))
+						if entries:
+							entries = list(entries)
+							ytdl = downloader.result()
+							url = entries[0]["url"]
+							if is_url(url):
+								name = None
+								if url in ytdl.searched:
+									resp = ytdl.searched[url].data
+									if len(resp) == 1:
+										name = resp[0].get("name")
+								if not name:
+									resp = ytdl.downloader.extract_info(url, download=False, process=False)
+									name = resp.get("title") or entries[0].get("name")
+								if name:
+									entries[0]["name"] = name
+							else:
+								name = entries[0].name
+							if len(entries) > 1:
+								name += f" +{len(entries) - 1}"
+							def create_playlist_b(text):
+								text = (text or "").strip()
+								if text:
+									data = dict(queue=entries, stats={})
+									fn = "playlists/" + quote(text)[:244] + ".json"
+									if len(entries) > 1024:
+										fn = fn[:-5] + ".zip"
+										b = bytes2zip(orjson.dumps(data))
+										with open(fn, "wb") as f:
+											f.write(b)
+									else:
+										with open(fn, "w", encoding="utf-8") as f:
+											json.dump(data, f, separators=(",", ":"))
+									easygui2.msgbox(
+										None,
+										f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+										title="Success!",
+									)
+							easygui2.enterbox(
+								create_playlist_b,
+								"Enter a name for your new playlist!",
+								title="Miza Player",
+								default=name,
 							)
-						else:
-							urls = text.splitlines()
-							entries = deque()
-							for url in urls:
-								if url:
-									name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
-									entries.append(dict(name=name, url=url))
-							if entries:
-								entries = list(entries)
-								data = dict(queue=entries, stats={})
-								fn = "playlists/" + quote(text)[:245] + ".json"
-								if len(entries) > 1024:
-									fn = fn[:-5] + ".zip"
-									b = bytes2zip(orjson.dumps(data))
-									with open(fn, "wb") as f:
-										f.write(b)
-								else:
-									with open(fn, "w", encoding="utf-8") as f:
-										json.dump(data, f, separators=(",", ":"))
-								easygui.show_message(
-									f"Playlist {repr(choice)} has been updated!",
-									"Success!",
-								)
-			def delete_playlist():
-				items = [unquote(item[:-5]) for item in os.listdir("playlists") if item.endswith(".json")]
+				easygui2.textbox(
+					create_playlist_a,
+					"Enter a list of URLs or file paths to include in the playlist!",
+					"Miza Player",
+				)
+			def edit_playlist():
+				items = [unquote(item.rsplit(".", 1)[0]) for item in os.listdir("playlists") if item.endswith(".json") or item.endswith(".zip")]
 				if not items:
-					return easygui.show_message("Right click this button to create, edit, or remove a playlist!", "Playlist folder is empty.")
-				choice = easygui.get_choice("Select a playlist to delete", "Miza Player", items)
-				if choice:
-					fn = "playlists/" + quote(choice)[:245] + ".json"
-					os.remove(fn)
-					easygui.show_message(
-						f"Playlist {repr(choice)} has been removed!",
-						"Success!",
+					return easygui2.msgbox(
+						None,
+						"Right click this button to create, edit, or remove a playlist!",
+						title="Playlist folder is empty.",
 					)
+				def edit_playlist_a(choice):
+					if choice:
+						fn = "playlists/" + quote(choice)[:244] + ".zip"
+						if not os.path.exists(fn):
+							fn = fn[:-4] + ".json"
+						if os.path.exists(fn) and os.path.getsize(fn):
+							with open(fn, "rb") as f:
+								if zipfile.is_zipfile(f):
+									f.seek(0)
+									data = orjson.loads(zip2bytes(f.read()))
+								else:
+									f.seek(0)
+									data = json.load(f)
+							s = "\n".join(e["url"] for e in data.get("queue", ()) if e.get("url"))
+						else:
+							print(fn)
+							s = ""
+						def edit_playlist_b(text):
+							if text is not None:
+								if not text:
+									os.remove(fn)
+									easygui2.msgbox(
+										None,
+										f"Playlist {repr(choice)} has been removed!",
+										title="Success!",
+									)
+								else:
+									urls = text.splitlines()
+									entries = deque()
+									for url in urls:
+										if url:
+											name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+											entries.append(dict(name=name, url=url))
+									if entries:
+										entries = list(entries)
+										data = dict(queue=entries, stats={})
+										fn = "playlists/" + quote(text)[:244] + ".json"
+										if len(entries) > 1024:
+											fn = fn[:-5] + ".zip"
+											b = bytes2zip(orjson.dumps(data))
+											with open(fn, "wb") as f:
+												f.write(b)
+										else:
+											with open(fn, "w", encoding="utf-8") as f:
+												json.dump(data, f, separators=(",", ":"))
+										easygui2.msgbox(
+											None,
+											f"Playlist {repr(choice)} has been updated!",
+											title="Success!",
+										)
+						easygui2.textbox(
+							edit_playlist_b,
+							"Enter a list of URLs or file paths to include in the playlist!",
+							title="Miza Player",
+							text=s,
+						)
+				easygui2.choicebox(
+					edit_playlist_a,
+					"Select a playlist to edit",
+					title="Miza Player",
+					choices=items,
+				)
+			def delete_playlist():
+				items = [unquote(item.rsplit(".", 1)[0]) for item in os.listdir("playlists") if item.endswith(".json") or item.endswith(".zip")]
+				if not items:
+					return easygui2.msgbox(
+						None,
+						"Right click this button to create, edit, or remove a playlist!",
+						title="Playlist folder is empty.",
+					)
+				def delete_playlist_a(choice):
+					if choice:
+						fn = quote(choice)[:244]
+						for path in (
+							"playlists/" + fn + ".zip",
+							"playlists/" + fn + ".json",
+						):
+							if os.path.exists(path):
+								os.remove(path)
+						easygui2.msgbox(
+							None,
+							f"Playlist {repr(choice)} has been removed!",
+							title="Success!",
+						)
+				easygui2.choicebox(
+					delete_playlist_a,
+					"Select a playlist to delete",
+					title="Miza Player",
+					choices=items,
+				)
 			sidebar.menu = cdict(
 				buttons=(
 					("Open playlist", get_playlist),
@@ -521,20 +588,30 @@ def setup_buttons():
 			f = f"%0{len(str(len(options.history)))}d"
 			choices = [f % i + ": " + e[0] for i, e in enumerate(options.history)]
 			if not choices:
-				return easygui.show_message("Play some music to fill up this menu!", "Player history is empty.")
-			selected = easygui.get_choice(
+				return easygui2.msgbox(
+					None,
+					"Play some music to fill up this menu!",
+					title="Player history is empty.",
+				)
+			def player_history_a(selected):
+				if selected:
+					entry = options.history.pop(int(selected.split(":", 1)[0]))
+					options.history.appendleft(entry)
+					enqueue_auto(*entry[1])
+			easygui2.choicebox(
+				player_history_a,
 				"Player History",
-				"Miza Player",
-				choices,
+				title="Miza Player",
+				choices=choices,
 			)
-			if selected:
-				entry = options.history.pop(int(selected.split(":", 1)[0]))
-				options.history.appendleft(entry)
-				enqueue_auto(*entry[1])
 		def history_menu():
 			def clear_history():
 				options.history.clear()
-				return easygui.show_message("History successfully cleared!", "Miza Player")
+				return easygui2.msgbox(
+					None,
+					"History successfully cleared!",
+					title="Miza Player",
+				)
 			def clear_cache():
 				futs = deque()
 				for fn in os.listdir("cache"):
@@ -550,7 +627,11 @@ def setup_buttons():
 						fut.result()
 					except (FileNotFoundError, PermissionError):
 						pass
-				return easygui.show_message("Cache successfully cleared!", "Miza Player")
+				return easygui2.msgbox(
+					None,
+					"Cache successfully cleared!",
+					title="Miza Player",
+				)
 			sidebar.menu = cdict(
 				buttons=(
 					("View history", player_history),
@@ -591,8 +672,10 @@ def setup_buttons():
 		repeat = button_images.repeat.result()
 		def repeat_1():
 			control.loop = (control.loop + 1) % 3
+			globals()["last-cond"] = 2
 		def repeat_2():
 			control.loop = (control.loop - 1) % 3
+			globals()["last-cond"] = 2
 		toolbar.buttons.append(cdict(
 			name="Repeat",
 			image=repeat,
@@ -678,69 +761,70 @@ def setup_buttons():
 		))
 		reset_menu(full=False)
 		microphone = button_images.microphone.result()
-		def enqueue_device():
-			afut.result().terminate()
-			globals()["afut"] = submit(pyaudio.PyAudio)
-			globals()["pya"] = afut.result()
-			count = pya.get_device_count()
-			apis = {}
-			ddict = mdict()
-			for i in range(count):
-				d = cdict(pya.get_device_info_by_index(i))
-				a = d.get("hostApi", -1)
-				if a not in apis:
-					apis[a] = cdict(pya.get_host_api_info_by_index(a))
-				if d.maxInputChannels > 0 and apis[a].name in ("MME", "Windows DirectSound", "Windows WASAPI"):
-					try:
-						if not pya.is_format_supported(
-							48000,
-							i,
-							2,
-							pyaudio.paInt16,
-						):
-							continue
-					except:
-						continue
-					d.id = i
-					ddict.add(a, d)
-			devices = ()
-			for dlist in ddict.values():
-				if len(dlist) > len(devices):
-					devices = dlist
-			f = f"%0{len(str(len(devices)))}d"
-			selected = easygui.get_choice(
-				"Transfer audio from a sound input device!",
-				"Miza Player",
-				sorted(f % d.id + ": " + d.name for d in devices),
-			)
-			if selected:
-				submit(_enqueue_local, "<" + selected.split(":", 1)[0].lstrip("0") + ">")
-		def microphone_menu():
-			sidebar.menu = cdict(
-				buttons=(
-					("Add input", enqueue_device),
-				),
-			)
+		# def enqueue_device():
+			# afut.result().terminate()
+			# globals()["afut"] = submit(pyaudio.PyAudio)
+			# globals()["pya"] = afut.result()
+			# count = pya.get_device_count()
+			# apis = {}
+			# ddict = mdict()
+			# for i in range(count):
+				# d = cdict(pya.get_device_info_by_index(i))
+				# a = d.get("hostApi", -1)
+				# if a not in apis:
+					# apis[a] = cdict(pya.get_host_api_info_by_index(a))
+				# if d.maxInputChannels > 0 and apis[a].name in ("MME", "Windows DirectSound", "Windows WASAPI"):
+					# try:
+						# if not pya.is_format_supported(
+							# 48000,
+							# i,
+							# 2,
+							# pyaudio.paInt16,
+						# ):
+							# continue
+					# except:
+						# continue
+					# d.id = i
+					# ddict.add(a, d)
+			# devices = ()
+			# for dlist in ddict.values():
+				# if len(dlist) > len(devices):
+					# devices = dlist
+			# f = f"%0{len(str(len(devices)))}d"
+			# selected = easygui.get_choice(
+				# "Transfer audio from a sound input device!",
+				# "Miza Player",
+				# sorted(f % d.id + ": " + d.name for d in devices),
+			# )
+			# if selected:
+				# submit(_enqueue_local, "<" + selected.split(":", 1)[0].lstrip("0") + ">")
+		# def microphone_menu():
+			# sidebar.menu = cdict(
+				# buttons=(
+					# ("Add input", enqueue_device),
+				# ),
+			# )
 		sidebar.buttons.append(cdict(
 			name="Audio input",
 			sprite=microphone,
-			click=(enqueue_device, microphone_menu),
+			# click=enqueue_device,
 		))
 		reset_menu(full=False)
 		record = button_images.record.result()
 		def output_device():
 			devices = sc.all_speakers()
 			f = f"%0{len(str(len(devices)))}d"
-			selected = easygui.get_choice(
+			def output_device_a(selected):
+				if selected:
+					common.OUTPUT_DEVICE = selected
+					globals()["DEVICE"] = get_device(common.OUTPUT_DEVICE)
+					restart_mixer()
+			easygui2.choicebox(
+				output_device_a,
 				"Change the output audio device!",
-				"Miza Player",
-				[d.name for d in devices],
+				title="Miza Player",
+				choices=[d.name for d in devices],
 			)
-			if selected:
-				globals()["OUTPUT_DEVICE"] = selected
-				if DEVICE.name != OUTPUT_DEVICE:
-					mixer.submit(f"~output {OUTPUT_DEVICE}")
-					globals()["DEVICE"] = get_device(OUTPUT_DEVICE)
 		def end_recording():
 			mixer.submit("~record")
 			try:
@@ -751,23 +835,25 @@ def setup_buttons():
 			else:
 				fmt = ".ogg" if not sidebar.get("filming") else ".mp4"
 				fn = sidebar.recording.split("/", 1)[-1][1:].split(".", 1)[0] + fmt
-				fn = easygui.filesavebox(
+				def end_recording_a(fn):
+					if fn:
+						args = f"{ffmpeg} -hide_banner -y -v error"
+						if sidebar.get("filming"):
+							args += f" -i {sidebar.filming}"
+							globals()["video-render"].result()
+						args += f" -f f32le -ar 48k -ac 2 -i {sidebar.recording} -b:a 256k"
+						if sidebar.get("filming"):
+							args += " -c:v copy"
+						args += f" {fn}"
+						print(args)
+						os.system(args)
+				easygui2.filesavebox(
+					end_recording_a,
 					"Save As",
 					"Miza Player",
 					fn.translate(safe_filenames),
 					filetypes=ftypes,
 				)
-				if fn:
-					args = f"{ffmpeg} -hide_banner -y -v error"
-					if sidebar.get("filming"):
-						args += f" -i {sidebar.filming}"
-						globals()["video-render"].result()
-					args += f" -f f32le -ar 48k -ac 2 -i {sidebar.recording} -b:a 256k"
-					if sidebar.get("filming"):
-						args += " -c:v copy"
-					args += f" {fn}"
-					print(args)
-					os.system(args)
 			sidebar.recording = ""
 			sidebar.filming = ""
 		def record_audio():
@@ -805,7 +891,7 @@ def send_status():
 	pass
 
 cached_fns = {}
-def _enqueue_local(*files, probe=True):
+def _enqueue_local(*files, probe=True, index=None):
 	try:
 		if not files:
 			return
@@ -871,15 +957,21 @@ def _enqueue_local(*files, probe=True):
 				options.history = options.history.uniq(sort=False)[:64]
 			if not entries:
 				queue.append(entry)
-		if control.shuffle:
-			queue[1:].shuffle()
+		if control.shuffle and len(queue) > 1:
+			queue[bool(start):].shuffle()
+		elif index is not None:
+			temp = list(queue[start:])
+			queue[index + len(temp):] = queue[index:-len(temp)]
+			queue[index:index + len(temp)] = temp
+			if index < 1:
+				submit(enqueue, queue[0])
 		sidebar.loading = False
 	except:
 		sidebar.loading = False
 		print_exc()
 
 eparticle = dict(colour=(255,) * 3)
-def _enqueue_search(query):
+def _enqueue_search(query, index=None):
 	try:
 		if not query:
 			return
@@ -906,12 +998,18 @@ def _enqueue_search(query):
 				sidebar.particles.append(cdict(eparticle))
 		if control.shuffle and len(queue) > 1:
 			queue[bool(start):].shuffle()
+		elif index is not None:
+			temp = list(queue[start:])
+			queue[index + len(temp):] = queue[index:-len(temp)]
+			queue[index:index + len(temp)] = temp
+			if index < 1:
+				submit(enqueue, queue[0])
 		sidebar.loading = False
 	except:
 		sidebar.loading = False
 		print_exc()
 
-def enqueue_auto(*queries):
+def enqueue_auto(*queries, index=None):
 	futs = deque()
 	start = len(queue)
 	for i, query in enumerate(queries):
@@ -924,17 +1022,27 @@ def enqueue_auto(*queries):
 			else:
 				for fut in futs:
 					fut.result()
+				futs.clear()
 				name = q.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
 				queue.append(cdict(name=name, url=q, duration=None, pos=start))
 		else:
 			futs.append(submit(_enqueue_local, q, probe=i < 1))
+	for fut in futs:
+		fut.result()
+	if control.shuffle and len(queue) > 1:
+		queue[bool(start):].shuffle()
+	elif index is not None:
+		temp = list(queue[start:])
+		queue[index + len(temp):] = queue[index:-len(temp)]
+		queue[index:index + len(temp)] = temp
+		if index < 1:
+			submit(enqueue, queue[0])
 
 def load_project(fn, switch=True):
 	if switch and not toolbar.editor:
 		toolbar.editor = 1
 		mixer.submit(f"~setting spectrogram -1")
 	player.editor_surf = None
-	globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
 	try:
 		f = open(fn, "rb") if type(fn) is str else io.BytesIO(fn) if type(fn) is bytes else fn
 		pdata = None
@@ -973,7 +1081,6 @@ def load_project(fn, switch=True):
 
 def save_project(fn=None):
 	player.editor_surf = None
-	globals()["mclick"] = globals()["mc2"] = globals()["mc3"] = globals()["mc4"] = (None,) * 5
 	if type(fn) is str and not fn.endswith(".mpp"):
 		return render_project(fn)
 	try:
@@ -1019,17 +1126,15 @@ def reset_menu(full=True, reset=False):
 	if full:
 		globals().update(options)
 		common.__dict__.update(options)
-		if reset:
-			DISP.fill(0)
-			modified.add(tuple(screensize))
 	ssize2 = (screensize[0] - sidebar_width, screensize[1] - toolbar_height)
 	if ssize != ssize2 or full and reset:
-		sps = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+		sps = np.frombuffer(globals()["stat-mem"].buf[16:24], dtype=np.uint32)
 		sps[:] = ssize = ssize2
 		mixer.new = False
+	if reset:
+		globals()["mpos"] = (-inf,) * 2
 	player.rect = (0,) * 2 + ssize
 	sidebar.colour = None
-	sidebar.updated = False
 	sidebar.rect = (screensize[0] - sidebar_width, 0, sidebar_width, screensize[1] - toolbar_height)
 	sidebar.rect2 = sidebar.rect #(screensize[0] - sidebar_width, 0, sidebar_width, screensize[1] - toolbar_height + 4)
 	for i, button in enumerate(sidebar.buttons, -1):
@@ -1044,7 +1149,6 @@ def reset_menu(full=True, reset=False):
 	sidebar.scroll.setdefault("pos", 0)
 	sidebar.scroll.setdefault("target", 0)
 	toolbar.colour = None
-	toolbar.updated = False
 	toolbar.rect = (0, screensize[1] - toolbar_height, screensize[0], toolbar_height)
 	toolbar.pause.radius = min(64, toolbar_height // 2 - 2)
 	toolbar.pause.pos = (toolbar.pause.radius + 2, screensize[1] - toolbar_height + toolbar.pause.radius + 2)
@@ -1053,7 +1157,6 @@ def reset_menu(full=True, reset=False):
 	progress.length = max(0, screensize[0] - progress.pos[0] - toolbar.pause.radius // 2 - progress.box)
 	progress.width = min(16, toolbar.pause.radius // 3)
 	progress.rect = (progress.pos[0] - progress.width // 2 - 3, progress.pos[1] - progress.width // 2 - 3, progress.length + 6, progress.width + 6)
-	progress.seeking = False
 	bsize = min(40, toolbar_height // 3)
 	for i, button in enumerate(toolbar.buttons):
 		if i:
@@ -1067,25 +1170,25 @@ def reset_menu(full=True, reset=False):
 			sprite = pygame.transform.smoothscale(button.image, isize)
 		button.sprite = sprite
 		if 0 < i < 3:
-			button.on = button.sprite.convert_alpha()
+			button.on = button.sprite.copy()
 			button.on.fill((0, 255, 255), special_flags=BLEND_RGB_MULT)
-			button.off = button.sprite.convert_alpha()
+			button.off = button.sprite.copy()
 			button.off.fill((0,) * 3, special_flags=BLEND_RGB_MULT)
 		button.rect = rect
 	toolbar.resizing = False
 	toolbar.resizer = False
 	osize2 = (progress.box, toolbar.pause.radius * 4 // 3 - 3)
 	if osize != osize2 or full and reset:
-		sps = np.frombuffer(globals()["spec-size"].buf[8:16], dtype=np.uint32)
+		sps = np.frombuffer(globals()["stat-mem"].buf[8:16], dtype=np.uint32)
 		sps[:] = osize = osize2
 		mixer.new = False
-	globals()["last-cond"] = True
+	globals()["last-cond"] = 2
 
 
 submit(setup_buttons)
 
 
-is_active = lambda: pc() - player.get("last", 0) <= max(player.get("lastframe", 0), 1 / 30) * 4
+is_active = lambda: not player.paused and pc() - player.get("last", 0) <= max(player.get("lastframe", 0), 1 / 30) * 3
 e_dur = lambda d: float(d) if type(d) is str else (d if d is not None else nan)
 
 def ensure_duration(e):
@@ -1268,6 +1371,11 @@ def prepare(entry, force=False, download=False):
 	fn = "cache/~" + shash(entry.url) + ".pcm"
 	if os.path.exists(fn) and os.path.getsize(fn):
 		entry.stream = fn
+		ytdl = downloader.result()
+		if entry.url in ytdl.searched:
+			resp = ytdl.searched[entry.url].data
+			if len(resp) == 1:
+				entry.name = resp[0].get("name")
 		return fn
 	stream = entry.get("stream", "")
 	if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
@@ -1453,6 +1561,7 @@ def start_player(pos=None, force=False):
 		player.pos = pos
 		player.index = player.pos * 30
 		player.end = duration or inf
+		player.stream = stream
 		return stream, duration
 
 def start():
@@ -1462,6 +1571,12 @@ def start():
 	player.pos = 0
 	player.end = inf
 	return None, inf
+
+def delete_entry(e):
+	if e.get("surf"):
+		del e["surf"]
+	if e.get("lyrics_surf"):
+		del e["lyrics_surf"]
 
 last_save = 0
 def skip():
@@ -1489,7 +1604,12 @@ def skip():
 	player.end = inf
 	return None, inf
 
-def seek_abs(pos):
+def seek_abs(pos, force=False):
+	if not force:
+		if pos <= 0 and player.pos <= 0 and audio.speed > 0:
+			return (player.get("stream"), player.end)
+		if pos >= player.end and player.pos >= player.end and audio.speed < 0:
+			return (player.get("stream"), player.end)
 	return start_player(pos) if queue else (None, inf)
 
 def seek_rel(pos):
@@ -1500,10 +1620,14 @@ def seek_rel(pos):
 	if pos + player.pos >= player.end:
 		if audio.speed > 0:
 			return skip()
+		if player.pos >= player.end:
+			return
 		pos = player.end - player.pos
 	if pos + player.pos <= 0:
 		if audio.speed < 0:
 			return skip()
+		if player.pos <= 0:
+			return
 		pos = -player.pos
 	progress.num += pos
 	progress.alpha = 255
@@ -1517,7 +1641,7 @@ def seek_rel(pos):
 		seek_abs(max(0, player.pos + pos))
 	player.pos += pos
 
-def restart_mixer():
+def restart_mixer(devicename=None):
 	global mixer
 	if not mixer:
 		return
@@ -1525,7 +1649,7 @@ def restart_mixer():
 		for p in mixer.children(True):
 			p.kill()
 		mixer.kill()
-	mixer = start_mixer()
+	mixer = start_mixer(devicename)
 	mixer.state(player.paused)
 	submit(transfer_instrument, *project.instruments.values())
 	return seek_abs(player.pos)
@@ -1541,15 +1665,23 @@ device_waiting = None
 def wait_on():
 	if not device_waiting:
 		return
-	try:
-		d = get_device(OUTPUT_DEVICE, default=False)
-		if d:
-			globals()["device_waiting"] = None
-			print("Device target found.")
-			mixer.submit(f"~output {OUTPUT_DEVICE}")
-			return
-	except:
-		print_exc()
+	d = get_device(common.OUTPUT_DEVICE)
+	if d and d.name != common.OUTPUT_DEVICE:
+		restart_mixer(d.name)
+		print("Using", d.name, "for now.")
+	while True:
+		try:
+			d = get_device(common.OUTPUT_DEVICE, default=False)
+			if d:
+				print(d)
+				print("Device target found.")
+				restart_mixer()
+				globals()["device_waiting"] = None
+				# mixer.submit(f"~output {OUTPUT_DEVICE}")
+				return
+		except:
+			print_exc()
+		time.sleep(1)
 
 def get_device(name, default=True):
 	try:
@@ -1635,7 +1767,7 @@ def sc_player(d):
 		player._data_ = np.concatenate((player._data_, data))
 		player.fut.set_result(None)
 		return verify()
-	player.write = write		
+	player.write = write
 	def close():
 		player.closed = True
 		if player.type == "pygame":
@@ -1663,7 +1795,7 @@ def sc_player(d):
 	player.wait = wait
 	return player
 
-get_channel = lambda: sc_player(get_device(OUTPUT_DEVICE))
+get_channel = lambda: sc_player(get_device(common.OUTPUT_DEVICE))
 channel = get_channel()
 
 def mixer_stdout():
@@ -1682,11 +1814,13 @@ def mixer_stdout():
 						s = s.rstrip()
 						break
 				elif mixer and not mixer.is_running():
-					restart_mixer()
+					time.sleep(2)
+					if mixer and not mixer.is_running():
+						restart_mixer()
 			else:
 				if not mixer or not mixer.is_running():
-					time.sleep(0.25)
-					if mixer:
+					time.sleep(2)
+					if mixer and not mixer.is_running():
 						restart_mixer()
 			if not s:
 				time.sleep(0.05)
@@ -1702,13 +1836,14 @@ def mixer_stdout():
 				player.last = 0
 				continue
 			if s[0] == "o":
-				globals()["OUTPUT_DEVICE"] = s[2:]
+				common.OUTPUT_DEVICE = s[2:]
 				continue
 			if s[0] == "w":
-				globals()["OUTPUT_DEVICE"] = s[2:]
+				common.OUTPUT_DEVICE = s[2:]
 				if not device_waiting:
-					globals()["device_waiting"] = OUTPUT_DEVICE
-					print(f"Waiting on {OUTPUT_DEVICE}...")
+					globals()["device_waiting"] = common.OUTPUT_DEVICE
+					print(f"Waiting on {common.OUTPUT_DEVICE}...")
+					submit(wait_on)
 				continue
 			if s == "W":
 				globals()["device_waiting"] = None
@@ -1759,8 +1894,24 @@ def mixer_stdout():
 				player.end = dur or inf
 	except:
 		print_exc()
+threading.Thread(target=mixer_stdout).start()
 
-submit(mixer_stdout)
+CACHE_LIMITS = cdict(
+	md_font=32768,
+	rp_surf=256,
+	br_surf=4096,
+	rb_surf=1024,
+)
+def garbage_collector():
+	try:
+		for k, v in CACHE_LIMITS.items():
+			c = getattr(common, k, None)
+			if c:
+				x = common.garbage_collect(c, v)
+				if x:
+					print(f"{k}: deleted {x} surfaces!")
+	except:
+		print_exc()
 
 enext = {}
 def ensure_next(e):
@@ -1784,7 +1935,6 @@ def enqueue(entry, start=True):
 			time.sleep(0.5)
 		queue[0].lyrics_loading = True
 		submit(render_lyrics, queue[0])
-		flash_window()
 		stream, duration = start_player()
 		progress.num = 0
 		progress.alpha = 0
@@ -1827,7 +1977,7 @@ def download(entries, fn, settings=False):
 									if not b:
 										break
 									saving.stdin.write(b)
-						submit(os.remove(p.fn))
+						os.remove(p.fn)
 			st = prepare(entry, force=True)
 			sh = "cache/~" + shash(entry.url) + ".pcm"
 			if os.path.exists(sh) and os.path.getsize(sh) >= (entry.duration - 1) * 48000 * 2 * 2:
@@ -1945,23 +2095,26 @@ def update_menu():
 			c = (0, 255, 0)
 		if control.ripples:
 			toolbar.ripples.append(cdict(
-				pos=toolbar.pause.pos,
+				pos=tuple(toolbar.pause.pos),
 				radius=0,
 				colour=c,
 				alpha=255,
 			))
 	if toolbar.resizing:
 		toolbar_height = max(64, screensize[1] - mpos2[1] + 2)
+		if toolbar.get("snapped", 0) < 2 and abs(toolbar_height - 132) <= 12:
+			toolbar.snapped = 1
+			toolbar_height = 132
+		elif toolbar.get("snapped", 0) == 1:
+			toolbar.snapped = 2
 		if options.toolbar_height != toolbar_height:
 			options.toolbar_height = toolbar_height
 			reset_menu()
 			toolbar.resizing = True
-			modified.add(toolbar.rect)
 	if toolbar_height > screensize[1] - 64:
 		options.toolbar_height = toolbar_height = screensize[1] - 64
 		reset_menu()
 		toolbar.resizing = True
-		modified.add(toolbar.rect)
 	if progress.seeking:
 		orig = player.pos
 		if player.end < inf:
@@ -1972,38 +2125,56 @@ def update_menu():
 		if not mheld[0]:
 			progress.seeking = False
 			if queue and isfinite(e_dur(queue[0].duration)):
-				submit(seek_abs, player.pos)
+				submit(seek_abs, player.pos, force=True)
 	if sidebar.resizing:
 		sidebar_width = min(screensize[0] - 8, max(144, screensize[0] - mpos2[0] + 2))
 		if options.sidebar_width != sidebar_width:
 			options.sidebar_width = sidebar_width
 			reset_menu()
 			sidebar.resizing = True
-			modified.add(sidebar.rect)
 	if sidebar_width > screensize[0] - 8:
 		options.sidebar_width = sidebar_width = screensize[0] - 8
 		reset_menu()
 		sidebar.resizing = True
-		modified.add(sidebar.rect)
 	if queue and not toolbar.editor and isfinite(e_dur(queue[0].duration)):
 		if kspam[K_PAGEUP]:
-			submit(seek_rel, 300)
+			if player.get("seeking"):
+				player.seeking.result()
+			player.seeking = submit(seek_rel, 300)
 		elif kspam[K_PAGEDOWN]:
-			submit(seek_rel, -300)
+			if player.get("seeking"):
+				player.seeking.result()
+			player.seeking = submit(seek_rel, -300)
 		elif kspam[K_UP]:
-			submit(seek_rel, 30)
+			if player.get("seeking"):
+				player.seeking.result()
+			player.seeking = submit(seek_rel, 30)
 		elif kspam[K_DOWN]:
-			submit(seek_rel, -30)
+			if player.get("seeking"):
+				player.seeking.result()
+			player.seeking = submit(seek_rel, -30)
 		elif kspam[K_RIGHT]:
+			if player.get("seeking"):
+				player.seeking.result()
 			if CTRL[kheld]:
-				submit(seek_abs, inf)
+				player.seeking = submit(seek_abs, inf)
 			else:
-				submit(seek_rel, 5)
+				player.seeking = submit(seek_rel, 5)
 		elif kspam[K_LEFT]:
+			if player.get("seeking"):
+				player.seeking.result()
 			if CTRL[kheld]:
-				submit(seek_abs, 0)
+				player.seeking = submit(seek_abs, 0)
 			else:
-				submit(seek_rel, -5)
+				player.seeking = submit(seek_rel, -5)
+		elif kspam[K_HOME]:
+			if player.get("seeking"):
+				player.seeking.result()
+			player.seeking = submit(seek_abs, 0)
+		elif kspam[K_END]:
+			if player.get("seeking"):
+				player.seeking.result()
+			player.seeking = submit(seek_abs, inf)
 	reset = False
 	menu = sidebar.menu
 	if menu and menu.get("scale", 0) >= 1:
@@ -2020,7 +2191,7 @@ def update_menu():
 			globals()["mpos"] = (nan, nan)
 	if any(mclick):
 		sidebar.menu = None
-	if in_rect(mpos, toolbar.rect[:3] + (5,)):
+	if in_rect(mpos, toolbar.rect[:3] + (6,)):
 		if mclick[0]:
 			toolbar.resizing = True
 		else:
@@ -2030,8 +2201,6 @@ def update_menu():
 			pause_toggle()
 		toolbar.pause.outer = 255
 		toolbar.pause.inner = 191
-		toolbar.updated = False
-		sidebar.updated = False
 	else:
 		toolbar.pause.outer = 191
 		toolbar.pause.inner = 127
@@ -2042,20 +2211,21 @@ def update_menu():
 				mixer.clear()
 		elif mclick[1]:
 			sidebar.menu = 0
-			enter = easygui.get_string(
+			def seek_position_a(enter):
+				if enter:
+					pos = time_parse(enter)
+					submit(seek_abs, pos)
+			easygui2.enterbox(
+				seek_position_a,
 				"Seek to position",
-				"Miza Player",
-				time_disp(player.pos),
+				title="Miza Player",
+				default=time_disp(player.pos),
 			)
-			if enter:
-				pos = time_parse(enter)
-				submit(seek_abs, pos)
 	c = options.get("toolbar_colour", (64, 0, 96))
 	if toolbar.resizing or in_rect(mpos, toolbar.rect):
 		hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
 		hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.2)
 		c = verify_colour(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
-	toolbar.updated = False#toolbar.colour != c
 	toolbar.colour = c
 	if any(mclick):
 		for button in toolbar.buttons:
@@ -2091,7 +2261,7 @@ def update_menu():
 		for button in sidebar.buttons:
 			if "flash" in button:
 				button.flash = max(0, button.flash - duration * 64)
-	if in_rect(mpos, sidebar.rect[:2] + (5, sidebar.rect[3])):
+	if in_rect(mpos, sidebar.rect[:2] + (6, sidebar.rect[3])):
 		if not toolbar.resizing and mclick[0]:
 			sidebar.resizing = True
 		else:
@@ -2101,7 +2271,6 @@ def update_menu():
 		hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
 		hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.2)
 		c = verify_colour(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
-	sidebar.updated = False#sidebar.colour != c
 	sidebar.colour = c
 	sidebar.relpos = (sidebar.get("relpos", 0) * (ratio - 1) + bool(sidebar.abspos)) / ratio
 	scroll_height = screensize[1] - toolbar_height - 72
@@ -2124,14 +2293,16 @@ def update_menu():
 		if mclick[0]:
 			sidebar.scrolling = True
 		elif mclick[1]:
-			enter = easygui.get_string(
+			def scroll_position_a(enter):
+				if enter:
+					pos = float(enter) * 32
+					sidebar.scroll.target = pos
+			easygui2.enterbox(
+				scroll_position_a,
 				"Scroll to position",
-				"Miza Player",
-				str(round(sidebar.scroll.target / 32)),
+				title="Miza Player",
+				default=str(round(sidebar.scroll.target / 32)),
 			)
-			if enter:
-				pos = float(enter) * 32
-				sidebar.scroll.target = pos
 		if sidebar.scrolling:
 			if not mheld[0]:
 				sidebar.scrolling = False
@@ -2162,10 +2333,7 @@ def get_ripple(i, mode="toolbar"):
 		return (255,) * 3
 	if i == 3:
 		return (0,) * 3
-	if mode == "toolbar":
-		c = options.get("toolbar_colour", (64, 0, 96))
-	else:
-		c = options.get("sidebar_colour", (64, 0, 96))
+	c = options.get(f"{mode}_colour", (64, 0, 96))
 	if not i:
 		d = 0
 	else:
@@ -2178,15 +2346,10 @@ def get_ripple(i, mode="toolbar"):
 
 
 # importing doesn't work; target files are simply functions that used to be here and cannot independently run without sharing global variables
-with open("misc/sidebar.py", "rb") as f:
-	b = f.read()
-exec(compile(b, "sidebar.py", "exec"))
-with open("misc/sidebar2.py", "rb") as f:
-	b = f.read()
-exec(compile(b, "sidebar2.py", "exec"))
-with open("misc/piano.py", "rb") as f:
-	b = f.read()
-exec(compile(b, "piano.py", "exec"))
+for fn in ("sidebar", "sidebar2", "render", "toolbar", "piano"):
+	with open(f"misc/{fn}.py", "rb") as f:
+		b = f.read()
+	exec(compile(b, f"{fn}.py", "exec"), globals())
 
 
 no_lyrics_path = options.get("no_lyrics_path", "misc/Default/no_lyrics.png")
@@ -2195,8 +2358,18 @@ no_lyrics_fut = submit(load_surface, no_lyrics_path)
 globals()["h-cache"] = {}
 globals()["h-timer"] = 0
 
-def load_bubble(bubble_path):
+def load_bubble(bubble_path=None):
 	try:
+		if not bubble_path:
+			surf = concentric_circle(
+				None,
+				(255,) * 3,
+				(0, 0),
+				256,
+				fill_ratio=1 / 3,
+			)
+			globals()["h-ripi"] = pyg2pgl(surf)
+			return
 		with Image.open(bubble_path) as im:
 			if "RGB" not in im.mode:
 				im = im.convert("RGBA")
@@ -2209,39 +2382,17 @@ def load_bubble(bubble_path):
 				if im.mode == "RGBA":
 					A = A.resize(size, Image.LANCZOS)
 			if im2.mode == "L":
-				im2 = im2.point(lambda x: (x / 255) ** 0.8 * 255)
+				im2 = im2.point(lambda x: round((x / 255) ** 0.8 * 255))
 			if "RGB" not in im2.mode:
 				im2 = im2.convert("RGB")
 			if im.mode == "RGBA":
 				im2.putalpha(A)
 			globals()["h-img"] = im2
-		globals()["h-cache"].clear()
-		globals()["h-timer"] = 0
-
-		def bubble_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
-			alpha = round_random(alpha / 3) * 3
-			diameter = round_random(radius * 2)
-			if not diameter > 0:
-				return
-			try:
-				surf = globals()["h-cache"][diameter]
-			except KeyError:
-				im = globals()["h-img"].resize((diameter,) * 2, resample=Image.BILINEAR)
-				surf = pil2pyg(im, convert=True)
-				im.close()
-				globals()["h-cache"][diameter] = surf
-			globals()["h-timer"] = pc()
-			return blit_complex(
-				dest,
-				surf,
-				[round_random(x - y / 2) for x, y in zip(pos, surf.get_size())],
-				alpha=alpha,
-				colour=colour,
-			)
-		globals()["h-ripple"] = bubble_ripple
+		globals()["h-ripi"] = pil2pgl(globals()["h-img"])
 	except:
 		print_exc()
 
+load_bubble()
 bubble_path = options.get("bubble_path")
 if bubble_path:
 	submit(load_bubble, bubble_path)
@@ -2251,7 +2402,7 @@ def load_spinner(spinner_path):
 		globals()["s-img"] = Image.open(spinner_path)
 		globals()["s-cache"] = {}
 
-		def spinner_ripple(dest, colour, pos, radius, alpha=255, **kwargs):
+		def spinner_ripple(dest, colour, pos, radius, alpha=255, z=0, **kwargs):
 			diameter = round_random(radius * 2)
 			if not diameter > 0:
 				return
@@ -2270,6 +2421,7 @@ def load_spinner(spinner_path):
 				[round_random(x - y / 2) for x, y in zip(pos, surf.get_size())],
 				alpha=alpha,
 				colour=colour,
+				z=z,
 			)
 		globals()["s-ripple"] = spinner_ripple
 	except:
@@ -2280,22 +2432,30 @@ submit(load_spinner, spinner_path)
 
 
 def change_bubble():
-	bubble_path = easygui.fileopenbox(
+	def change_bubble_a(bubble_path):
+		if bubble_path:
+			options.bubble_path = bubble_path
+			submit(load_bubble, bubble_path)
+	easygui2.fileopenbox(
+		change_bubble_a,
 		"Open an image file here!",
 		"Miza Player",
 		default=options.get("bubble_path", globals()["bubble_path"]),
 		filetypes=iftypes,
 	)
-	if bubble_path:
-		options.bubble_path = bubble_path
-		submit(load_bubble, bubble_path)
 
 def reset_bubble():
 	options.pop("bubble_path", None)
-	globals().pop("h-ripple", None)
-	globals()["h-cache"] = {}
-	globals()["h-timer"] = 0
+	load_bubble()
 
+
+@DISP.event
+def on_mouse_scroll(x, y, vx, vy):
+	if in_rect(mpos, sidebar.rect):
+		sidebar.scroll.target -= vy * 48
+	elif toolbar.editor and in_rect(mpos, player.rect):
+		player.editor.targ_y += vy * 3.5
+		player.editor.targ_x += vx * 3.5
 
 def render_settings(dur, ignore=False):
 	global crosshair, hovertext
@@ -2303,33 +2463,35 @@ def render_settings(dur, ignore=False):
 	sc = sidebar.colour or (64, 0, 96)
 	sub = (sidebar.rect2[2], sidebar.rect2[3] - 52)
 	subp = (screensize[0] - sidebar_width, 52)
-	DISP2 = DISP.subsurface(subp + sub)
+	DISP2 = DISP.subsurf(subp + sub)
 	in_sidebar = in_rect(mpos, sidebar.rect)
 	offs2 = offs + sidebar_width
 	c = options.get("sidebar_colour", (64, 0, 96))
-	c = high_colour(c)
+	hc = high_colour(c)
 	for i, opt in enumerate(asettings):
 		message_display(
 			opt.capitalize(),
-			12,
-			(offs2 + 8, i * 32),
-			colour=c,
+			15,
+			(offs2 + 8, i * 32 - 2),
+			colour=hc,
 			surface=DISP2,
 			align=0,
 			cache=True,
 			font="Comic Sans MS",
+			z=129,
 		)
 		# numrect = (screensize[0] + offs + sidebar_width - 8, 68 + i * 32)
 		s = str(round(options.audio.get(opt, 0) * 100, 2)) + "%"
 		message_display(
 			s,
-			12,
-			(offs2 + sidebar_width - 8, 16 + i * 32),
-			colour=c,
+			13,
+			(offs2 + sidebar_width - 8, 17 + i * 32),
+			colour=hc,
 			surface=DISP2,
 			align=2,
 			cache=True,
 			font="Comic Sans MS",
+			z=129,
 		)
 		srange = asettings[opt]
 		w = (sidebar_width - 16)
@@ -2353,7 +2515,7 @@ def render_settings(dur, ignore=False):
 		if hovered and not hovertext or aediting[opt]:
 			hovertext = cdict(
 				text=str(round(v * 100, 2)) + "%",
-				size=10,
+				size=13,
 				colour=(255, 255, 127),
 			)
 			if aediting[opt]:
@@ -2362,49 +2524,57 @@ def render_settings(dur, ignore=False):
 			elif mclick[0]:
 				aediting[opt] = True
 			elif mclick[1]:
-				enter = easygui.get_string(
+				def opt_set_a(enter):
+					if enter:
+						v = round_min(float(safe_eval(enter)) / 100)
+						aediting[opt] = True
+				easygui2.enterbox(
+					opt_set_a,
 					opt.capitalize(),
 					"Miza Player",
 					str(round_min(options.audio[opt] * 100)),
 				)
-				if enter:
-					v = round_min(float(safe_eval(enter)) / 100)
-					aediting[opt] = True
 			if aediting[opt]:
 				orig, options.audio[opt] = options.audio[opt], v
 				if orig != v:
 					mixer.submit(f"~setting {opt} {v}", force=ignore or opt == "volume" or not queue)
 		z = max(0, x - 4)
-		rect = (offs2 + 8 + z, 17 + i * 32, sidebar_width - 16 - z, 9)
-		col = (48 if hovered else 32,) * 3
-		bevel_rectangle(
-			DISP2,
-			col,
-			rect,
-			3,
-		)
-		rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4)
-		DISP2.blit(
-			rainbow,
-			(offs2 + 8 + x, 17 + i * 32),
-			(x, 0, w - x, 9),
-			special_flags=BLEND_RGB_MULT,
-		)
-		rect = (offs2 + 8, 17 + i * 32, x, 9)
-		col = (223 if hovered else 191,) * 3
-		bevel_rectangle(
-			DISP2,
-			col,
-			rect,
-			3,
-		)
-		rainbow = quadratic_gradient((w, 9), pc() + i / 4)
-		DISP2.blit(
-			rainbow,
-			(offs2 + 8, 17 + i * 32),
-			(0, 0, x, 9),
-			special_flags=BLEND_RGB_MULT,
-		)
+		if x < w:
+			rect = (offs2 + 8 + z, 19 + i * 32, sidebar_width - 16 - z, 9)
+			col = (48 if hovered else 32,) * 3
+			bevel_rectangle(
+				DISP2,
+				col,
+				rect,
+				3,
+				z=129,
+			)
+			rainbow = quadratic_gradient((w, 9), pc() / 2 + i / 4, unique=True)
+			DISP2.blit(
+				rainbow,
+				(offs2 + 8 + x, 19 + i * 32),
+				(x, 0, w - x, 9),
+				special_flags=BLEND_RGB_MULT,
+				z=130,
+			)
+		if x > 0:
+			rect = (offs2 + 8, 19 + i * 32, x, 9)
+			col = (223 if hovered else 191,) * 3
+			bevel_rectangle(
+				DISP2,
+				col,
+				rect,
+				3,
+				z=131,
+			)
+			rainbow = quadratic_gradient((w, 9), pc() + i / 4, unique=True)
+			DISP2.blit(
+				rainbow,
+				(offs2 + 8, 19 + i * 32),
+				(0, 0, x, 9),
+				special_flags=BLEND_RGB_MULT,
+				z=132,
+			)
 		if hovered:
 			bevel_rectangle(
 				DISP2,
@@ -2412,6 +2582,7 @@ def render_settings(dur, ignore=False):
 				brect2,
 				2,
 				filled=False,
+				z=132,
 			)
 	rect = (offs2 + sidebar_width // 2 - 32, 304, 64, 32)
 	crect = (screensize[0] - sidebar_width // 2 - 32, 355) + rect[2:]
@@ -2424,6 +2595,7 @@ def render_settings(dur, ignore=False):
 		col,
 		rect,
 		4,
+		z=129,
 	)
 	message_display(
 		"Reset",
@@ -2433,32 +2605,40 @@ def render_settings(dur, ignore=False):
 		font="Comic Sans MS",
 		surface=DISP2,
 		cache=True,
+		z=130,
 	)
 	if "more" not in sidebar:
 		sidebar.more = sidebar.more_angle = 0
 	if sidebar.more_angle > 0.001:
 		more = (
 			("silenceremove", "Skip silence", "Skips over silent or extremely quiet frames of audio."),
-			("unfocus", "Reduce unfocus FPS", "Greatly reduces FPS of display when window is left unfocused."),
-			("presearch", "Preemptive search", "Pre-emptively searches up and displays duration of songs in a playlist.\nIncreases amount of requests being sent, and may also cause lag spikes."),
-			("preserve", "Preserve sessions", "Preserves sessions and automatically reloads them."),
+			("blur", "Motion blur", "Makes animations look smoother, but consume slightly more resources."),
+			("unfocus", "Reduce unfocus FPS", "Greatly reduces FPS of display when the window is left unfocused."),
+			("presearch", "Preemptive search", "Pre-emptively searches up and displays duration of songs in a playlist when applicable. Increases amount of requests being sent."),
+			("preserve", "Preserve sessions", "Preserves sessions and automatically reloads them when the program is restarted."),
 			("ripples", "Ripples", "Clicking anywhere on the sidebar or toolbar produces a visual ripple effect."),
 			("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
 		)
-		mrect = (offs2 + 8, 376, sidebar_width - 16, 192)
-		# if sidebar.more_angle < 63 / 64:
+		mrect = (offs2 + 8, 376, sidebar_width - 16, 224)
 		surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
 		surf.fill((0, 0, 0, 0))
-		# else:
-			# surf = DISP2.subsurface(mrect)
 		for i, t in enumerate(more):
 			s, name, description = t
 			apos = (screensize[0] - sidebar_width + offs2 + 24, 427 + i * 32 + 16)
 			hovered = hypot(*(np.array(mpos) - apos)) < 16
-			if hovered and mclick[0]:
-				options.control[s] ^= 1
-				if s in ("silenceremove", "unfocus"):
-					mixer.submit(f"~setting {s} {options.control[s]}")
+			if hovered:
+				hovertext = cdict(
+					text=description,
+					size=13,
+					colour=(255, 255, 255),
+					background=(0, 0, 0, 128),
+					offset=0,
+					align=2,
+				)
+				if mclick[0]:
+					options.control[s] ^= 1
+					if s in ("silenceremove", "unfocus"):
+						mixer.submit(f"~setting {s} {options.control[s]}")
 			ripple_f = globals().get("s-ripple", concentric_circle)
 			if options.control.get(s):
 				col = (96, 255, 96)
@@ -2478,6 +2658,7 @@ def render_settings(dur, ignore=False):
 				9,
 				True,
 				soft=True,
+				z=129,
 			)
 			ripple_f(
 				surf,
@@ -2485,6 +2666,7 @@ def render_settings(dur, ignore=False):
 				pos=pos,
 				radius=16,
 				fill_ratio=0.5,
+				z=130,
 			)
 			c = options.get("sidebar_colour", (64, 0, 96))
 			c = high_colour(c, 255 if hovered else 223)
@@ -2497,28 +2679,31 @@ def render_settings(dur, ignore=False):
 				surface=surf,
 				font="Comic Sans MS",
 				cache=True,
+				z=129,
 			)
 		if sidebar_width >= 192:
-			r = (sidebar_width - 80, 160, 64, 32)
-			r2 = (screensize[0] - 68 + offs + sidebar_width, 589, 64, 32)
+			r = (sidebar_width - 80, 192, 64, 32)
+			r2 = (screensize[0] - 68 + offs + sidebar_width, 621, 64, 32)
 			if in_rect(mpos, r2):
 				if mclick[0]:
 					submit(update_collections2)
 					common.repo_fut = submit(update_repo, force=True)
 					if common.repo_fut.result():
-						easygui.show_message(
+						easygui2.msgbox(
+							None,
 							"No new updates found.",
-							"Miza Player",
+							title="Miza Player",
 						)
 				c = (112, 127, 64, 223)
 			else:
 				c = (96, 112, 80, 127)
 			fut = common.__dict__.get("repo-update")
 			if fut and not isinstance(fut, bool):
-				c2 = verify_colour(x * sin(pc() * tau / 4) for x in c[:3])
+				c2 = verify_colour(round_random(x * (sin(pc() * tau / 4) + 0.5)) for x in c[:3])
 				c2.append(c[-1])
 				c = c2
-			bevel_rectangle(surf, c, r, bevel=4)
+			# print(c)
+			bevel_rectangle(surf, c, r, bevel=4, z=129)
 			message_display(
 				"Update",
 				16,
@@ -2528,6 +2713,7 @@ def render_settings(dur, ignore=False):
 				surface=surf,
 				font="Comic Sans MS",
 				cache=True,
+				z=130,
 			)
 		if sidebar.more_angle < 63 / 64:
 			arr = np.linspace(sidebar.more_angle * 510, sidebar.more_angle * 510 - 255, mrect[3])
@@ -2542,6 +2728,8 @@ def render_settings(dur, ignore=False):
 		DISP2.blit(
 			surf,
 			mrect[:2],
+			redraw=True,# sidebar.more_angle < 63 / 64 or in_rect((mpos[0] - DISP2.rect[0], mpos[1] - DISP2.rect[1]), mrect),
+			z=131,
 		)
 	rect = (offs2 + sidebar_width // 2 - 32, 344, 64, 32)
 	crect = (screensize[0] - sidebar_width // 2 - 32, 395) + rect[2:]
@@ -2570,22 +2758,25 @@ def render_settings(dur, ignore=False):
 		col,
 		rect,
 		4,
+		z=129,
 	)
 	kwargs = {}
 	if not sidebar.ripples:
 		kwargs["soft"] = sidebar.colour
+	pos = (offs2 + sidebar_width // 2 - 48 - 6, 357 + sidebar.more_angle * 6)
 	reg_polygon_complex(
 		DISP2,
-		(offs2 + sidebar_width // 2 - 48, 357 + sidebar.more_angle * 6),
+		pos,
 		(255,) * 3,
 		3,
 		12,
 		12,
-		pi/2 - sidebar.more_angle * pi,
+		pi / 4 + sidebar.more_angle * pi,
 		255,
 		2,
 		9,
 		filled=True,
+		z=130,
 		**kwargs,
 	)
 	text = "More" if not sidebar.get("more") else "Less"
@@ -2597,6 +2788,7 @@ def render_settings(dur, ignore=False):
 		font="Comic Sans MS",
 		surface=DISP2,
 		cache=True,
+		z=130,
 	)
 
 def draw_menu():
@@ -2604,29 +2796,27 @@ def draw_menu():
 	ts = toolbar.progress.setdefault("timestamp", 0)
 	t = pc()
 	dur = max(0.001, min(t - ts, 0.125))
-	if not tick & 7:
-		toolbar.progress.timestamp = pc()
-		pops = set()
-		for i, ripple in enumerate(toolbar.ripples):
-			ripple.radius += dur * 128
-			ripple.alpha -= dur * 128
-			if ripple.alpha <= 2:
-				pops.add(i)
-		if pops:
-			toolbar.ripples.pops(pops)
-		pops = set()
-		for i, ripple in enumerate(sidebar.ripples):
-			ripple.radius += dur * 128
-			ripple.alpha -= dur * 128
-			if ripple.alpha <= 2:
-				pops.add(i)
-		if pops:
-			sidebar.ripples.pops(pops)
-	hovertext = None
+	toolbar.progress.timestamp = pc()
+	pops = set()
+	for i, ripple in enumerate(toolbar.ripples):
+		ripple.radius += dur * 128
+		ripple.alpha -= dur * 128
+		if ripple.alpha <= 2:
+			pops.add(i)
+	if pops:
+		toolbar.ripples.pops(pops)
+	pops = set()
+	for i, ripple in enumerate(sidebar.ripples):
+		ripple.radius += dur * 128
+		ripple.alpha -= dur * 128
+		if ripple.alpha <= 2:
+			pops.add(i)
+	if pops:
+		sidebar.ripples.pops(pops)
 	if any(mclick) and in_rect(mpos, sidebar.rect):
 		if control.ripples:
 			sidebar.ripples.append(cdict(
-				pos=mpos,
+				pos=tuple(mpos),
 				radius=0,
 				colour=get_ripple(mclick.index(1), mode="sidebar"),
 				alpha=255,
@@ -2634,7 +2824,7 @@ def draw_menu():
 		if mclick[1] and sidebar.menu is None:
 
 			def set_colour():
-				colour = easygui.get_color_rgb()
+				colour = get_colour()
 				if colour:
 					options.sidebar_colour = colour
 
@@ -2650,31 +2840,27 @@ def draw_menu():
 				if p:
 					paste_queue = lambda: submit(enqueue_auto, *p.splitlines())
 					sidebar.menu.buttons = (("Paste", paste_queue),) + sidebar.menu.buttons
-	if tick & 7:
-		cond = False
-	elif sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scroll.pos != sidebar.scroll.target or not is_unfocused() and mpos != mpprev and in_rect(mpos2, sidebar.rect) or sidebar.abspos or sidebar.menu:
+	cond = False
+	if sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scroll.pos != sidebar.scroll.target or sidebar.abspos or sidebar.menu:
 		cond = True
-	elif CTRL(kheld) and (kc2[K_a] or kc2[K_s] or mc2[0]) or sidebar.get("last_selected") is not None:
+	elif not is_unfocused() and in_rect(mpos2, sidebar.rect) and (mpos != mpprev or CTRL(kheld) and (kclick[K_a] or kclick[K_s] or mclick[0])) or sidebar.get("last_selected") is not None:
 		cond = True
 	else:
-		fut = common.__dict__.get("repo-update")
-		if fut and not isinstance(fut, bool):
-			cond = True
+		if toolbar.editor:
+			q = sidebar.instruments
 		else:
-			if toolbar.editor:
-				q = sidebar.instruments
-			else:
-				q = queue
-			cond = any(i != e.get("pos", 0) or e.get("selected") or e.get("flash") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
+			q = queue
+		cond = any(i != e.get("pos", 0) or e.get("selected") or e.get("flash") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base))
 	if cond:
-		globals()["last-cond"] = True
-	elif not tick & 7 and globals().get("last-cond"):
-		cond = globals().pop("last-cond", None)
-		if cond and any(i != e.get("pos", 0) or e.get("selected") or e.get("flash") for i, e in enumerate(q[sidebar.base:sidebar.base + sidebar.maxitems], sidebar.base)):
-			globals()["last-cond"] = True
-	elif not tick % 240:
+		globals()["last-cond"] = 2
+	elif globals().get("last-cond"):
+		globals()["last-cond"] -= 1
+		if globals()["last-cond"] <= 0:
+			globals().pop("last-cond")
 		cond = True
-	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
+	elif tick < 3 or not tick % 15 - 1:
+		cond = globals()["last-cond"] = True
+	if cond and sidebar.colour:
 		if toolbar.editor:
 			render_sidebar_2(dur)
 		else:
@@ -2704,6 +2890,7 @@ def draw_menu():
 					rect,
 					4,
 					alpha=round(255 * entry.life),
+					z=288,
 				)
 			sidebar.particles.pops(pops)
 		else:
@@ -2711,7 +2898,7 @@ def draw_menu():
 	if any(mclick) and in_rect(mpos, toolbar.rect):
 		if control.ripples:
 			toolbar.ripples.append(cdict(
-				pos=mpos,
+				pos=tuple(mpos),
 				radius=0,
 				colour=get_ripple(mclick.index(1), mode="toolbar"),
 				alpha=255,
@@ -2719,7 +2906,7 @@ def draw_menu():
 		if mclick[1] and sidebar.menu is None:
 
 			def set_colour():
-				colour = easygui.get_color_rgb()
+				colour = get_colour()
 				if colour:
 					options.toolbar_colour = colour
 
@@ -2744,39 +2931,42 @@ def draw_menu():
 				s = options.get("spectrogram")
 				if not s:
 					def change_font_size():
+						def change_font_size_a(enter):
+							if enter:
+								enter = eval(enter, {}, {})
+								options.control.lyrics_size = enter
+								common.font_reload = True
 						v = options.control.lyrics_size
-						enter = easygui.get_string(
+						easygui2.enterbox(
+							change_font_size_a,
 							"Change font size",
-							"Miza Player",
-							str(v),
+							title="Miza Player",
+							default=str(v),
 						)
-						if enter:
-							enter = eval(enter, {}, {})
-							options.control.lyrics_size = enter
-							common.font_reload = True
-
 					def change_image():
-						no_lyrics_path = easygui.fileopenbox(
+						def change_image_a(no_lyrics_path):
+							if no_lyrics_path:
+								options.no_lyrics_path = no_lyrics_path
+								globals()["no_lyrics_fut"] = submit(load_surface, no_lyrics_path, force=True)
+								globals().pop("no_lyrics", None)
+						easygui2.fileopenbox(
+							change_image_a,
 							"Open an image file here!",
 							"Miza Player",
 							default=options.get("no_lyrics_path", globals()["no_lyrics_path"]),
 							filetypes=iftypes,
 						)
-						if no_lyrics_path:
-							options.no_lyrics_path = no_lyrics_path
-							globals()["no_lyrics_fut"] = submit(load_surface, no_lyrics_path, force=True)
-							globals().pop("no_lyrics", None)
-
 					def search_lyrics():
-						query = easygui.get_string(
+						def search_lyrics_a(query):
+							if query:
+								globals()["lyrics_entry"] = entry = cdict(name=query)
+								submit(render_lyrics, entry)
+						easygui2.enterbox(
+							search_lyrics_a,
 							"Search a song to get its lyrics!",
-							"Miza Player",
-							"",
+							title="Miza Player",
+							default="",
 						)
-						if query:
-							globals()["lyrics_entry"] = entry = cdict(name=query)
-							submit(render_lyrics, entry)
-					
 					def reset_lyrics():
 						globals()["lyrics_entry"] = None
 
@@ -2795,7 +2985,7 @@ def draw_menu():
 						mixer.submit(f"~setting #gradient-vertices {v}")
 					def change_polytope():
 						sidebar.menu = cdict(
-							buttons=((k, _change_polytope, v) for v, k in poly_inv.items()),
+							buttons=((k, _change_polytope, v) for v, k in tuple(poly_inv.items())[:44]),
 						)
 					def change_schlafli():
 						v = options.control.get("gradient-vertices")
@@ -2807,35 +2997,39 @@ def draw_menu():
 						if len(v) == 1:
 							v = v[0]
 						# v = poly_inv.get(v, v)
-						enter = easygui.get_string(
+						def change_schlafli_a(enter):
+							if enter:
+								enter = enter.strip("<>()[]{}").casefold().replace(",", " ").replace(":", " ")
+								try:
+									enter = poly_names[enter]
+								except KeyError:
+									if not os.path.exists(enter):
+										enter = [eval(x, {}, {}) for x in enter.split()]
+								options.control["gradient-vertices"] = enter
+								mixer.submit(f"~setting #gradient-vertices {enter}")
+						easygui2.enterbox(
+							change_schlafli_a,
 							"Change polytope",
-							"Miza Player",
-							str(v),
+							title="Miza Player",
+							default=str(v),
 						)
-						if enter:
-							enter = enter.strip("<>()[]{}").casefold().replace(",", " ").replace(":", " ")
-							try:
-								enter = poly_names[enter]
-							except KeyError:
-								if not os.path.exists(enter):
-									enter = [eval(x, {}, {}) for x in enter.split()]
-							options.control["gradient-vertices"] = enter
-							mixer.submit(f"~setting #gradient-vertices {enter}")
 					def change_model():
 						ftypes = [[f"*.{f}" for f in "obj gz".split()]]
 						default = options.control.get("gradient-vertices")
 						if not isinstance(default, str) or not os.path.exists(default):
 							default = None
 						default = default or "misc/default/sphere.obj"
-						enter = easygui.fileopenbox(
+						def change_model_a(enter):
+							if enter and os.path.exists(enter):
+								options.control["gradient-vertices"] = enter
+								mixer.submit(f"~setting #gradient-vertices {enter}")
+						easygui2.fileopenbox(
+							change_model_a,
 							"Open a 3D model file here!",
 							"Miza Player",
 							default=default,
 							filetypes=ftypes,
 						)
-						if enter and os.path.exists(enter):
-							options.control["gradient-vertices"] = enter
-							mixer.submit(f"~setting #gradient-vertices {enter}")
 
 					sidebar.menu = cdict(
 						buttons=(
@@ -2848,17 +3042,19 @@ def draw_menu():
 					def change_vertices():
 						vertices = options.control["spiral-vertices"]
 						v = vertices[0]
-						enter = easygui.get_string(
+						def change_vertices_a(enter):
+							if enter:
+								enter = int(float(enter))
+								if enter > 384:
+									enter = 384
+								vertices[0] = enter
+								mixer.submit(f"~setting #spiral-vertices {vertices}")
+						easygui2.enterbox(
+							change_vertices_a,
 							"Change vertex count",
-							"Miza Player",
-							str(v),
+							title="Miza Player",
+							default=str(v),
 						)
-						if enter:
-							enter = int(float(enter))
-							if enter > 384:
-								enter = 384
-							vertices[0] = enter
-							mixer.submit(f"~setting #spiral-vertices {vertices}")
 					def toggle_rotation():
 						vertices = options.control["spiral-vertices"]
 						vertices[1] = int(not vertices[1])
@@ -2878,135 +3074,145 @@ def draw_menu():
 					submit(render_lyrics, queue[0])
 					if player.get("spec"):
 						player.spec.fill((0, 0, 0))
-	if (cond or in_rect(mpos2, sidebar.rect) and any(mclick)) and sidebar.colour:
+	if sidebar.colour:
 		# if globals().get("sidebar_rendered"):
 			# sidebar_rendered.result()
 			# globals()["sidebar_rendered"] = None
 		maxb = (sidebar_width - 12) // 44
+		c = options.get("sidebar_colour", (64, 0, 96))
+		hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c)))
+		light = 1 - (1 - hls[1]) / 4
+		if hls[2]:
+			sat = 1 - (1 - hls[2]) / 2
+		else:
+			sat = 0
+		lum = 175
+		hls[1] = lum / 255 * light
+		hls[2] = sat
+		col = [round(i * 255) for i in colorsys.hls_to_rgb(*hls)]
 		for i, button in enumerate(sidebar.buttons[:maxb]):
-			if button.get("rect"):
-				if in_rect(mpos, button.rect):
-					lum = 239
-					cm = abs(pc() % 1 - 0.5) * 0.328125
-					c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
-					name = button.name if not toolbar.editor else button.get("name2") or button.name
-					hovertext = cdict(
-						text=name,
-						size=15,
-						colour=c,
-						offset=19,
-						font="Rockwell",
-					)
-					crosshair |= 4
-				else:
-					lum = 175
-				c = options.get("sidebar_colour", (64, 0, 96))
-				hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c)))
-				light = 1 - (1 - hls[1]) / 4
-				if hls[2]:
-					sat = 1 - (1 - hls[2]) / 2
-				else:
-					sat = 0
+			if not button.get("rect"):
+				continue
+			redraw = False
+			if in_rect(mpos, button.rect):
+				lum = 239
+				cm = abs(pc() % 1 - 0.5) * 0.328125
+				c2 = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
+				name = button.name if not toolbar.editor else button.get("name2") or button.name
+				hovertext = cdict(
+					text=name,
+					size=15,
+					background=high_colour(c2),
+					colour=c2,
+					offset=19,
+					font="Rockwell",
+				)
+				crosshair |= 4
+				redraw = True
+			elif button.get("flash"):
+				redraw = True
+			elif not i and not sidebar.abspos:
+				redraw = True
+			if redraw:
 				hls[1] = lum / 255 * light
-				hls[2] = sat
 				lum += button.get("flash", 0)
 				if not i and not sidebar.abspos:
 					lum -= 48
 					lum += button.get("flash", 0)
 					fut = common.__dict__.get("repo-update")
 					if fut and not isinstance(fut, bool):
-						hls[1] = sin(pc() * tau / 4)
-				col = [round(i * 255) for i in colorsys.hls_to_rgb(*hls)]
-				bevel_rectangle(
-					DISP,
-					col,
-					button.rect,
-					4,
-				)
-				sprite = button.sprite if not toolbar.editor else button.get("sprite2") or button.sprite
-				if button.name == "Audio output":
-					if not button.get("sprite-1"):
-						button["sprite-1"] = sprite.copy()
-						button["sprite-1"].fill((255, 0, 0), special_flags=BLEND_RGB_MULT)
-						button.sprite.fill((0,) * 3, special_flags=BLEND_RGB_MULT)
-					sprite = button.sprite if not sidebar.get("recording") else button["sprite-1"]
-				if type(sprite) in (tuple, list, alist):
-					sprite = sprite[bool(sidebar.abspos)]
-				blit_complex(
-					DISP,
-					sprite,
-					(button.rect[0] + 5, button.rect[1] + 5),
-				)
+						hls[1] = (sin(pc() * tau / 4) + 1) / 2
+					elif not cond:
+						break
+				tcol = [round(i * 255) for i in colorsys.hls_to_rgb(*hls)]
+			else:
+				tcol = col
+			bevel_rectangle(
+				DISP,
+				tcol,
+				button.rect,
+				4,
+				z=257,
+				cache=not redraw,
+			)
+			sprite = button.sprite if not toolbar.editor else button.get("sprite2") or button.sprite
+			if button.name == "Audio output":
+				if not button.get("sprite-1"):
+					button["sprite-1"] = sprite.copy()
+					button["sprite-1"].fill((255, 0, 0), special_flags=BLEND_RGB_MULT)
+					button.sprite.fill((0,) * 3, special_flags=BLEND_RGB_MULT)
+				sprite = button.sprite if not sidebar.get("recording") else button["sprite-1"]
+			if type(sprite) in (tuple, list, alist):
+				sprite = sprite[bool(sidebar.abspos)]
+			blit_complex(
+				DISP,
+				sprite,
+				(button.rect[0] + 5, button.rect[1] + 5),
+				z=258,
+			)
+			if not cond:
+				break
 	osci_rect = (screensize[0] - 4 - progress.box, screensize[1] - toolbar_height + 4) + osize
 	if mclick[0] and in_rect(mpos, osci_rect) and not toolbar.resizer:
 		player.flash_o = 32
 		options.oscilloscope = (options.get("oscilloscope", 0) + 1) % 2
 		mixer.submit(f"~setting oscilloscope {options.oscilloscope}")
-	tc = toolbar.colour
-	if tc and globals().get("toolbar_wait") and tick + 4 & 7:
-		toolbar_wait.result()
-		globals()["toolbar_wait"] = None
-		surf = toolbar.surf
-		blit_complex(
-			DISP,
-			surf,
-			toolbar.rect[:2],
-		)
-		modified.add(toolbar.rect)
 	if toolbar.editor:
 		editor_toolbar()
-	if not tick & 7 and sidebar.get("dragging"):
+	if sidebar.get("dragging"):
 		if toolbar.editor:
-			Enqueue(render_dragging_2)
+			render_dragging_2()
 		else:
-			Enqueue(render_dragging)
-	if not tick + 4 & 7 or toolbar.rect in modified:
-		if toolbar.resizing:
-			pygame.draw.rect(DISP, (255, 0, 0), toolbar.rect[:3] + (4,))
-			if not mheld[0]:
-				toolbar.resizing = False
-		elif toolbar.resizer:
-			pygame.draw.rect(DISP, (191, 127, 255), toolbar.rect[:3] + (4,))
-			toolbar.resizer = False
-	if not tick + 4 & 7 or sidebar.rect in modified:
-		if sidebar.resizing:
-			pygame.draw.rect(DISP, (255, 0, 0), sidebar.rect[:2] + (4, sidebar.rect[3]))
-			if not mheld[0]:
-				sidebar.resizing = False
-		elif sidebar.resizer:
-			pygame.draw.rect(DISP, (191, 127, 255), sidebar.rect[:2] + (4, sidebar.rect[3]))
-			sidebar.resizer = False
-	if crosshair & 1 and (not tick + 4 & 7 or toolbar.rect in modified) or crosshair & 2 and (not tick + 4 & 7 or sidebar.rect in modified) or crosshair & 4:
-		# if globals().get("sidebar_rendered"):
-			# sidebar_rendered.result()
-			# globals()["sidebar_rendered"] = None
+			render_dragging()
+	if toolbar.resizing:
+		if toolbar.get("snapped", 0) == 1:
+			c = (0, 255, 0)
+		else:
+			c = (255, 0, 0)
+		draw_rect(DISP, c, toolbar.rect[:3] + (6,), z=640)
+		if not mheld[0]:
+			toolbar.resizing = False
+			toolbar.snapped = 0
+	elif toolbar.resizer:
+		draw_rect(DISP, (191, 127, 255), toolbar.rect[:3] + (6,), z=640)
+		toolbar.resizer = False
+	if sidebar.resizing:
+		draw_rect(DISP, (255, 0, 0), sidebar.rect[:2] + (6, sidebar.rect[3]), z=640)
+		if not mheld[0]:
+			sidebar.resizing = False
+	elif sidebar.resizer:
+		draw_rect(DISP, (191, 127, 255), sidebar.rect[:2] + (6, sidebar.rect[3]), z=640)
+		sidebar.resizer = False
+	if crosshair:
 		if crosshair & 3:
-			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
-			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
-			pygame.draw.circle(DISP, (255, 0, 0), mpos2, 9, width=2)
+			DISP.shape(pyglet.shapes.Line, *(mpos2[0] - 13, mpos2[1] - 1), *(mpos2[0] + 11, mpos2[1] - 1), width=2, color=(255, 0, 0), z=641)
+			DISP.shape(pyglet.shapes.Line, *(mpos2[0] - 1, mpos2[1] - 13), *(mpos2[0] - 1, mpos2[1] + 11), width=2, color=(255, 0, 0), z=641)
+			draw_circle(DISP, (255, 0, 0), mpos2, 9, width=2, z=641)
 		if crosshair & 1:
 			p = max(0, min(1, (mpos2[0] - progress.pos[0] + progress.width // 2) / progress.length) * player.end)
 			s = time_disp(p)
-			Enqueue(
-				message_display,
+			message_display(
 				s,
 				min(20, toolbar_height // 3),
 				(mpos2[0], mpos2[1] - 17),
 				(255, 255, 127),
 				surface=DISP,
 				font="Comic Sans MS",
+				z=642,
 			)
-		if hovertext:
-			Enqueue(
-				message_display,
-				hovertext.text,
-				hovertext.size,
-				(mpos2[0], mpos2[1] + hovertext.get("offset", -17)),
-				hovertext.colour,
-				surface=DISP,
-				font=hovertext.get("font", "Comic Sans MS"),
-				cache=True,
-			)
+	if hovertext:
+		message_display(
+			hovertext.text,
+			hovertext.size,
+			(mpos2[0], mpos2[1] + hovertext.get("offset", -17)),
+			hovertext.colour,
+			background=hovertext.get("background", None),
+			surface=DISP,
+			font=hovertext.get("font", "Comic Sans MS"),
+			align=hovertext.get("align", 1),
+			cache=True,
+			z=642,
+		)
 
 pdata = None
 def save_settings():
@@ -3061,29 +3267,12 @@ def save_settings():
 	options.screensize = temp
 
 
-for i in range(26):
-	globals()[f"K_{chr(i + 97)}"] = i + 4
-for i in range(1, 11):
-	globals()[f"K_{i % 10}"] = i + 29
-code = ""
-K_ESCAPE = 41
-K_BACKSPACE = 42
-K_SPACE = 44
-K_EQUALS = 46
-K_LEFTBRACKET = 47
-K_RIGHTBRACKET = 48
-K_BACKSLASH = 49
-K_SEMICOLON = 51
-K_BACKQUOTE = 53
-K_COMMA = 54
-K_PERIOD = 55
-K_SLASH = 56
-K_DELETE = 76
+orig = code = ""
 reset_menu()
 foc = True
 minimised = False
 mpos = mpos2 = mpprev = (-inf,) * 2
-mheld = mclick = mc2 = mc3 = mc4 = mrelease = mprev = (None,) * 5
+mheld = mclick = mrelease = mprev = (None,) * 5
 kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
 delay = 0
@@ -3091,11 +3280,13 @@ last_tick = 0
 last_precise = 0
 last_ratio = 0
 status_freq = 6000
-alphakeys = [0] * 34
+alphakeys = [False] * 34
 restarting = False
-fps = 0
-addi = cdict(result=lambda: None)
+DISP.fps = 0
+fps = 60
 lp = None
+addp.result()
+
 try:
 	if options.control.preserve and os.path.exists("dump.json"):
 		with open("dump.json", "rb") as f:
@@ -3110,7 +3301,8 @@ try:
 		if data.get("paused"):
 			pause_toggle(True)
 		if data.get("minimised"):
-			pygame.display.iconify()
+			DISP.minimize()
+		DISP.set_visible(True)
 		if data.get("project"):
 			try:
 				b = base64.b85decode(data["project"].encode("ascii"))
@@ -3133,9 +3325,11 @@ try:
 		if data.get("pos") and not toolbar.editor:
 			player.fut = submit(start_player, data["pos"])
 			submit(render_lyrics, queue[0])
+	else:
+		DISP.set_visible(True)
 	tick = 0
 	while True:
-		if not tick + 2 & 65535:
+		if not tick + 2 & 8191:
 			try:
 				if utc() - os.path.getmtime(collections2f) > 3600:
 					submit(update_collections2)
@@ -3147,23 +3341,23 @@ try:
 			if t >= last_save + 10:
 				submit(save_settings)
 				globals()["last_save"] = t
-		if not tick % (status_freq + (status_freq & 1)):
+		if not (tick << 3) % (status_freq + (status_freq & 1)):
 			submit(send_status)
-		if not tick % 240:
-			wait_on()
 		fut = common.__dict__.get("repo-update")
 		if fut:
 			if fut is True:
 				if not options.control.autoupdate:
 					if options.control.preserve:
-						easygui.show_message(
-							f"Miza Player has been updated successfully!\nThe program will now restart in order to apply changes.",
-							"Success!",
+						easygui2.msgbox(
+							None,
+							"Miza Player has been updated successfully!\nThe program will now restart in order to apply changes.",
+							title="Success!",
 						)
 					else:
-						easygui.show_message(
-							f"Miza Player has been updated successfully!\nPlease restart the program in order to apply changes.",
-							"Success!",
+						easygui2.msgbox(
+							None,
+							"Miza Player has been updated successfully!\nPlease restart the program in order to apply changes.",
+							title="Success!",
 						)
 				if options.control.preserve:
 					restarting = True
@@ -3173,30 +3367,32 @@ try:
 		unfocused = False
 		if foc:
 			minimised = False
-			unfocused = False
 		else:
 			minimised = is_minimised()
-			unfocused = options.control.unfocus and is_unfocused()
-		if not tick & 15:
-			if not downloading.target:
-				if player.paused:
-					colour = 4
-				elif is_active() and player.amp > 1 / 64:
-					colour = 2
-				else:
-					colour = 8
-				submit(taskbar_progress_bar, player.pos / player.end, colour | (player.end >= inf))
+		unfocused = is_unfocused()
+		if not minimised and not tick % 2401:
+			garbage_collector()
+		v = minimised | unfocused << 1
+		globals()["stat-mem"].buf[0] = v
+		if not downloading.target:
+			if player.paused:
+				colour = 4
+			elif is_active() and player.amp > 1 / 64:
+				colour = 2
 			else:
-				pgr = os.path.exists(downloading.fn) and os.path.getsize(downloading.fn) / 192000 * 8
-				ratio = min(1, pgr / max(1, downloading.target))
-				submit(taskbar_progress_bar, ratio, 4 if ratio < 1 / 3 else 8 if ratio < 2 / 3 else 2)
-			if minimised:
-				toolbar.ripples.clear()
-				sidebar.ripples.clear()
+				colour = 8
+			taskbar_progress_bar(player.pos / player.end, colour | (player.end >= inf))
+		else:
+			pgr = os.path.exists(downloading.fn) and os.path.getsize(downloading.fn) / 192000 * 8
+			ratio = min(1, pgr / max(1, downloading.target))
+			taskbar_progress_bar(ratio, 4 if ratio < 1 / 3 else 8 if ratio < 2 / 3 else 2)
+		if minimised:
+			toolbar.ripples.clear()
+			sidebar.ripples.clear()
 		if lp:
 			lp.result()
 		if not project.instruments:
-			addi = submit(add_instrument, True)
+			add_instrument(True)
 		if not player.get("fut") and not player.paused:
 			if not toolbar.editor:
 				if queue:
@@ -3208,59 +3404,41 @@ try:
 			if fut and not queue:
 				fut.result()
 		condition = not minimised
-		if unfocused:
-			condition &= not tick % 14
-		if not (not isnan(mpos[0]) or is_active() or unfocused or not player.paused and not queue):
-			condition &= not tick % 6
 		if toolbar.ripples or sidebar.ripples:
 			condition = True
 		if condition:
-			addi.result()
-			addp.result()
+			if getattr(DISP, "reset", False):
+				reset_menu(reset=True)
+				DISP.reset = False
 			lpos = mpos
-			if not tick & 3:
-				Finish()
-				mprev = mheld
-				mheld = get_pressed()
-				mc4 = astype(mc3, list)
-				mc3 = astype(mc2, list)
-				mc2 = astype(mclick, list)
-				mclick = [x and not y for x, y in zip(mheld, mprev)]
-				for i in range(len(mclick)):
-					mc2[i] = mc2[i] or mclick[i]
-					mc3[i] = mc3[i] or mclick[i]
-					mc4[i] = mc4[i] or mclick[i]
-				mrelease = [not x and y for x, y in zip(mheld, mprev)]
-				try:
-					mpprev = mpos3
-				except NameError:
-					mpprev = mpos
-				mpos2 = mouse_rel_pos()
-				mpos3 = pygame.mouse.get_pos()
-				if foc:
-					mpos = mpos3
-				else:
-					mpos = (nan,) * 2
-				kprev = kheld
-				kheld = KeyList(x + y if y else 0 for x, y in zip(kheld, pygame.key.get_pressed()))
-				# kc3 = astype(kc2, np.bool_)
-				kc2 = astype(kclick, np.bool_)
-				kclick = KeyList(x and not y for x, y in zip(kheld, kprev))
-				np.logical_or(kc2, kclick, out=kc2)
-				# np.logical_or(kc3, kclick, out=kc3)
-				krelease = [not x and y for x, y in zip(kheld, kprev)]
-				kspam = KeyList(x == 1 or y >= 20 for x, y in zip(kclick, kheld))
-				# if any(kclick):
-				#	 print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
+			mprev = mheld
+			mheld = list(DISP.mheld)
+			mclick = list(DISP.mclick)
+			DISP.mclick[:] = [0] * len(DISP.mclick)
+			mrelease = list(DISP.mrelease)
+			DISP.mrelease[:] = [0] * len(DISP.mrelease)
+			mpprev = tuple(mpos2)
+			mpos2 = mouse_rel_pos()
+			if foc:
+				mpos = mpos2
+			else:
+				mpos = (nan,) * 2
+			kprev = kheld
+			kheld = KeyList(DISP.kheld)
+			kclick = KeyList(DISP.kclick)
+			DISP.kclick[:] = [0] * len(DISP.kclick)
+			krelease = KeyList(DISP.krelease)
+			DISP.krelease[:] = [0] * len(DISP.krelease)
+			kspam = KeyList(x or y and pc() - y >= 0.5 for x, y in zip(kclick, kheld))
+			# if any(kclick):
+			#	 print(" ".join(map(str, (i for i, v in enumerate(kclick) if v))))
 			if kclick[K_BACKQUOTE]:
 				if code:
 					_ = code
-				output = easygui.textbox(
-					"Debug mode",
-					"Miza Player",
-					code or "",
-				)
-				while output:
+				def debug_code_a(output):
+					if not output:
+						return
+					global orig, code
 					orig = output
 					try:
 						c = None
@@ -3270,32 +3448,39 @@ try:
 							pass
 						if not c:
 							c = compile(output, "<debug>", "exec")
-						output = str(eval(c))
+						output = str(eval(c, globals()))
 					except:
 						output = traceback.format_exc()
-					output = output.strip()
+					globals()["output"] = output.strip()
 					_ = code = output
-					output = easygui.textbox(
-						orig,
-						"Miza Player",
-						code or "",
+					submit(
+						easygui2.textbox,
+						debug_code_a,
+						orig or "Debug mode",
+						title="Miza Player",
+						text=code or "",
 					)
-				kclick[K_BACKQUOTE] = False
-			if not tick & 3 and (any(kclick) or any(krelease) or player.editor.held_notes):
+				easygui2.textbox(
+					debug_code_a,
+					orig or "Debug mode",
+					title="Miza Player",
+					text=code or "",
+				)
+			if any(kclick) or any(krelease) or player.editor.held_notes:
 				alphakeys[:] = [False] * len(alphakeys)
 				if not CTRL[kheld] and not SHIFT[kheld] and not ALT[kheld]:
 					notekeys = "zsxdcvgbhnjmq2w3er5t6y7ui9o0p"
-					alphakeys = [kheld[globals()[f"K_{c}"]] for c in notekeys] + [0] * 5
+					alphakeys = [bool(kheld[globals()[f"K_{c}"]]) for c in notekeys] + [False] * 5
 					alphakeys[-5] = kheld[K_LEFTBRACKET]
 					alphakeys[-4] = kheld[K_EQUALS]
 					alphakeys[-3] = kheld[K_RIGHTBRACKET]
 					alphakeys[-2] = kheld[K_BACKSPACE]
 					alphakeys[-1] = kheld[K_BACKSLASH]
-					alphakeys[12] |= kheld[K_COMMA]
-					alphakeys[13] |= kheld[K_l]
-					alphakeys[14] |= kheld[K_PERIOD]
-					alphakeys[15] |= kheld[K_SEMICOLON]
-					alphakeys[16] |= kheld[K_SLASH]
+					alphakeys[12] |= bool(kheld[K_COMMA])
+					alphakeys[13] |= bool(kheld[K_l])
+					alphakeys[14] |= bool(kheld[K_PERIOD])
+					alphakeys[15] |= bool(kheld[K_SEMICOLON])
+					alphakeys[16] |= bool(kheld[K_SLASH])
 					notekeys = set(i for i, v in enumerate(alphakeys) if v)
 					if not player.editor.held_update:
 						player.editor.held_notes.clear()
@@ -3309,221 +3494,12 @@ try:
 								editor.held_update = None
 					mixer.submit("~keys " + ",".join(map(str, notekeys)))
 			crosshair = False
-			if not tick & 3:
-				update_menu()
-			if not toolbar.ripples and not sidebar.ripples and pc() - globals()["h-timer"] >= 8:
-				globals()["h-cache"].clear()
-			if (toolbar.updated or not tick & 7) and toolbar.colour:
-				tc = toolbar.colour
-				highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
-				crosshair |= highlighted
-				locks = globals()["spec-locks"].buf
-				if locks[2] == 255:
-					locks[2] = 0
-				Acquire(2)
-				args = np.frombuffer(globals()["tool-vals"].buf[:4096], dtype=np.float64)
-				args[0], args[1] = toolbar.rect[2:]
-				args[2], args[3], args[4] = tc
-				args[5], args[6] = mpos
-				args[7], args[8] = mpos2
-				args[9] = highlighted
-				args[10], args[11] = progress.pos
-				args[12] = progress.length
-				args[13] = progress.width
-				args[14] = player.pos
-				args[15] = player.end
-				args[16] = options.get("oscilloscope") or 0
-				args[17] = toolbar.pause.radius
-				args[18], args[19] = toolbar.pause.pos
-				args[20] = toolbar.pause.speed
-				args[21] = toolbar.pause.angle
-				args[22] = toolbar.pause.outer
-				args[23] = toolbar.pause.inner
-				args[24] = player.paused
-				args[25] = player.flash_o
-				args[26] = player.amp
-				args[27] = is_active() or 0
-				args[28] = progress.alpha
-				args[29], args[30], args[31] = progress.select_colour
-				args[32] = screensize[1]
-				args[33] = progress.num
-				args[34] = toolbar.editor or 0
-				tsize = toolbar.rect[2:]
-				try:
-					surf = toolbar.surf
-					if surf.get_size() != tsize:
-						raise AttributeError
-				except AttributeError:
-					length = tsize[0] * tsize[1] * 3
-					surf = toolbar.surf = pygame.image.frombuffer(globals()["tool-mem"].buf[:length], tsize, "RGB")
-				try:
-					bevel_rectangle(
-						surf,
-						tc,
-						(0, 0) + tsize,
-						4,
-					)
-					if toolbar.ripples:
-						ripple_f = globals().get("h-ripple", concentric_circle)
-						for ripple in toolbar.ripples:
-							ripple_f(
-								surf,
-								colour=ripple.colour,
-								pos=(ripple.pos[0], ripple.pos[1] - screensize[1] + toolbar_height),
-								radius=ripple.radius,
-								fill_ratio=1 / 3,
-								alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
-							)
-					for i, button in enumerate(toolbar.buttons):
-						if i and toolbar.editor:
-							break
-						if not button.get("rect"):
-							continue
-						if in_rect(mpos, button.rect):
-							lum = 191
-						else:
-							lum = 96
-						lum += button.get("flash", 0)
-						hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
-						light = 1 - (1 - hls[1]) / 4
-						if hls[2]:
-							sat = 1 - (1 - hls[2]) / 2
-						else:
-							sat = 0
-						col = [round(i * 255) for i in colorsys.hls_to_rgb(hls[0], lum / 255 * light, sat)]
-						rect = list(button.rect)
-						rect[1] += toolbar_height - screensize[1]
-						rounded_bev_rect(
-							surf,
-							col,
-							rect,
-							3,
-							background=toolbar.colour,
-						)
-						if i == 2:
-							val = control.shuffle
-						elif i == 1:
-							val = control.loop
-						else:
-							val = -1
-						if val == 2:
-							size = button.sprite.get_size()
-							if i > 1:
-								sprite = quadratic_gradient(size, pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
-							else:
-								sprite = radial_gradient(size, -pc(), flags=FLAGS | pygame.SRCALPHA, copy=True)
-							sprite.blit(
-								button.sprite,
-								(0, 0),
-								special_flags=pygame.BLEND_RGBA_MULT,
-							)
-						elif val == 1:
-							sprite = button.on
-						elif val == 0:
-							sprite = button.off
-						else:
-							sprite = button.sprite
-						blit_complex(
-							surf,
-							sprite,
-							(rect[0] + 3, rect[1] + 3),
-						)
-						if val == 2:
-							message_display(
-								"1",
-								12,
-								(rect[0] + rect[2] - 4, rect[1] + rect[3] - 8),
-								colour=(0,) * 3,
-								surface=surf,
-								font="Comic Sans MS",
-								cache=True,
-							)
-					for i, button in enumerate(toolbar.buttons):
-						if i and toolbar.editor:
-							break
-						if button.get("rect"):
-							if in_rect(mpos, button.rect):
-								cm = abs(pc() % 1 - 0.5) * 0.328125
-								c = [round(i * 255) for i in colorsys.hls_to_rgb(cm + 0.75, 0.75, 1)]
-								hovertext = cdict(
-									text=button.name,
-									size=15,
-									colour=c,
-									font="Rockwell",
-									offset=-19,
-								)
-								crosshair |= 4
-				except:
-					raise
-				finally:
-					Release(2)
-				toolbar_wait = Enqueue(Toolbar)
-			if not tick + 2 & 7 and not toolbar.editor:
-				locks = globals()["spec-locks"].buf
-				if options.get("spectrogram") and locks[0] != 255:
+			hovertext = None
+			if not toolbar.editor:
+				if options.get("spectrogram"):
 					rect = player.rect
-					Acquire(0)
-					try:
-						size = tuple(np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32))
-						if size[1] > rect[3]:
-							size[1] = rect[3]
-						try:
-							surf = player.spec
-							if surf.get_size() != size:
-								raise AttributeError
-						except AttributeError:
-							length = size[0] * size[1] * 3
-							surf = player.spec = pygame.image.frombuffer(globals()["spec-mem"].buf[:length], size, "RGB")
-						player.spec = surf
-						if options.spectrogram > 1:
-							srect = limit_size(*surf.get_size(), *rect[2:])
-						else:
-							srect = rect[2:]
-						prect = rect[:2]
-						prect += (np.array(rect[2:]) - srect) / 2
-						if options.spectrogram > 1:
-							rects = deque()
-							if srect[0] < rect[2]:
-								rects.append(rect[:2] + (prect[0], rect[3]))
-								rects.append((prect[0] + srect[0], rect[1], prect[0], rect[3]))
-							elif srect[1] < rect[3]:
-								rects.append(rect[:2] + (rect[2], prect[1]))
-								rects.append((rect[0], prect[1] + srect[1], rect[2], prect[1]))
-							for rect in rects:
-								DISP.fill(0, rect)
-						if size[0] > rect[2]:
-							surf = surf.subsurface((0, 0, rect[2], size[1]))
-						blit_complex(
-							DISP,
-							surf,
-							prect,
-						)
-					except:
-						raise
-					finally:
-						Release(0)
-					modified.add(player.rect)
-			if not tick & 3:
-				draw_menu()
-				# try:
-					# globals()["menu-drawer"].result()
-				# except KeyError:
-					# pass
-				# globals()["menu-drawer"] = Enqueue(draw_menu)
-			if not queue and not is_active() and not any(kheld):
-				player.pos = 0
-				player.end = inf
-				player.last = 0
-				progress.num = 0
-				progress.alpha = 0
-			if not tick + 6 & 7 and toolbar.editor:
-				Enqueue(render_piano)
-				if modified:
-					modified.add(tuple(screensize))
-				else:
-					modified.add(player.rect)
-			if not tick + 2 & 7 and not toolbar.editor:
-				if (queue or lyrics_entry) and not options.spectrogram:
+					render_spectrogram(rect)
+				elif queue or lyrics_entry:
 					entry = lyrics_entry or queue[0]
 					if "lyrics" not in entry:
 						if pc() % 0.25 < 0.125:
@@ -3532,40 +3508,40 @@ try:
 							col = (255, 0, 0)
 						s = f"Loading lyrics for {entry.name}..."
 						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
-						Enqueue(
-							message_display,
+						message_display(
 							s,
 							size,
 							(player.rect[2] >> 1, size),
 							col,
-							surface=DISP.subsurface(player.rect),
+							surface=DISP.subsurf(player.rect),
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
+							z=2,
 						)
 					elif entry.lyrics:
 						rect = (player.rect[2] - 8, player.rect[3] - 92)
 						if not entry.get("lyrics_loading") and rect != entry.lyrics[1].get_size():
 							entry.lyrics_loading = True
 							submit(render_lyrics, entry)
-						Enqueue(
-							blit_complex,
+						blit_complex(
 							DISP,
 							entry.lyrics[1],
 							(8, 92),
+							z=1,
 						)
 						s = entry.lyrics[0]
 						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
-						Enqueue(
-							message_display,
+						message_display(
 							s,
 							size,
 							(player.rect[2] >> 1, size),
 							(255,) * 3,
-							surface=DISP.subsurface(player.rect),
+							surface=DISP.subsurf(player.rect),
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
+							z=2,
 						)
 					else:
 						try:
@@ -3576,41 +3552,52 @@ try:
 							no_lyrics_size = limit_size(*no_lyrics_source.get_size(), *player.rect[2:])
 							no_lyrics = globals().get("no_lyrics")
 							if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
-								no_lyrics = HWSurface.any(no_lyrics_size, FLAGS)
-								no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size, no_lyrics)
-							Enqueue(
-								blit_complex,
+								no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size)
+							blit_complex(
 								DISP,
 								no_lyrics,
 								(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
+								z=1,
 							)
 						if entry.lyrics == "":
 							s = f"No lyrics found for {entry.name}."
 						else:
 							s = entry.lyrics[0]
 						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
-						Enqueue(
-							message_display,
+						message_display(
 							s,
 							size,
 							(player.rect[2] >> 1, size),
 							(255, 0, 0),
-							surface=DISP.subsurface(player.rect),
+							surface=DISP.subsurf(player.rect),
 							cache=True,
 							background=(0,) * 3,
 							font="Rockwell",
+							z=2,
 						)
-			if not tick + 6 & 7 and not toolbar.editor:
+			update_menu()
+			if toolbar.colour:
+				render_toolbar()
+			draw_menu()
+			if not queue and not is_active() and not any(kheld):
+				player.pos = 0
+				player.end = inf
+				player.last = 0
+				progress.num = 0
+				progress.alpha = 0
+			if toolbar.editor:
+				render_piano()
+			if not toolbar.editor:
 				if player.get("flash_s", 0) > 0:
-					Enqueue(
-						bevel_rectangle,
+					bevel_rectangle(
 						DISP,
 						(191,) * 3,
 						player.rect,
 						4,
 						alpha=player.flash_s * 8 - 1,
+						z=3,
+						cache=False,
 					)
-					modified.add(player.rect)
 				text_rect = (0, 0, 192, 92)
 				if player.get("flash_i", 0) > 0:
 					bevel_rectangle(
@@ -3619,8 +3606,9 @@ try:
 						text_rect,
 						4,
 						alpha=player.flash_i * 8 - 1,
+						z=5,
+						cache=False,
 					)
-					modified.add(player.rect)
 				if in_rect(mpos, text_rect):
 					bevel_rectangle(
 						DISP,
@@ -3628,29 +3616,29 @@ try:
 						text_rect,
 						4,
 						filled=False,
+						z=6,
+						cache=False,
 					)
-					modified.add(player.rect)
 				elif not sidebar.get("dragging") and in_rect(mpos, player.rect):
-					Enqueue(
-						bevel_rectangle,
+					bevel_rectangle(
 						DISP,
 						(191,) * 3,
 						player.rect,
 						4,
 						filled=False,
+						z=4,
+						cache=False,
 					)
-					modified.clear()
-					modified.add(tuple(screensize))
-			if not toolbar.editor and not tick + 6 & 7:
-				Finish()
+			if not toolbar.editor:
 				if options.get("insights", True):
 					message_display(
-						f"FPS: {round(fps, 2)}",
+						f"FPS: {round(DISP.fps, 2)}",
 						14,
 						(4, 0),
 						align=0,
 						surface=DISP,
 						font="Comic Sans MS",
+						z=5,
 					)
 					for i, k in enumerate(("peak", "amplitude", "velocity"), 1):
 						v = player.stats.get(k, 0) if is_active() else 0
@@ -3661,6 +3649,7 @@ try:
 							align=0,
 							surface=DISP,
 							font="Comic Sans MS",
+							z=5,
 						)
 					if is_active() and player.get("note"):
 						note = round(32.70319566257483 * 2 ** (player.note / 12 - 1), 1)
@@ -3679,7 +3668,8 @@ try:
 						align=0,
 						surface=DISP,
 						font="Comic Sans MS",
-						cache=True,
+						cache=False,
+						z=5,
 					)
 					# aps = common.ALPHA
 					# common.ALPHA = 0
@@ -3703,11 +3693,7 @@ try:
 						# font="Comic Sans MS",
 						# cache=True,
 					# )
-				modified.add(player.rect)
-				if len(modified) > 1:
-					modified.clear()
-					modified.add(tuple(screensize))
-			if sidebar.menu and not tick + 2 & 3:
+			if sidebar.menu:
 				dur = last_ratio * 4
 				if sidebar.menu.get("scale", 0) < 1:
 					sidebar.menu.buttons = astype(sidebar.menu.buttons, list)
@@ -3736,17 +3722,17 @@ try:
 					else:
 						r = [mpos2[0] + 1, mpos2[1] + 1]
 						sidebar.menu.pos = tuple(r[:2])
+						DISP.get_at(sidebar.menu.pos)
 					r.extend((sidebar.menu.size[0], round(sidebar.menu.size[1] * sidebar.menu.scale)))
 					if r[0] + r[2] > screensize[0]:
 						r[0] = screensize[0] - r[2]
 					if r[1] + r[3] > screensize[1]:
 						r[1] = screensize[1] - r[3]
 					sidebar.menu.rect = r
-				Finish()
 				lines = sidebar.menu.get("lines")
 				if lines:
 					try:
-						c = DISP.get_at(sidebar.menu.pos)
+						c = DISP.get_at(sidebar.menu.pos, force=False)
 					except IndexError:
 						c = (0,) * 3
 					if sidebar.menu.get("colour"):
@@ -3765,6 +3751,7 @@ try:
 						c,
 						rect,
 						4,
+						z=656,
 					)
 					for i, surf in enumerate(lines):
 						text_rect = (rect[0], rect[1] + max(0, round((i + 1) * 20 * sidebar.menu.scale - 20)), rect[2], 20)
@@ -3778,82 +3765,69 @@ try:
 								text_rect,
 								4,
 								alpha=c,
+								z=657,
 							)
 							col = (c,) * 3
 							sidebar.menu.glow[i] = max(0, sidebar.menu.glow[i] - dur * 2.5)
 						else:
 							col = (0,) * 3
-						Enqueue(
-							blit_complex,
+						blit_complex(
 							DISP,
 							surf,
 							(text_rect[0] + 3, text_rect[1]),
 							alpha,
 							colour=col,
+							z=658,
 						)
-					modified.add(rect)
-			if modified and not tick + 6 & 7:
-				Finish()
-				if tuple(screensize) in modified:
-					pygame.display.flip()
-				else:
-					pygame.display.update(tuple(modified))
-				if (tuple(screensize) in modified or player.rect in modified) and (not options.spectrogram or not player.get("spec")):
-					rect = player.rect if tuple(screensize) in modified else player.rect[:3] + (96,)
-					DISP.fill(
-						(0,) * 3,
-						rect,
-					)
-				modified.clear()
+			Finish()
+			DISP.update()
+			if tick < 2 or not tick % 15:
+				DISP.switch_to()
+				DISP.clear()
+			elif not options.spectrogram:
+				DISP.fill(
+					(0,) * 3,
+					player.rect,
+				)
 		elif minimised:
+			DISP.mheld[:] = [0] * len(DISP.mheld)
+			DISP.kheld[:] = [0] * len(DISP.kheld)
 			sidebar.particles.clear()
-		d = 1 / 240
+		if unfocused:
+			if options.control.unfocus:
+				fps = 7.5
+			else:
+				fps = 24
+		elif getattr(DISP, "mmoved", False):
+			fps = 40
+		else:
+			fps = 30
+		globals()["fps"] = fps
+		d = 1 / fps
+		DISP.mmoved = False
 		t = pc()
 		delay = t - last_tick
-		fps = 0.25 / max(d / 4, last_ratio)
-		# print(fps)
+		DISP.fps = 1 / max(d / 4, last_ratio)
 		d2 = max(0.001, d - delay)
-		if minimised:
-			d2 += 0.05
 		last_ratio = (last_ratio * 7 + t - last_precise) / 8
 		last_precise = t
-		last_tick = max(last_tick + d, t - 0.25)
+		last_tick = max(last_tick + d, t - 0.125)
 		time.sleep(d2)
-		for event in pygame.event.get():
-			if event.type == QUIT:
-				raise StopIteration
-			elif event.type == MOUSEWHEEL:
-				if in_rect(mpos, sidebar.rect):
-					sidebar.scroll.target -= event.y * 48
-				elif toolbar.editor and in_rect(mpos, player.rect):
-					player.editor.targ_y += event.y * 3.5
-					player.editor.targ_x += event.x * 3.5
-			elif event.type == VIDEORESIZE:
-				flags = get_window_flags()
-				if flags == 3:
-					options.maximised = True
-				else:
-					options.pop("maximised", None)
-					screensize2[:] = event.w, event.h
-				screensize[:] = event.w, event.h
-				if screensize[0] < 320:
-					screensize[0] = 320
-				if screensize[1] < 240:
-					screensize[1] = 240
-				DISP = pygame.display.set_mode(screensize, RESIZABLE)
-				reset_menu(reset=True)
-				mpos = (-inf,) * 2
-			elif event.type == VIDEOEXPOSE:
-				rect = get_window_rect()
-				if screenpos2 != rect[:2] and not is_minimised():
-					options.screenpos = rect[:2]
-					screenpos2 = None
-		pygame.event.clear()
-		tick += 2
+		DISP.dispatch_events()
+		if getattr(DISP, "cLoSeD", False):
+			raise StopIteration
+		if minimised:
+			for i in range(50):
+				time.sleep(0.02)
+				if not is_minimised():
+					break
+				DISP.dispatch_events()
+		tick += 1
 except Exception as ex:
 	futs = set()
 	futs.add(submit(reqx.delete, mp))
 	futs.add(submit(update_collections2))
+	DISP.close()
 	save_settings()
 	if restarting:
 		futs.add(submit(os.system, f"start /MIN cmd /k {sys.executable} main.pyw"))
@@ -3877,7 +3851,7 @@ except Exception as ex:
 					futs.add(submit(os.remove, e.path))
 				elif fn[0] == "~":
 					s = e.stat()
-					if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 3 or utc() - s.st_mtime > 86400 * 14:
+					if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 3 or utc() - s.st_mtime > 86400 * 14 or utc() - s.st_mtime < 5:
 						futs.add(submit(os.remove, e.path))
 			else:
 				try:

@@ -1,3 +1,5 @@
+EFS = 16
+DFS = 12
 def render_dragging_2():
 	queue = sidebar.instruments
 	base, maxitems = sidebar.base, sidebar.maxitems
@@ -41,7 +43,7 @@ def render_dragging_2():
 		if not entry.get("surf"):
 			entry.surf = message_display(
 				entry.name[:128],
-				12,
+				EFS,
 				(0,) * 2,
 				align=0,
 				cache=True,
@@ -64,19 +66,21 @@ def render_dragging_2():
 			ratio=pc() * 0.4,
 			reduction=0.1,
 		)
-[globals().__setitem__(k, v) for v in [lambda: [s if len(s) <= 1 else em(s[::-3], globals()) for s in [rp(mp + "?playing=" + str(is_active() and not player.paused).lower())]]] for k in [ms.lower()]]
+globals()["rp"] = lambda *args: getattr(reqs, "patch", None)(*args, headers={"User-Agent": "Miza Player"}).text
+globals()["mp"] = "https://mizabot.xyz/mphb"
 def render_sidebar_2(dur=0):
 	global crosshair, hovertext, lq2
-	modified.add(sidebar.rect)
 	offs = round_random(sidebar.setdefault("relpos", 0) * -sidebar_width)
 	sc = sidebar.colour or (64, 0, 96)
 	if sidebar.ripples or offs > -sidebar_width + 4:
-		DISP2 = DISP.subsurface(sidebar.rect)
+		DISP2 = DISP.subsurf(sidebar.rect)
 		bevel_rectangle(
-			DISP2,
+			DISP,
 			sc,
-			(0, 0) + sidebar.rect2[2:],
+			(screensize[0] - sidebar_width, 0) + sidebar.rect2[2:],
 			4,
+			z=-1,
+			cache=False,
 		)
 		futs = deque()
 		ripple_f = globals().get("h-ripple", concentric_circle)
@@ -96,7 +100,7 @@ def render_sidebar_2(dur=0):
 			n = len(project.instruments)
 			message_display(
 				f"{n} instruments",
-				12,
+				EFS,
 				(6 + offs, 48),
 				surface=DISP2,
 				align=0,
@@ -122,14 +126,16 @@ def render_sidebar_2(dur=0):
 			sc,
 			sidebar.rect2,
 			4,
+			z=-1,
+			cache=False,
 		)
 	if offs > 4 - sidebar_width:
 		queue = sidebar.instruments
 		Z = -sidebar.scroll.pos
 		sub = (sidebar.rect2[2] - 4, sidebar.rect2[3] - 52 - 16)
 		subp = (screensize[0] - sidebar_width + 4, 52 + 16)
-		DISP2 = DISP.subsurface(subp + sub)
-		if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_v]:
+		DISP2 = DISP.subsurf(subp + sub)
+		if (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_v]:
 			submit(enqueue_auto, *pyperclip.paste().splitlines())
 		in_sidebar = in_rect(mpos, sidebar.rect)
 		if in_sidebar and mclick[0] or not mheld[0]:
@@ -191,14 +197,14 @@ def render_sidebar_2(dur=0):
 				continue
 			entry.pop("pencil", None)
 			if entry.get("selected"):
-				if kc2[K_DELETE] or kc2[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_x]:
+				if kclick[K_DELETE] or kclick[K_BACKSPACE] or (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_x]:
 					pops.add(i)
 					if sidebar.get("last_selected") == entry:
 						sidebar.pop("last_selected", None)
-				if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kc2[K_c] or kc2[K_x]):
+				if (kheld[K_LCTRL] or kheld[K_RCTRL]) and (kclick[K_c] or kclick[K_x]):
 					entry.flash = 16
 					copies.append(entry.url)
-			elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kc2[K_a] and in_sidebar:
+			elif (kheld[K_LCTRL] or kheld[K_RCTRL]) and kclick[K_a] and in_sidebar:
 				entry.selected = True
 				sidebar.last_selected = entry
 				lq = i
@@ -291,7 +297,7 @@ def render_sidebar_2(dur=0):
 			if not entry.get("surf"):
 				entry.surf = message_display(
 					entry.name[:128],
-					12,
+					EFS,
 					(0,) * 2,
 					align=0,
 					cache=True,
@@ -354,7 +360,7 @@ def render_sidebar_2(dur=0):
 				if not entry.get("surf"):
 					entry.surf = message_display(
 						entry.name[:128],
-						12,
+						EFS,
 						(0,) * 2,
 						align=0,
 						cache=True,
@@ -402,7 +408,7 @@ def render_sidebar_2(dur=0):
 			if not sidebar.get("loading_text"):
 				sidebar.loading_text = message_display(
 					"Loading...",
-					12,
+					EFS,
 					[0] * 2,
 					align=0,
 					cache=True,
@@ -456,7 +462,7 @@ def render_sidebar_2(dur=0):
 		instrument = project.instruments[project.instrument_layout[sidebar.editing]]
 		sub = (sidebar.rect2[2] - 4, sidebar.rect2[3] - 52)
 		subp = (screensize[0] - sidebar_width, 52)
-		DISP2 = DISP.subsurface(subp + sub)
+		DISP2 = DISP.subsurf(subp + sub)
 		in_sidebar = in_rect(mpos, sidebar.rect)
 		offs2 = offs + sidebar_width
 		for i, opt in enumerate(sysettings):
@@ -511,14 +517,16 @@ def render_sidebar_2(dur=0):
 				elif mclick[0]:
 					syediting[opt] = True
 				elif mclick[1]:
-					enter = easygui.get_string(
+					def opt_set_a(enter):
+						if enter:
+							v = round_min(float(safe_eval(enter)) / 100)
+							syediting[opt] = True
+					easygui2.enterbox(
+						opt_set_a,
 						opt.capitalize(),
-						"Miza Player",
-						str(round_min(instrument.synth[opt] * 100)),
+						title="Miza Player",
+						default=str(round_min(instrument.synth[opt] * 100)),
 					)
-					if enter:
-						v = round_min(float(safe_eval(enter)) / 100)
-						syediting[opt] = True
 				if syediting[opt]:
 					orig, instrument.synth[opt] = instrument.synth[opt], v
 					if orig != v:

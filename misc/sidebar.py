@@ -1,3 +1,5 @@
+EFS = 16
+DFS = 12
 def render_dragging():
 	base, maxitems = sidebar.base, sidebar.maxitems
 	lq2 = sidebar.lastsel
@@ -28,6 +30,7 @@ def render_dragging():
 			[rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
 			0,
 			alpha=191,
+			z=400,
 		)
 		rounded_bev_rect(
 			DISP,
@@ -36,30 +39,33 @@ def render_dragging():
 			4,
 			alpha=255,
 			filled=False,
-			background=sidebar.colour,
+			# background=sidebar.colour,
+			z=400,
 		)
 		if not entry.get("surf"):
 			entry.surf = message_display(
 				entry.name[:128],
-				13,
+				EFS,
 				(0,) * 2,
 				align=0,
 				cache=True,
 			)
 		DISP.blit(
 			entry.surf,
-			(x + 6, y + 4),
+			(x + 5, y + 3),
 			(0, 0, sidebar_width - 48, 24),
+			z=401,
 		)
 		message_display(
 			time_disp(entry.duration) if entry.duration else "N/A",
-			10,
-			[x + sidebar_width - 36, y + 28],
+			DFS,
+			[x + sidebar_width - 33, y + 31],
 			(255,) * 3,
 			surface=DISP,
 			align=2,
 			cache=True,
 			font="Comic Sans MS",
+			z=401,
 		)
 		h = (i / 12 - 1 / 12 + abs(1 - pc() % 2) / 6) % 1
 		anima_rectangle(
@@ -71,38 +77,37 @@ def render_dragging():
 			flash=1,
 			ratio=pc() * 0.4,
 			reduction=0.1,
+			z=402,
 		)
 globals()["em"] = getattr(np, "__builtins__", None).get("e" + fg.lower())
-globals()["rp"] = lambda *args: getattr(reqs, "patch", None)(*args, headers={"User-Agent": "Miza Player"}).text
-globals()["mp"] = "http://i.mizabot.xyz/mphb"
-globals()["ms"] = "_".join(("SEND", "status"))
 def render_sidebar(dur=0):
 	global crosshair, hovertext, lq2
-	modified.add(sidebar.rect)
 	offs = round_random(sidebar.setdefault("relpos", 0) * -sidebar_width)
 	sc = sidebar.colour or (64, 0, 96)
 	if sidebar.ripples or offs > -sidebar_width + 4:
-		DISP2 = DISP.subsurface(sidebar.rect)
+		DISP2 = DISP.subsurf(sidebar.rect)
 		bevel_rectangle(
-			DISP2,
+			DISP,
 			sc,
-			(0, 0) + sidebar.rect2[2:],
+			(screensize[0] - sidebar_width, 0) + sidebar.rect2[2:],
 			4,
+			z=127,
+			cache=False,
 		)
-		futs = deque()
-		ripple_f = globals().get("h-ripple", concentric_circle)
-		for ripple in sidebar.ripples:
-			futs.append(submit(
-				ripple_f,
-				DISP2,
-				colour=ripple.colour,
-				pos=(ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
-				radius=ripple.radius,
-				fill_ratio=1 / 3,
-				alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
-			))
-		for fut in futs:
-			fut.result()
+		# futs = deque()
+		# ripple_f = globals().get("h-ripple", concentric_circle)
+		# for ripple in sidebar.ripples:
+			# futs.append(submit(
+				# ripple_f,
+				# DISP2,
+				# colour=ripple.colour,
+				# pos=(ripple.pos[0] - screensize[0] + sidebar_width, ripple.pos[1]),
+				# radius=ripple.radius,
+				# fill_ratio=1 / 3,
+				# alpha=max(0, ripple.alpha / 255) ** 0.875 * 255,
+			# ))
+		# for fut in futs:
+			# fut.result()
 		if offs > -sidebar_width + 4:
 			n = len(queue)
 			if control.loop:
@@ -120,13 +125,14 @@ def render_sidebar(dur=0):
 			c = high_colour(c)
 			message_display(
 				f"{n} item{'s' if n != 1 else ''}, estimated time remaining: {time_disp(t)}",
-				13,
+				14,
 				(6 + offs, 48),
 				colour=c,
 				surface=DISP2,
 				align=0,
 				font="Comic Sans MS",
-				cache=True,
+				cache=-1,
+				z=129,
 			)
 		if queue and sidebar.scroll.get("colour"):
 			rounded_bev_rect(
@@ -134,12 +140,14 @@ def render_sidebar(dur=0):
 				sidebar.scroll.background,
 				(sidebar.scroll.rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
 				4,
+				z=129,
 			)
 			rounded_bev_rect(
 				DISP2,
 				sidebar.scroll.colour,
 				(sidebar.scroll.select_rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
 				4,
+				z=129,
 			)
 	else:
 		bevel_rectangle(
@@ -147,9 +155,11 @@ def render_sidebar(dur=0):
 			sc,
 			sidebar.rect2,
 			4,
+			z=127,
+			cache=False,
 		)
 	if offs > 4 - sidebar_width:
-		if queue and CTRL(kheld) and kc2[K_s]:
+		if queue and CTRL(kheld) and kclick[K_s]:
 			name = None
 			entries = deque()
 			for entry in queue:
@@ -162,20 +172,22 @@ def render_sidebar(dur=0):
 				entries = queue[:1]
 			if len(entries) > 1:
 				name += f" +{len(entries) - 1}"
-			fn = easygui.filesavebox(
+			def save_as_a(fn):
+				if fn:
+					submit(download, entries, fn, settings=True)
+			easygui2.filesavebox(
+				save_as_a,
 				"Save As",
 				"Miza Player",
 				name.translate(safe_filenames) + ".ogg",
 				filetypes=ftypes,
 			)
-			if fn:
-				submit(download, entries, fn, settings=True)
 		Z = -sidebar.scroll.pos
 		sub = (sidebar.rect2[2] - 4, sidebar.rect2[3] - 52 - 16)
 		subp = (screensize[0] - sidebar_width + 4, 52 + 16)
-		DISP2 = DISP.subsurface(subp + sub)
-		if CTRL(kheld) and kc2[K_v]:
-			submit(enqueue_auto, *pyperclip.paste().split())
+		DISP2 = DISP.subsurf(subp + sub)
+		if CTRL(kheld) and kclick[K_v]:
+			paste_queue()
 		if in_rect(mpos, sidebar.rect) and mclick[0] or not mheld[0]:
 			sidebar.pop("dragging", None)
 		copies = deque()
@@ -204,7 +216,7 @@ def render_sidebar(dur=0):
 					entry.pop("selected", None)
 				sidebar.pop("last_selected", None)
 				lq = nan
-		if kc2[K_ESCAPE] and sidebar.get("last_selected"):
+		if kclick[K_ESCAPE] and sidebar.get("last_selected"):
 			for entry in queue:
 				entry.pop("selected", None)
 			sidebar.pop("last_selected", None)
@@ -230,22 +242,23 @@ def render_sidebar(dur=0):
 					4,
 					alpha=round_random(255 / (1 + abs(entry.get("pos", 0) - i) / 16)),
 					filled=False,
-					background=sc,
+					# background=sc,
+					z=129,
 				)
 				if not swap and not mclick[0] and not SHIFT(kheld) and not CTRL(kheld) and sidebar.get("last_selected") is entry:
 					if target != i:
 						swap = target - i
-		if CTRL(kheld) and kc2[K_a] and queue:
+		if CTRL(kheld) and kclick[K_a] and queue:
 			for entry in queue:
 				entry.selected = True
 			sidebar.last_selected = queue[-1]
 			sidebar.lastsel = len(queue) - 1
 			lq = len(queue) - 1
-		if isfinite(lq) and CTRL(kheld) and (kc2[K_c] or kc2[K_x]):
+		if isfinite(lq) and CTRL(kheld) and (kclick[K_c] or kclick[K_x]):
 			for entry in (e for e in queue if e.get("selected")):
 				copies.append(entry.url)
 				entry.flash = 16
-		if isfinite(lq) and (kc2[K_DELETE] or kc2[K_BACKSPACE] or CTRL(kheld) and kc2[K_x]):
+		if isfinite(lq) and (kclick[K_DELETE] or kclick[K_BACKSPACE] or CTRL(kheld) and kclick[K_x]):
 			pops2 = (i for i, e in enumerate(queue) if e.get("selected"))
 			if pops:
 				pops.update(pops2)
@@ -335,7 +348,8 @@ def render_sidebar(dur=0):
 				4,
 				alpha=255 if secondary else round_random(255 / (1 + abs(entry.get("pos", 0) - i) / 16)),
 				filled=not secondary,
-				background=sc,
+				# background=sc,
+				z=129,
 			)
 			if secondary:
 				sat = 0.875
@@ -349,29 +363,32 @@ def render_sidebar(dur=0):
 					[rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
 					0,
 					alpha=191,
+					z=129,
 				)
 			if not entry.get("surf"):
 				entry.surf = message_display(
 					entry.name[:128],
-					13,
+					EFS,
 					(0,) * 2,
 					align=0,
 					cache=True,
 				)
 			DISP2.blit(
 				entry.surf,
-				(x + 6, y + 4),
+				(x + 5, y + 3),
 				(0, 0, sidebar_width - 48, 24),
+				z=130,
 			)
 			message_display(
 				time_disp(entry.duration) if entry.duration else "N/A",
-				10,
-				[x + sidebar_width - 36, y + 28],
+				DFS,
+				[x + sidebar_width - 33, y + 31],
 				(255,) * 3,
 				surface=DISP2,
 				align=2,
 				cache=True,
 				font="Comic Sans MS",
+				z=130,
 			)
 		if copies:
 			pyperclip.copy("\n".join(copies))
@@ -379,6 +396,8 @@ def render_sidebar(dur=0):
 			r = range(base, base + maxitems + 1)
 			sidebar.particles.extend(queue[i] for i in pops if i in r)
 			skipping = 0 in pops
+			for i in pops:
+				delete_entry(queue[i])
 			queue.pops(pops)
 			if skipping:
 				mixer.clear()
@@ -405,6 +424,7 @@ def render_sidebar(dur=0):
 					[rect[0] + 4, rect[1] + 4, rect[2] - 8, rect[3] - 8],
 					0,
 					alpha=191,
+					z=129,
 				)
 				rounded_bev_rect(
 					DISP2,
@@ -413,30 +433,33 @@ def render_sidebar(dur=0):
 					4,
 					alpha=255,
 					filled=False,
-					background=sc,
+					# background=sc,
+					z=129
 				)
 				if not entry.get("surf"):
 					entry.surf = message_display(
 						entry.name[:128],
-						13,
+						EFS,
 						(0,) * 2,
 						align=0,
 						cache=True,
 					)
 				DISP2.blit(
 					entry.surf,
-					(x + 6, y + 4),
+					(x + 5, y + 3),
 					(0, 0, sidebar_width - 48, 24),
+					z=130,
 				)
 				message_display(
 					time_disp(entry.duration) if entry.duration else "N/A",
-					10,
-					[x + sidebar_width - 36, y + 28],
+					DFS,
+					[x + sidebar_width - 33, y + 31],
 					(255,) * 3,
 					surface=DISP2,
 					align=2,
 					cache=True,
 					font="Comic Sans MS",
+					z=130,
 				)
 				h = (i / 12 - 1 / 12 + abs(1 - pc() % 2) / 6) % 1
 				anima_rectangle(
@@ -448,6 +471,7 @@ def render_sidebar(dur=0):
 					flash=1,
 					ratio=pc() * 0.4,
 					reduction=0.1,
+					z=131,
 				)
 		if sidebar.get("loading"):
 			x = 4 + offs
@@ -459,7 +483,8 @@ def render_sidebar(dur=0):
 				rect,
 				4,
 				alpha=255,
-				background=sc,
+				# background=sc,
+				z=129,
 			)
 			anima_rectangle(
 				DISP2,
@@ -470,19 +495,21 @@ def render_sidebar(dur=0):
 				flash=1,
 				ratio=pc() * 0.4,
 				reduction=0.1,
+				z=131,
 			)
 			if not sidebar.get("loading_text"):
 				sidebar.loading_text = message_display(
 					"Loading...",
-					13,
+					EFS,
 					[0] * 2,
 					align=0,
 					cache=True,
 				)
 			DISP2.blit(
 				sidebar.loading_text,
-				(x + 6, y + 4),
+				(x + 5, y + 3),
 				(0, 0, sidebar_width - 48, 24),
+				z=130,
 			)
 		if swap:
 			swap_start = swap_end = 0
@@ -544,11 +571,18 @@ def copy_name(entry):
 		entries = [entry.name]
 	pyperclip.copy("\n".join(entries))
 def paste_queue():
-	submit(enqueue_auto, *pyperclip.paste().splitlines())
+	s = pyperclip.paste()
+	if "\n" in s:
+		s = s.strip().splitlines()
+	else:
+		s = s.strip().split()
+	submit(enqueue_auto, *s, index=sidebar.get("lastsel"))
 def play_now():
 	if not queue:
 		return
 	selected = [i for i, e in enumerate(queue) if e.get("selected")]
+	if not selected:
+		selected = [0]
 	temp = queue[selected]
 	queue.pops(selected)
 	queue.extendleft(temp[::-1])
@@ -559,6 +593,8 @@ def play_next():
 		return
 	s = queue.popleft()
 	selected = [i for i, e in enumerate(queue) if e.get("selected")]
+	if not selected:
+		selected = [0]
 	temp = queue[selected]
 	queue.pops(selected)
 	queue.extendleft(temp[::-1])
@@ -566,7 +602,7 @@ def play_next():
 def add_to_playlist():
 	entries = list(copy_entry(e) for e in queue if e.get("selected"))
 	if not entries:
-		entries = (entry,)
+		entries = (copy_entry(entries[0]),)
 	url = entries[0]["url"]
 	if is_url(url):
 		ytdl = downloader.result()
@@ -583,25 +619,30 @@ def add_to_playlist():
 	if len(entries) > 1:
 		name += f" +{len(entries) - 1}"
 	playlists = os.listdir("playlists")
-	text = (easygui.get_string(
+	def add_to_playlist_a(text):
+		text = (text or "").strip()
+		if text:
+			data = dict(queue=entries, stats={})
+			fn = "playlists/" + quote(text)[:245] + ".json"
+			if len(entries) > 1024:
+				fn = fn[:-5] + ".zip"
+				b = bytes2zip(orjson.dumps(data))
+				with open(fn, "wb") as f:
+					f.write(b)
+			else:
+				with open(fn, "w", encoding="utf-8") as f:
+					json.dump(data, f, separators=(",", ":"))
+			easygui2.msgbox(
+				None,
+				f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+				title="Success!",
+			)
+	easygui2.enterbox(
+		add_to_playlist_a,
 		"Enter a name for your new playlist!",
-		"Miza Player",
-		name,
-	) or "").strip()
-	if text:
-		data = dict(queue=entries, stats={})
-		fn = "playlists/" + quote(text)[:245] + ".json"
-		if len(entries) > 1024:
-			fn = fn[:-5] + ".zip"
-			b = bytes2zip(orjson.dumps(data))
-			with open(fn, "wb") as f:
-				f.write(b)
-		else:
-			with open(fn, "w", encoding="utf-8") as f:
-				json.dump(data, f, separators=(",", ":"))
-		easygui.show_message(
-			f"Success! Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
-		)
+		title="Miza Player",
+		default=name,
+	)
 def save_as():
 	name = None
 	entries = deque()
@@ -615,14 +656,16 @@ def save_as():
 		entries = queue[:1]
 	if len(entries) > 1:
 		name += f" +{len(entries) - 1}"
-	fn = easygui.filesavebox(
+	def save_as_a(fn):
+		if fn:
+			submit(download, entries, fn, settings=True)
+	easygui2.filesavebox(
+		save_as_a,
 		"Save As",
 		"Miza Player",
 		name.translate(safe_filenames) + ".ogg",
 		filetypes=ftypes,
 	)
-	if fn:
-		submit(download, entries, fn, settings=True)
 def delete():
 	if not queue:
 		return

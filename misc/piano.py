@@ -578,13 +578,15 @@ def editor_toolbar():
 				editor.note.pop("resizing", None)
 			if mclick[1]:
 				sidebar.menu = 0
-				enter = easygui.get_string(
+				def set_input_note_length_a(enter):
+					if enter:
+						editor.note.length = float(enter)
+				easygui2.enterbox(
+					set_input_note_length_a,
 					"Set input note length",
-					"Miza Player",
-					str(round_min(editor.note.length)),
+					title="Miza Player",
+					default=str(round_min(editor.note.length)),
 				)
-				if enter:
-					editor.note.length = float(enter)
 			draw_hline(DISP, round(toolbar.pause.radius * 4 + editor.note.length * note_width), mpos2[0] - 1, mpos2[1] - 1, (191,) * 3)
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 13, mpos2[1] - 1), (mpos2[0] + 11, mpos2[1] - 1), width=2)
 			pygame.draw.line(DISP, (255, 0, 0), (mpos2[0] - 1, mpos2[1] - 13), (mpos2[0] - 1, mpos2[1] + 11), width=2)
@@ -602,8 +604,12 @@ def editor_toolbar():
 			editor.note.pop("resizing", None)
 
 	if CTRL[kheld] and kclick[K_s]:
+		def save_project_a(fn):
+			if fn:
+				save_project(fn)
 		if not project_name or SHIFT[kheld]:
-			fn = easygui.filesavebox(
+			easygui2.filesavebox(
+				save_project_a,
 				"Save As",
 				"Miza Player",
 				project_name.translate(safe_filenames) + ".mpp",
@@ -611,8 +617,7 @@ def editor_toolbar():
 			)
 		else:
 			fn = project_name + ".mpp"
-		if fn:
-			save_project(fn)
+			save_project_a(fn)
 
 	r = (c[0], c[1] - w, w, w)
 	ct = (255, 127, 191) if options.editor.mode == "P" else (127, 96, 112)
@@ -1010,7 +1015,7 @@ def render_piano():
 					elif len(points) == 2:
 						pygame.draw.line(DISP, c, *points, width=2)
 			elif in_rect(mpos, player.rect):
-				if mc4[0]:
+				if mclick[0]:
 					if not CTRL[kheld] and not SHIFT[kheld]:
 						editor.selection.cancel()
 					editor.selection.point = mpos2
@@ -1046,7 +1051,7 @@ def render_piano():
 									continue
 								if mheld[0] and editor.held_notes:
 									hold_note(note_from_id(next(iter(editor.selection.notes))))
-								if mc4[0]:
+								if mclick[0]:
 									if not CTRL[kheld] and not SHIFT[kheld]:
 										if id(n) not in editor.selection.notes:
 											editor.selection.cancel()
@@ -1088,7 +1093,7 @@ def render_piano():
 					r = n_rect(hnote)
 					bevel_rectangle(DISP, (255,) * 3, r, bevel=3, filled=False)
 				else:
-					if mc4[0]:
+					if mclick[0]:
 						if not CTRL[kheld] and not SHIFT[kheld]:
 							editor.selection.cancel()
 						N = [measurepos, npos, editor.note.instrument, pitch, editor.note.length]
@@ -1270,7 +1275,7 @@ def render_piano():
 	c = (32,) * 3 + A
 	bevel_rectangle(DISP, c, r, bevel=4)
 	ratio = max(8, (player.rect[3] - 16) ** 2 / note_spacing / 128)
-	if hovered and mc4[0] or editor.get("y-scrolling"):
+	if hovered and mclick[0] or editor.get("y-scrolling"):
 		editor["y-scrolling"] = True
 		y = mpos2[1]
 		editor.targ_y = (y / player.rect[3] - 0.5) * -128
@@ -1288,7 +1293,7 @@ def render_piano():
 	c = (32,) * 3 + A
 	bevel_rectangle(DISP, c, r, bevel=4)
 	ratio = max(8, (player.rect[2] - PW) ** 2 / measurecount / timesig[0] / note_width)
-	if hovered and mc4[0] or editor.get("x-scrolling"):
+	if hovered and mclick[0] or editor.get("x-scrolling"):
 		editor["x-scrolling"] = True
 		x = mpos2[0]
 		targ_x = ((x - PW - round(ratio / 2)) / (player.rect[2] - PW)) * measurecount

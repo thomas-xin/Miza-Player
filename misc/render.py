@@ -1,99 +1,4 @@
-import time, numpy, math, random, orjson, collections, colorsys, traceback, subprocess, itertools, weakref, ctypes
-from math import *
-from traceback import print_exc
-np = numpy
-deque = collections.deque
-from PIL import Image
-import concurrent.futures
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=12)
-submit = exc.submit
-
-def pyg2pil(surf):
-	mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
-	b = pygame.image.tostring(surf, mode)
-	return Image.frombuffer(mode, surf.get_size(), b)
-
-def pil2pyg(im):
-	mode = im.mode
-	b = im.tobytes()
-	return pygame.image.frombuffer(b, im.size, mode)
-
-class HWSurface:
-
-	cache = weakref.WeakKeyDictionary()
-	anys = {}
-	anyque = []
-	maxlen = 128
-
-	@classmethod
-	def any(cls, size, flags=0, colour=None):
-		size = astype(size, tuple)
-		m = 4 if flags & pygame.SRCALPHA else 3
-		t = (size, flags)
-		try:
-			self = cls.anys[t]
-		except KeyError:
-			if len(cls.anyque) >= cls.maxlen:
-				cls.anys.pop(cls.anyque.pop(0))
-			cls.anyque.append(t)
-			self = cls.anys[t] = pygame.Surface(size, flags, m << 3)
-		else:
-			if t != cls.anyque[-1]:
-				cls.anyque.remove(t)
-				cls.anyque.append(t)
-		if colour is not None:
-			self.fill(colour)
-		return self
-
-import sys
-write, sys.stdout.write = sys.stdout.write, lambda *args, **kwargs: None
-import pygame
-sys.stdout.write = write
-print = lambda s: sys.stderr.write(str(s) + "\n")
-pygame.font.init()
 FONTS = {}
-
-try:
-	hwnd = int(sys.stdin.readline()[1:])
-except ValueError:
-	hwnd = 0
-import socket
-server = socket.create_server(("127.0.0.1", hwnd % 32768 + 16384))
-server.listen(1)
-
-is_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
-
-import multiprocessing.shared_memory
-globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
-	name=f"Miza-Player-{hwnd}-spec-mem",
-)
-globals()["spec-size"] = multiprocessing.shared_memory.SharedMemory(
-	name=f"Miza-Player-{hwnd}-spec-size",
-)
-globals()["spec-locks"] = multiprocessing.shared_memory.SharedMemory(
-	name=f"Miza-Player-{hwnd}-spec-locks",
-)
-
-def astype(obj, t, *args, **kwargs):
-	try:
-		if not isinstance(obj, t):
-			if callable(t):
-				return t(obj, *args, **kwargs)
-			return t
-	except TypeError:
-		if callable(t):
-			return t(obj, *args, **kwargs)
-		return t
-	return obj
-
-def round_random(x):
-	y = int(x)
-	if y == x:
-		return y
-	x -= y
-	if random.random() <= x:
-		y += 1
-	return y
 
 
 higher_bound = "C10"
@@ -116,6 +21,8 @@ barcount = int(highest_note - lowest_note) + 1 + 2
 barcount2 = barcount // 4 + 1
 barheight = 720
 
+globals()["ms"] = "_".join(("SEND", "status"))
+
 PARTICLES = set()
 P_ORDER = 0
 TICK = 0
@@ -136,10 +43,6 @@ class Particle(collections.abc.Hashable):
 	render = lambda self, surf: None
 
 class Bar(Particle):
-
-	__slots__ = ("x", "colour", "height", "height2", "surf", "line", "cache")
-
-	fsize = 0
 
 	def __init__(self, x, barcount):
 		super().__init__()
@@ -173,62 +76,147 @@ class Bar(Particle):
 		if self.height2 < value:
 			self.height2 = value
 
-	def render(self, sfx, **void):
-		size = min(2 * barheight, round_random(self.height))
-		if not size:
-			return
+bars = [Bar(i - 1, barcount) for i in range(barcount)]
+bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
+
+textsurf = pygame.Surface((1024, 1024), pygame.SRCALPHA)
+W, H = textsurf.get_size()
+x = y = z = 0
+for bar in reversed(bars):
+	surf = message_display(
+		bar.line,
+		28,
+		colour=(255,) * 3,
+		surface=None,
+		font="Pacifico",
+		cache=True,
+	)
+	w, h = surf.get_size()
+	if x + w >= W:
+		y = z
+		x = 0
+	textsurf.blit(
+		surf,
+		(x, y),
+	)
+	bar.tex_coords = (
+		(x / W, 1 - (y + h) / H),
+		((x + w) / W, 1 - (y + h) / H),
+		((x + w) / W, 1 - y / H),
+		(x / W, 1 - y / H),
+	)
+	bar.tex_size = (w / 28, h / 28)
+	x += w
+	z = max(z, y + h)
+texttext = pyg2pgl(textsurf)
+
+def animate_bars(changed=False):
+	glClear(GL_COLOR_BUFFER_BIT)
+	glEnable(GL_BLEND)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+	glEnableClientState(GL_VERTEX_ARRAY)
+	glEnableClientState(GL_COLOR_ARRAY)
+	verts = []
+	cols = []
+	for bar in bars:
+		y = min(2 * barheight, bar.height)
+		if not y:
+			continue
+		y += toolbar_height
+		w = ssize[0] / barcount
+		x = (barcount - 2 - bar.x) * w
 		dark = False
-		self.colour = [round_random(i * 255) for i in colorsys.hsv_to_rgb((pc_ / 3 + self.x / barcount) % 1, 1, 1)]
-		note = highest_note - self.x + 9
+		colour = [i for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount) % 1, 1, 1)]
+		black = (0,) * 3
+		note = highest_note - bar.x + 9
 		if note % 12 in (1, 3, 6, 8, 10):
 			dark = True
 		if dark:
-			self.colour = [i + 1 >> 1 for i in self.colour]
-			surf = HWSurface.any((1, 3))
+			colour = [i / 2 for i in colour]
+			verts.extend((
+				(x, 0),
+				(x + w, 0),
+				(x + w, y / 2),
+				(x, y / 2),
+			))
+			cols.extend((
+				colour,
+				colour,
+				colour,
+				colour,
+			))
+			verts.extend((
+				(x, y / 2),
+				(x + w, y / 2),
+				(x + w, y),
+				(x, y),
+			))
+			cols.extend((
+				colour,
+				colour,
+				black,
+				black,
+			))
 		else:
-			surf = HWSurface.any((1, 2))
-		surf.fill(self.colour)
-		surf.set_at((0, 0), 0)
-		self.surf = surf
-		x = barcount - 2 - self.x
-		y = barheight - size
-		if x >= sfx.get_width():
-			return
-		if y >= 0:
-			dest = sfx.subsurface((x, y, 1, size))
-			return pygame.transform.smoothscale(self.surf, (1, size), dest)
-		surf = HWSurface.any((1, size))
-		surf = pygame.transform.smoothscale(self.surf, (1, size), surf)
-		sfx.blit(surf, (x, y))
+			verts.extend((
+				(x, 0),
+				(x + w, 0),
+				(x + w, y),
+				(x, y),
+			))
+			cols.extend((
+				colour,
+				colour,
+				black,
+				black,
+			))
+	verts = np.array(verts, dtype=np.float32)
+	cols = np.array(cols, dtype=np.float32)
+	glVertexPointer(2, GL_FLOAT, 0, verts.ctypes)
+	glColorPointer(3, GL_FLOAT, 0, cols.ctypes)
+	glDrawArrays(GL_QUADS, 0, len(verts))
 
-	def post_render(self, sfx, scale, **void):
-		size = self.height2
-		if size < 8:
-			return
-		ix = barcount - 2 - self.x
-		sx = ix / (barcount - 2) * ssize2[0]
-		w = (ix + 1) / (barcount - 2) * ssize2[0] - sx
-		if scale < 7 / 255:
-			alpha = round_random(scale * 255)
-		else:
-			alpha = round_random(85 * scale) * 3
-		if not alpha:
-			return
-		t = (self.line, self.fsize)
-		if t not in TEXTS:
-			TEXTS[t] = self.font.render(self.line, True, (255,) * 3)
-		surf = TEXTS[t]
-		if alpha < 255:
-			try:
-				surf = self.cache[alpha]
-			except KeyError:
-				surf = surf.copy()
-				surf.fill((255,) * 3 + (alpha,), special_flags=pygame.BLEND_RGBA_MULT)
-				self.cache[alpha] = surf
-		width, height = surf.get_size()
-		x = round(sx + w / 2 - width / 2)
-		y = round_random(max(84, ssize2[1] - size + 12 - width * (sqrt(5) + 1)))
-		sfx.blit(surf, (x, y))
+	highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:97]
+	high = highbars[1]
+	lowest = highbars.pop(-1).height
+	dividend = globals().get("avgheight", high.height - lowest)
+	high = max(1, high.height - lowest)
+	globals()["avgheight"] = (dividend * 0.95) + high * 0.05
+
+	texture = texttext.get_texture()
+	glEnable(texture.target)
+	glBindTexture(texture.target, texture.id)
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+	verts = []
+	texs = []
+	cols = []
+	for bar in reversed(highbars):
+		if bar.height > 1:
+			scale = min(1, (bar.height - lowest) / dividend)
+			if scale <= 1 / 127:
+				continue
+			w = ssize[0] / barcount
+			x = (barcount - 2 - bar.x) * w + w / 2
+			y = min(DISP.height - 84, toolbar_height + bar.height2 + 12 - w * (sqrt(5) + 1))
+			fw, fh = bar.tex_size
+			verts.extend((
+				(x - w * fw, y - w * fh),
+				(x + w * fw, y - w * fh),
+				(x + w * fw, y + w * fh),
+				(x - w * fw, y + w * fh),
+			))
+			texs.extend(bar.tex_coords)
+			cols.extend((
+				(1, 1, 1, scale),
+			) * 4)
+	verts = np.array(verts, dtype=np.float32)
+	texs = np.array(texs, dtype=np.float32)
+	cols = np.array(cols, dtype=np.float32)
+	glVertexPointer(2, GL_FLOAT, 0, verts.ctypes)
+	glTexCoordPointer(2, GL_FLOAT, 0, texs.ctypes)
+	glColorPointer(4, GL_FLOAT, 0, cols.ctypes)
+	glDrawArrays(GL_QUADS, 0, len(verts))
+	glDisable(texture.target)
 
 prism_setup = np.fromiter(map(int, """
 0-2-3
@@ -258,6 +246,7 @@ prism_setup = np.fromiter(map(int, """
 
 def animate_prism(changed=False):
 	glClear(GL_COLOR_BUFFER_BIT)
+	glMatrixMode(GL_PROJECTION)
 	bars = bars2
 	x = len(bars)
 	try:
@@ -268,26 +257,20 @@ def animate_prism(changed=False):
 		class Prism_Spec:
 			pass
 		spec = globals()["prism-s"] = Prism_Spec
-		glLoadIdentity()
-		glMatrixMode(GL_PROJECTION)
-		glLoadIdentity()
-		ar = ssize2[0] / ssize2[1]
-		gluPerspective(45, ar, 1 / 16, 99999)
-		glTranslatef(-x // 2 - 2.5, x // 2 - 9, -x * 1.5)
-		glRotatef(75, 1, 0.25, -0.125)
-		# glDisable(GL_DEPTH_TEST)
-		# glEnable(GL_CULL_FACE)
-		# glCullFace(GL_BACK)
-		# glFrontFace(GL_CCW)
-		# glDisable(GL_BLEND)
-		glDisable(GL_DEPTH_TEST)
-		glDisable(GL_CULL_FACE)
-		glEnable(GL_BLEND)
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE)
-		glEnableClientState(GL_VERTEX_ARRAY)
-		glEnableClientState(GL_COLOR_ARRAY)
-	w, h = specsize
-	glLineWidth(specsize[0] / 256)
+	glLoadIdentity()
+	ar = ssize[0] / ssize[1]
+	glViewport(0, toolbar_height, *ssize)
+	gluPerspective(30, ar, 1 / 16, 99999)
+	glTranslatef(-x / 2 - 7.5, x / 2 - 28, -x * 2)
+	glRotatef(-75, 1, 0.25, -0.125)
+	glDisable(GL_DEPTH_TEST)
+	glDisable(GL_CULL_FACE)
+	glEnable(GL_BLEND)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+	glEnableClientState(GL_VERTEX_ARRAY)
+	glEnableClientState(GL_COLOR_ARRAY)
+	w, h = ssize
+	glLineWidth(ssize[0] / 256)
 
 	try:
 		hsv = globals()["prism-hsv"]
@@ -322,37 +305,33 @@ def animate_prism(changed=False):
 	vertarray = None
 	if "hexarray" not in globals() or hexarray.maxlen != maxlen + 1:
 		globals()["hexarray"] = deque(maxlen=maxlen + 1)
-	elif len(hexarray) > maxlen:
+	elif is_active() and len(hexarray) > maxlen:
 		colarray, vertarray = hexarray.popleft()
-	if vertarray is None:
-		vertarray = np.empty((len(bars), len(prism_setup), 3), dtype=np.float32)
-		colarray = np.empty((len(bars), len(prism_setup), 4), dtype=np.float32)
-	hexarray.append([colarray, vertarray])
+	if is_active():
+		if vertarray is None:
+			vertarray = np.empty((len(bars), len(prism_setup), 3), dtype=np.float32)
+			colarray = np.empty((len(bars), len(prism_setup), 4), dtype=np.float32)
+		hexarray.append([colarray, vertarray])
 
-	hexagon = np.array([[cos(z), sin(z), 0] for z in (i * tau / 6 for i in range(6))] * 2, dtype=np.float32)
-	b = (0, 0, 0, 1 / 6)
-	bc = np.array([b, b], dtype=np.float32)
-	for i, h, c in zip(range(len(bars) - 1, -1, -1), alpha, colours):
-		hexagon[6:].T[-1] = h * 3
-		np.take(hexagon, prism_setup, axis=0, out=vertarray[i])
-		vertarray[i].T[0] += i * 1.5
-		if i & 1:
-			vertarray[i].T[1] -= sqrt(3) / 2
-		bc[0][:3] = c[:3]
-		bc[1] = c
-		np.take(bc, prism_setup < 6, axis=0, out=colarray[i])
+		hexagon = np.array([[cos(z), sin(z), 0] for z in (i * tau / 6 for i in range(6))] * 2, dtype=np.float32)
+		b = (0, 0, 0, 1 / 6)
+		bc = np.array([b, b], dtype=np.float32)
+		for i, h, c in zip(range(len(bars) - 1, -1, -1), alpha, colours):
+			hexagon[6:].T[-1] = h * 3
+			np.take(hexagon, prism_setup, axis=0, out=vertarray[i])
+			vertarray[i].T[0] += i * 1.5
+			if i & 1:
+				vertarray[i].T[1] -= sqrt(3) / 2
+			bc[0][:3] = c[:3]
+			bc[1] = c
+			np.take(bc, prism_setup < 6, axis=0, out=colarray[i])
 
 	for c, v in hexarray:
-		if not skipping:
-			glColorPointer(4, GL_FLOAT, 0, c.ravel())
-			glVertexPointer(3, GL_FLOAT, 0, v.ravel())
-			glDrawArrays(GL_TRIANGLES, 0, len(bars) * len(prism_setup))
-		v.T[1] -= sqrt(3)
-
-	if skipping:
-		return
-
-	return "glReadPixels"
+		glColorPointer(4, GL_FLOAT, 0, c.ravel().ctypes)
+		glVertexPointer(3, GL_FLOAT, 0, v.ravel().ctypes)
+		glDrawArrays(GL_TRIANGLES, 0, len(bars) * len(prism_setup))
+		if is_active():
+			v.T[1] += sqrt(3)
 
 def schlafli(symbol):
 	args = (sys.executable, "misc/schlafli.py")
@@ -463,7 +442,7 @@ def animate_polytope(changed=False):
 	if not vertices:
 		return
 	glClear(GL_COLOR_BUFFER_BIT)
-	if type(vertices) is list:
+	if isinstance(vertices, (list, tuple)):
 		s = " ".join(map(str, vertices))
 	else:
 		s = str(vertices)
@@ -501,40 +480,43 @@ def animate_polytope(changed=False):
 		spec.dims = dims
 		spec.dimcount = dimcount
 		spec.rotmat = np.identity(dims)
-		glLoadIdentity()
-		glMatrixMode(GL_PROJECTION)
-		glLoadIdentity()
-		ar = ssize2[0] / ssize2[1]
-		gluPerspective(45, ar, 1 / 16, 99999)
-		glTranslatef(0, 0, -2.5)
-		glDisable(GL_DEPTH_TEST)
-		glDisable(GL_CULL_FACE)
-		glEnable(GL_BLEND)
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-		glEnableClientState(GL_VERTEX_ARRAY)
-		glEnableClientState(GL_COLOR_ARRAY)
-	w, h = specsize
-	thickness = specsize[0] / 64 / max(1, (complexity / 2 + 1) ** 0.5)
+
+	glMatrixMode(GL_PROJECTION)
+	glLoadIdentity()
+	ar = ssize[0] / ssize[1]
+	glViewport(0, toolbar_height, *ssize)
+	gluPerspective(30, ar, 1 / 16, 99999)
+	glTranslatef(0, 0, -4)
+	glDisable(GL_DEPTH_TEST)
+	glDisable(GL_CULL_FACE)
+	glEnable(GL_BLEND)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+	glEnableClientState(GL_VERTEX_ARRAY)
+	glEnableClientState(GL_COLOR_ARRAY)
+
+	w, h = ssize
+	thickness = ssize[0] / 64 / max(1, (complexity / 2 + 1) ** 0.5)
 	glLineWidth(max(1, thickness))
 	alpha_mult = min(1, thickness) / 2
 	angle = tau / 512
-	i = 0
-	perms = get_dimension(dimcount)
-	for x, y in perms:
-		i += 1
-		if i <= 3:
-			factor = i
-		else:
-			factor = (len(perms) - 0.5 - i) % dimcount + 0.5
-		z = angle * sin(spec.frame / factor ** 0.5)
-		rotation = np.identity(dims)
-		a, b = cos(z), sin(z)
-		rotation[x][x] = a
-		rotation[x][y] = -b
-		rotation[y][x] = b
-		rotation[y][y] = a
-		spec.rotmat = rotation @ spec.rotmat
-	spec.frame += tau / 1920
+	if is_active():
+		i = 0
+		perms = get_dimension(dimcount)
+		for x, y in perms:
+			i += 1
+			if i <= 3:
+				factor = i
+			else:
+				factor = (len(perms) - 0.5 - i) % dimcount + 0.5
+			z = angle * sin(spec.frame / factor ** 0.5)
+			rotation = np.identity(dims)
+			a, b = cos(z), sin(z)
+			rotation[x][x] = a
+			rotation[x][y] = -b
+			rotation[y][x] = b
+			rotation[y][y] = a
+			spec.rotmat = rotation @ spec.rotmat
+		spec.frame += tau / 1920
 	poly = poly @ spec.rotmat
 	if poly.shape[-1] > 3:
 		outs = poly.T[:3].T
@@ -579,9 +561,6 @@ def animate_polytope(changed=False):
 	mult *= alpha
 	colours.T[-1][:] = mult
 
-	if skipping:
-		return
-
 	maxb = sqrt(max(bar.height for bar in bars))
 	ratio = min(48, max(8, 36864 / (len(poly) + 2 >> 1)))
 	barm = sorted(((bar.height, i) for i, bar in enumerate(bars) if sqrt(bar.height) > maxb / ratio), reverse=True)
@@ -590,18 +569,28 @@ def animate_polytope(changed=False):
 		radiii = radii[bari]
 		colours = np.tile(colours[bari], (1, len(poly))).reshape((len(bari), len(poly), 4))
 		verts = np.stack([np.asanyarray(poly, np.float32)] * len(bari))
-		for v, r in zip(verts, radiii):
-			v *= r
-		glColorPointer(4, GL_FLOAT, 0, colours.ravel())
-		glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
-		glDrawArrays(GL_LINES, 0, len(colours) * len(poly))
-	return "glReadPixels"
+		for vi, r in zip(verts, radiii):
+			vi *= r
+		c, v = colours.ravel(), verts.ravel()
+		mults = v[2::3] + 1
+		mults *= 0.5
+		c[3::4] *= mults
+		pointc = len(colours) * len(poly)
+		# linec = pointc >> 1
+		# depths = v[2::6] + v[5::6]
+		# order = np.argsort(depths)
+		# c = c.reshape((linec, 8))[order].ravel()
+		# v = v.reshape((linec, 6))[order].ravel()
+		glColorPointer(4, GL_FLOAT, 0, c.ravel().ctypes)
+		glVertexPointer(3, GL_FLOAT, 0, v.ravel().ctypes)
+		glDrawArrays(GL_LINES, 0, pointc)
 
 def animate_ripple(changed=False):
 	if not vertices or not vertices[0]:
 		return
 	V, R = vertices
 	glClear(GL_COLOR_BUFFER_BIT)
+	glMatrixMode(GL_PROJECTION)
 	bars = globals()["bars"][::-1]
 	try:
 		if changed:
@@ -616,41 +605,42 @@ def animate_ripple(changed=False):
 			ry = 0
 			rz = 0
 		spec = globals()["ripple-s"] = Ripple_Spec
-		if R:
-			glLoadIdentity()
-			glMatrixMode(GL_MODELVIEW)
-			glLoadIdentity()
-			ar = ssize2[0] / ssize2[1]
-			w = 1 if ar <= 1 else ar
-			h = 1 if ar >= 1 else 1 / ar
-			glOrtho(-w, w, -h, h, -1, 1)
-		else:
-			glLoadIdentity()
-			glMatrixMode(GL_PROJECTION)
-			glLoadIdentity()
-			ar = ssize2[0] / ssize2[1]
-			gluPerspective(45, ar, 1 / 16, 99999)
-			glTranslatef(0, 0, -2.5)
-		glDisable(GL_DEPTH_TEST)
-		glDisable(GL_CULL_FACE)
-		glEnable(GL_BLEND)
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE)
-		glEnableClientState(GL_VERTEX_ARRAY)
-		glEnableClientState(GL_COLOR_ARRAY)
-		spec.R = R
-	w, h = specsize
-	depth = 3
-	glLineWidth(specsize[0] / 144 / depth)
+
+	glLoadIdentity()
+	ar = ssize[0] / ssize[1]
+	glViewport(0, toolbar_height, *ssize)
 	if R:
-		rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
-		ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
-		rz = 0.8 - abs(spec.rz % 90 - 45) / 90
-		glRotatef(-0.5, rx, ry, rz)
-		spec.rx = (spec.rx + rx) % 360
-		spec.ry = (spec.ry + ry) % 360
-		spec.rz = (spec.rz + rz) % 360
+		w = 1 if ar <= 1 else ar
+		h = 1 if ar >= 1 else 1 / ar
+		glOrtho(-w, w, -h, h, -1, 1)
 	else:
-		glRotatef(-0.5, 0, 0, 1)
+		gluPerspective(30, ar, 1 / 16, 99999)
+		glTranslatef(0, 0, -4)
+	glDisable(GL_DEPTH_TEST)
+	glDisable(GL_CULL_FACE)
+	glEnable(GL_BLEND)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+	glEnableClientState(GL_VERTEX_ARRAY)
+	glEnableClientState(GL_COLOR_ARRAY)
+	spec.R = R
+
+	w, h = ssize
+	depth = 3
+	glLineWidth(ssize[0] / 144 / depth)
+	if is_active():
+		if R:
+			rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
+			ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+			rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+			spec.rx = (spec.rx + rx) % 360
+			spec.ry = (spec.ry + ry) % 360
+			spec.rz = (spec.rz + rz) % 360
+		else:
+			rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+			spec.rz = (spec.rz + rz) % 360
+	glRotatef(spec.rx, 0, 1, 0)
+	glRotatef(spec.ry, 1, 0, 0)
+	glRotatef(spec.rz, 0, 0, 1)
 	try:
 		radii = globals()["ripple-r"]
 	except KeyError:
@@ -704,42 +694,35 @@ def animate_ripple(changed=False):
 	vertarray = None
 	if "linearray" not in globals() or linearray.maxlen != maxlen + 1:
 		globals()["linearray"] = deque(maxlen=maxlen + 1)
-	elif len(linearray) > maxlen:
+	elif is_active() and len(linearray) > maxlen:
 		vertarray = linearray.popleft()[1]
-	if vertarray is None:
-		vertarray = np.empty((depth * V, len(bars), 3), dtype=np.float32)
-	angle = spec.angle + tau - tau / V
-	zs = np.linspace(spec.angle, angle, V)
-	i = 0
-	for _ in range(depth):
-		directions = ([cos(z), sin(z), 1] for z in zs)
-		for d in directions:
-			vertarray[i][:] = radii * d
-			i += 1
-		x = tau / 360 / depth
-		spec.angle = (spec.angle + x) % tau
-		zs += x
-	rva = np.repeat(vertarray, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
-	linearray.append([colours, vertarray, rva])
+	if is_active():
+		if vertarray is None:
+			vertarray = np.empty((depth * V, len(bars), 3), dtype=np.float32)
+		angle = spec.angle + tau - tau / V
+		zs = np.linspace(spec.angle, angle, V)
+		i = 0
+		for _ in range(depth):
+			directions = ([cos(z), sin(z), 1] for z in zs)
+			for d in directions:
+				vertarray[i][:] = radii * d
+				i += 1
+			x = tau / 360 / depth
+			spec.angle = (spec.angle + x) % tau
+			zs += x
+		rva = np.repeat(vertarray, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
+		linearray.append([colours, vertarray, rva])
 	r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
 
-	if skipping:
-		for c, _, _ in linearray:
-			c.T[-1] *= r
-		return
-
 	for c, _, verts in linearray:
-		glColorPointer(4, GL_FLOAT, 0, c.ravel())
+		glColorPointer(4, GL_FLOAT, 0, c.ravel().ctypes)
 		verts.T[-1][:] = hi
-		glVertexPointer(3, GL_FLOAT, 0, verts.ravel())
+		glVertexPointer(3, GL_FLOAT, 0, verts.ravel().ctypes)
 		glDrawArrays(GL_LINES, 0, len(c))
-		c.T[-1] *= r
+		if is_active():
+			c.T[-1] *= r
 
-	return "glReadPixels"
 
-bars = [Bar(i - 1, barcount) for i in range(barcount)]
-bars2 = [Bar(i - 1, barcount2) for i in range(barcount2)]
-last = None
 # r = 23 / 24
 # s = 1 / 48
 # colourmatrix = (
@@ -748,22 +731,50 @@ last = None
 #	 s, 0, r, 0,
 # )
 
-clearing = 0
-def spectrogram_render(bars):
-	global ssize2, specs, dur, last, sp_changed
+def ensure_bars():
+	specs = options.get("spectrogram", 0)
+	if specs == 2:
+		bi = bars2
+	else:
+		bi = bars
+	b = globals()["spec-mem"].buf[:len(bi) * 4]
+	amp = np.frombuffer(b, dtype=np.float32)
+	amp = amp[:len(bi)]
+	for i, pwr in enumerate(amp):
+		bi[i].ensure(pwr / 4)
+
+def update_bars():
+	specs = options.get("spectrogram", 0)
+	if specs == 2:
+		bi = bars2
+	else:
+		bi = bars
+	dur = 1 / fps
+	if specs == 2:
+		dur *= 3
+	elif specs == 3:
+		dur *= 1.5
+	elif specs == 4:
+		dur *= 2
+	for bar in bi:
+		bar.update(dur=dur)
+
+last = None
+sp_changed = True
+def render_spectrogram(rect):
+	global sp_changed, last, pc_, vertices
+	pc_ = player.pos
+	specs = options.get("spectrogram", 0)
+	if specs == 3:
+		vertices = options.control.get("gradient-vertices", (4, 3, 3))
+	elif specs == 4:
+		vertices = options.control.get("spiral-vertices", [24, 1])
 	try:
-		if skipping:
-			return
+		glEnable(GL_SCISSOR_TEST)
+		glScissor(0, toolbar_height, screensize[0] - sidebar_width, screensize[1] - toolbar_height)
+		glClearColor(0, 0, 0, 1)
 		if specs == 1:
-			sfx = HWSurface.any((barcount - 2, barheight))
-			if clearing >= 3:
-				sfx.fill(0)
-				globals()["clearing"] = 0
-			else:
-				globals()["clearing"] += 1
-			for bar in bars:
-				bar.render(sfx=sfx)
-			func = None
+			func = animate_bars
 		elif specs == 2:
 			func = animate_prism
 		elif specs == 3:
@@ -773,230 +784,24 @@ def spectrogram_render(bars):
 		if last != func:
 			last = func
 			sp_changed = True
+		ensure_bars()
 		if func:
-			sfx = func(sp_changed)
+			func(sp_changed)
 		sp_changed = False
-		if not sfx or skipping:
-			return
-		if sfx == "glReadPixels":
-			glFlush()
-
-		length = ssize2[0] * ssize2[1] * 3
-		ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
-		locks = globals()["spec-locks"].buf
-		if locks[0] == 255:
-			locks[0] = 0
-		else:
-			while locks[0] > 0:
-				time.sleep(0.005)
-		locks[0] += 1
-		try:
-			if specs == 1:
-				sfx2 = pygame.image.frombuffer(globals()["spec-mem"].buf[:length], ssize2, "RGB")
-				sfx = pygame.transform.scale(sfx, ssize2, sfx2)
-				fsize = max(12, round(ssize2[0] / barcount * (sqrt(5) + 1) / 2))
-				if Bar.fsize != fsize:
-					Bar.fsize = fsize
-					Bar.font = pygame.font.Font("misc/Pacifico.ttf", bar.fsize)
-					for bar in bars:
-						bar.cache.clear()
-				highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:97]
-				high = highbars[0]
-				lowest = highbars.pop(-1).height
-				dividend = globals().get("avgheight", high.height - lowest)
-				for bar in reversed(highbars):
-					if bar.height > 1:
-						bar.post_render(sfx=sfx, scale=(bar.height - lowest) / dividend)
-				high = max(1, high.height - lowest)
-				globals()["avgheight"] = (dividend * 0.95) + high * 0.05
-			if isinstance(sfx, bytes):
-				globals()["spec-mem"].buf[:length] = sfx
-			elif sfx == "glReadPixels":
-				x = y = 0
-				glReadPixels(x, y, *ssize2, GL_RGB, GL_UNSIGNED_BYTE, array=globals()["spec-mem"].buf[:length])
-		except:
-			raise
-		finally:
-			if locks[0] > 0:
-				locks[0] -= 1
-
-		if specs == 2:
-			dur *= 3
-		elif specs == 3:
-			dur *= 1.5
-		elif specs == 4:
-			dur *= 2
-		for bar in bars:
-			bar.update(dur=dur)
+		update_bars()
 	except:
 		print_exc()
 	finally:
-		glfwPollEvents()
-
-def ensure_bars(b):
-	amp = np.frombuffer(b, dtype=np.float32)
-	if specs == 2:
-		bi = bars2
-	else:
-		bi = bars
-	amp = amp[:len(bi)]
-	for i, pwr in enumerate(amp):
-		bi[i].ensure(pwr / 4)
-
-def setup_window(size):
-	glfw.window_hint(glfw.VISIBLE, False)
-	window = glfw.create_window(*size, "render", None, None)
-	glfw.make_context_current(window)
-	glutInitDisplayMode(GL_RGB)
-	glEnable(GL_LINE_SMOOTH)
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-	glBlendEquation(GL_FUNC_ADD)
-	glPixelStorei(GL_PACK_ALIGNMENT, 1)
-	globals()["sp_changed"] = True
-	return window
-
-with open("misc/toolbar.py", "rb") as f:
-	b = f.read()
-exec(compile(b, "toolbar.py", "exec"))
-
-tool_lock = concurrent.futures.Future()
-tool_lock.set_result(None)
-def _render_toolbar(x):
-	global tool_lock
-	locks = globals()["spec-locks"].buf
-	tool_lock.result()
-	tool_lock = concurrent.futures.Future()
-	if locks[2] == 255:
-		locks[2] = 0
-	else:
-		while locks[2] > 0:
-			time.sleep(0.005)
-	locks[2] += 1
-	try:
-		render_toolbar()
-	except:
-		print_exc()
-	finally:
-		locks[2] = 0
-		tool_lock.set_result(None)
-		sys.__stdout__.buffer.write(b"~r" + x)
-		sys.__stdout__.flush()
-
-def event():
-	global tool_lock
-	while True:
-		try:
-			line = sys.stdin.buffer.read(2)
-			if line == b"~t":
-				x = sys.stdin.buffer.readline()[1:]
-				if globals().get("rtool"):
-					rtool.result()
-				globals()["rtool"] = submit(_render_toolbar, x)
-			if line == b"~a":
-				x = sys.stdin.buffer.readline().rstrip().split(b"~", 1)
-				i = int(x[0])
-				if i == 2:
-					tool_lock.result()
-					tool_lock = concurrent.futures.Future()
-				while locks[i] > 0:
-					time.sleep(0.005)
-				locks[i] += 1
-				sys.__stdout__.buffer.write(b"~r" + x[1] + b"\n")
-				sys.__stdout__.flush()
-			if line == b"~r":
-				i = int(sys.stdin.buffer.read(1))
-				locks[i] = 0
-				if i == 2:
-					tool_lock.set_result(None)
-			elif not line:
-				break
-		except:
-			print_exc()
-
-ssize2 = (0, 0)
-specs = 0
-D = 9
-specsize = (1, 1)#(barcount * D - D,) * 2
-
-import glfw
-from glfw.GLFW import *
-from OpenGL.GL import *
-from OpenGL.GLU import *
-from OpenGL.GLUT import *
-
-glfw.init()
-window = setup_window(specsize)
-locks = globals()["spec-locks"].buf
-last_changed = 0
-skipping = False
-
-submit(event)
-
-import psutil
-parent = psutil.Process(os.getppid())
-receiver, _ = server.accept()
-BarInput = None
-BarOutput = None
-BarSem = 0
-
-def special():
-	global receiver, ssize2, specs, vertices, dur, pc_, BarSem
-	while True:
-		try:
-			comm = receiver.recv(2)
-			i = receiver.recv(8)
-			while len(i) < 8:
-				i += receiver.recv(8 - i)
-			nbytes = int(np.frombuffer(i, dtype=np.float64))
-			line = receiver.recv(nbytes)
-			while len(line) < nbytes:
-				line += receiver.recv(nbytes - len(line))
-			if comm == b"~r":
-				ssize2, specs, vertices, dur, pc_ = map(orjson.loads, line.split(b"~"))
-				if specs == 2:
-					bi = bars2
-				else:
-					bi = bars
-				if BarInput:
-					try:
-						if BarSem >= 8:
-							raise TimeoutError
-						BarSem += 1
-						BarOutput.result(timeout=0.03)
-					except (TimeoutError, concurrent.futures.TimeoutError):
-						globals()["skipping"] = True
-						BarOutput.result()
-						globals()["skipping"] = False
-					else:
-						BarSem = 0
-				globals()["BarInput"] = bi
-				globals()["BarOutput"] = concurrent.futures.Future()
-			elif comm == b"~e":
-				ensure_bars(line)
-		except ConnectionResetError:
-			if parent.is_running() and parent.status() != "zombie":
-				time.sleep(0.5)
-				receiver, _ = server.accept()
-			else:
-				psutil.Process().terminate()
-		except:
-			print_exc()
-
-submit(special)
-
-while True:
-	time.sleep(0.003)
-	if BarInput:
-		if ssize2 != specsize:
-			if last_changed <= 0:
-				last_changed = 8
-				specsize = ssize2
-				glfw.destroy_window(window)
-				window = setup_window(specsize)
-			else:
-				last_changed -= 1
-				continue
-		elif last_changed:
-			last_changed -= 1
-		BarOutput.set_result(spectrogram_render(BarInput))
-		BarInput = None
+		glMatrixMode(GL_MODELVIEW)
+		glLoadIdentity()
+		glViewport(0, 0, *DISP.get_size())
+		glMatrixMode(GL_PROJECTION)
+		glLoadIdentity()
+		glViewport(0, 0, *DISP.get_size())
+		glOrtho(0, DISP.width, 0, DISP.height, -1, 1)
+		glDisable(GL_DEPTH_TEST)
+		glDisable(GL_CULL_FACE)
+		glDisableClientState(GL_VERTEX_ARRAY)
+		glDisableClientState(GL_TEXTURE_COORD_ARRAY)
+		glDisableClientState(GL_COLOR_ARRAY)
+		glDisable(GL_SCISSOR_TEST)

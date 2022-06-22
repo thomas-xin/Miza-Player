@@ -1,12 +1,7 @@
 # ONE SMALL STEP FOR MAN, ONE GIANT LEAP FOR SMUDGE KIND! Invaded once again on the 6th March >:D
 
-import os, sys
-try:
-	hwnd = int(sys.stdin.readline()[1:])
-except ValueError:
-	hwnd = 0
-import socket
-sender = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
+import os, sys, traceback
+pid = os.getppid()
 
 sys.stdout.write = lambda *args, **kwargs: None
 import concurrent.futures
@@ -67,17 +62,8 @@ suppress = contextlib.suppress
 async_wait = lambda: time.sleep(0.005)
 sys.setswitchinterval(0.005)
 
-is_strict_minimised = lambda: ctypes.windll.user32.IsIconic(hwnd)
-globals()["unfocus-time"] = 0
-def is_minimised():
-	if ctypes.windll.user32.IsIconic(hwnd):
-		return True
-	if not settings.get("unfocus"):
-		return
-	if hwnd == ctypes.windll.user32.GetForegroundWindow(hwnd):
-		globals()["unfocus-time"] = time.time()
-		return
-	return time.time() - globals()["unfocus-time"] > 3
+is_minimised = lambda: globals()["stat-mem"].buf[0] & 1
+
 
 pt = None
 pt2 = None
@@ -519,6 +505,7 @@ def kill(proc):
 		pass
 	proc.kill()
 
+LT = 0
 def duration_est():
 	global duration
 	last_fn = ""
@@ -526,9 +513,20 @@ def duration_est():
 	last_fs = 0
 	while True:
 		try:
-			while is_minimised():
-				time.sleep(0.5)
-			if stream and not is_url(stream) and (stream[0] != "<" or stream[-1] != ">") and os.path.exists(stream):
+			t = pc()
+			if floor(t / 8) * 8 > LT:
+				globals()["LT"] = t
+				cc = sc.get_speaker(DEVICE.id).channels
+				if cc != channel.channels:
+					raise
+			if hasattr(channel, "wait"):
+				fut = submit(channel.wait)
+				fut.result(timeout=1.5)
+		except:
+			print_exc()
+			PROC.terminate()
+		try:
+			if not is_minimised() and stream and not is_url(stream) and (stream[0] != "<" or stream[-1] != ">") and os.path.exists(stream):
 				stat = None
 				if last_fn == stream:
 					stat = os.stat(stream)
@@ -545,7 +543,14 @@ def duration_est():
 			print_exc()
 		time.sleep(0.5)
 
-def proxy_download(url, fn=None, download=True, timeout=24):
+def header():
+	return {
+		"User-Agent": f"Mozilla/5.{random.randint(1, 9)}",
+		"DNT": "1",
+		"X-Forwarded-For": ".".join(str(random.randint(1, 254)) for _ in range(4)),
+	}
+
+def proxy_download(url, fn=None, proxy=True, timeout=24):
 	reqx = globals().get("reqx")
 	if not reqx:
 		import httpx
@@ -553,46 +558,75 @@ def proxy_download(url, fn=None, download=True, timeout=24):
 			reqx = httpx.Client(http2=True)
 		except:
 			reqx = httpx.Client(http2=False)
-	print(url, fn)
-	loc = random.choice(("eu", "us"))
-	i = random.randint(1, 17)
-	resp = reqx.post(
-		f"https://{loc}{i}.proxysite.com/includes/process.php?action=update",
-		data=dict(d=url, allowCookies="on"),
-		timeout=timeout,
-	)
-	while resp.status_code == 302:
-		print("Proxy download redirecting", resp)
+	if proxy:
+		loc = random.choice(("eu", "us"))
+		i = random.randint(1, 17)
+		stream = f"https://{loc}{i}.proxysite.com/includes/process.php?action=update"
+		print(url, stream, fn, sep="\n")
+		req = reqx.stream(
+			"POST",
+			stream,
+			data=dict(d=url, allowCookies="on"),
+			headers=header(),
+			follow_redirects=True,
+			timeout=timeout,
+		)
+	else:
+		req = reqx.stream(
+			"GET",
+			url,
+			headers=header(),
+			follow_redirects=True,
+			timeout=timeout,
+		)
+	with req as resp:
 		if resp.status_code not in range(200, 400):
 			raise ConnectionError(resp.status_code, resp)
-		if not download:
-			resp = reqx.head(resp.headers["Location"], timeout=timeout)
-			if resp.status_code in range(200, 300):
-				return str(resp.url)
-			continue
 		if not fn:
-			resp = reqx.get(resp.headers["Location"], timeout=timeout)
-			if resp.status_code in range(200, 300):
-				return resp.content
-			continue
-		with reqx.stream("GET", resp.headers["Location"], timeout=timeout) as resp:
-			if resp.status_code in range(200, 300):
-				it = resp.iter_bytes()
-				if isinstance(fn, str):
-					f = open(fn, "wb")
-				else:
-					f = fn
-				try:
-					while True:
-						b = next(it)
-						if not b:
-							break
-						f.write(b)
-				except StopIteration:
-					pass
-				return fn
+			return resp.read()
+		try:
+			size = int(resp.headers["Content-Length"])
+		except (KeyError, ValueError):
+			size = None
+		it = resp.iter_bytes(65536)
+		with open(fn, "wb") as f:
+			try:
+				while True:
+					b = next(it)
+					if not b:
+						break
+					f.write(b)
+			except StopIteration:
+				pass
+			except:
+				from traceback import print_exc
+				print_exc()
+		if size:
+			while True:
+				pos = os.path.getsize(fn)
+				if pos >= size:
+					break
+				print(f"Incomplete download ({pos} < {size}), resuming...")
+				h = header()
+				h["Range"] = f"bytes={pos}-"
+				resp = reqx.get(url, headers=h, timeout=timeout, stream=True)
+				resp.raise_for_status()
+				it = resp.iter_content(65536)
+				with open(fn, "ab") as f:
+					try:
+						while True:
+							b = next(it)
+							if not b:
+								raise StopIteration
+							f.write(b)
+					except StopIteration:
+						break
+					except:
+						from traceback import print_exc
+						print_exc()
+		return fn
 
-is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
+is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r+[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
 downloading = set()
 def download(url, fn):
 	try:
@@ -600,7 +634,7 @@ def download(url, fn):
 			return
 		downloading.add(fn)
 		cmd = ffmpeg_start
-		if is_youtube_stream(url) and len(downloading) > 1:
+		if is_youtube_stream(url) and (len(downloading) >= 3 or getattr(proc, "downloading", False)):
 			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 			try:
 				proxy_download(url, fi)
@@ -627,14 +661,26 @@ def download(url, fn):
 				os.rename(url, fn)
 			downloading.discard(fn)
 			return
+		if not is_url(url):
+			fi = fn
+		else:
+			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".pcm"):
 			cmd += ("-f", "s16le")
 		else:
 			cmd += ("-b:a", "224k")
-		cmd += ("-ar", "48k", "-ac", "2", fn)
+		cmd += ("-ar", "48k", "-ac", "2", fi)
 		print(cmd)
-		subprocess.run(cmd)
+		code = subprocess.Popen(cmd).wait()
+		if code:
+			raise RuntimeError(code)
+		if not is_url(url) and os.path.exists(url):
+			os.remove(url)
+		if fi != fn and os.path.exists(fi):
+			if os.path.exists(fn):
+				os.remove(fn)
+			os.rename(fi, fn)
 	except StopIteration:
 		pass
 	except:
@@ -989,10 +1035,12 @@ class HWSurface:
 		return self
 
 import multiprocessing.shared_memory
-globals()["spec-size"] = multiprocessing.shared_memory.SharedMemory(
-	name=f"Miza-Player-{hwnd}-spec-size",
+globals()["stat-mem"] = multiprocessing.shared_memory.SharedMemory(
+	name=f"Miza-Player-{pid}-stat-mem",
+	create=False,
 )
-globals()["osize"] = np.frombuffer(globals()["spec-size"].buf[8:16], dtype=np.uint32)
+globals()["osize"] = np.frombuffer(globals()["stat-mem"].buf[8:16], dtype=np.uint32)
+globals()["ssize"] = np.frombuffer(globals()["stat-mem"].buf[16:24], dtype=np.uint32)
 
 stderr_lock = None
 def oscilloscope(buffer):
@@ -1000,49 +1048,18 @@ def oscilloscope(buffer):
 	try:
 		if not packet:
 			return
-		arr = buffer[::2] + buffer[1::2]
-		if "OSCI" not in globals():
+		if "osci-mem" not in globals():
 			globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
-				name=f"Miza-Player-{hwnd}-osci-mem",
+				name=f"Miza-Player-{pid}-osci-mem",
+				create=False,
 			)
-			globals()["spec-locks"] = multiprocessing.shared_memory.SharedMemory(
-				name=f"Miza-Player-{hwnd}-spec-locks",
-			)
-			length = osize[0] * osize[1] * 3
-			OSCI = pygame.image.frombuffer(globals()["osci-mem"].buf[:length], osize, "RGB")
-		if not packet:
-			return
-		osci = supersample(arr, osize[0], in_place=True)
-		osci *= 0.5
-		osci = np.clip(osci, -1, 1, out=osci)
-		locks = globals()["spec-locks"].buf
-		if locks[1] == 255:
-			locks[1] = 0
-		else:
-			while locks[1] > 0:
-				time.sleep(0.005)
-		locks[1] += 1
-		try:
-			OSCI.fill((0, 0, 0))
-			point = (0, osize[1] / 2 + osci[0] * osize[1] / 2)
-			for i in range(1, len(osci)):
-				prev = point
-				point = (i, osize[1] / 2 + osci[i] * osize[1] / 2)
-				hue = ((osci[i] + osci[i - 1]) / 4 - 1 / 3) % 1
-				col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(hue, 1, 1)]
-				pygame.draw.line(
-					OSCI,
-					col,
-					point,
-					prev,
-				)
-		except:
-			raise
-		finally:
-			if locks[1] > 0:
-				locks[1] -= 1
+		temp = np.asanyarray(sbuffer[:3200], dtype=np.float32)
+		globals()["osci-mem"].buf[:12800] = temp.view(np.uint8).data
 	except:
 		print_exc()
+osci_clear = b"\x00" * 12800
+def clear_osci():
+	globals()["osci-mem"].buf[:12800] = osci_clear
 
 higher_bound = "C10"
 highest_note = "C~D~EF~G~A~B".index(higher_bound[0].upper()) - 9 + ("#" in higher_bound)
@@ -1084,33 +1101,6 @@ spec_update_fut = None
 lastspec = 0
 lastspec2 = 0
 
-def spectrogram_render():
-	global stderr_lock, ssize2, lastspec2, spec_update_fut, packet_advanced2, video_write
-	try:
-		sps = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
-		ssize2 = ssize = tuple(map(round, sps))
-		specs = settings.spectrogram
-		packet_advanced2 = False
-		if specs == 3:
-			vertices = settings.get("gradient-vertices")
-		elif specs == 4:
-			vertices = settings.get("spiral-vertices")
-		else:
-			vertices = 0
-		d2 = 1 / 30
-		t2 = round_random(frame) / 30
-		b = b"~".join(map(orjson.dumps, (ssize2, specs, vertices, d2, t2)))
-		binfo = b"~r" + np.float64(len(b)).data + b
-		try:
-			sender.sendall(binfo)
-		except:
-			print_exc()
-			globals()["sender"] = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
-		# else:
-			# sender.recv(1)
-	except:
-		print_exc()
-
 def spectrogram_update():
 	global lastspec, spec_update_fut, spec2_fut, spec_buffer, packet_advanced2, packet_advanced3
 	try:
@@ -1124,7 +1114,7 @@ def spectrogram_update():
 			try:
 				dft = globals()["spec-dft-arr"]
 			except KeyError:
-				dft = globals()["spec-dft-arr"] = np.zeros(len(dft1), dtype=np.complex64)
+				dft = globals()["spec-dft-arr"] = np.empty(len(dft1), dtype=np.complex64)
 			dft[:] = dft1
 		try:
 			arr = globals()["spec-fft-arr"]
@@ -1137,7 +1127,7 @@ def spectrogram_update():
 		try:
 			amp = globals()["spec-fft-amp"]
 		except KeyError:
-			amp = globals()["spec-fft-amp"] = np.zeros(barcount * freqscale, dtype=np.float32)
+			amp = globals()["spec-fft-amp"] = np.empty(barcount * freqscale, dtype=np.float32)
 		np.abs(arr, out=amp)
 		x = barcount - np.argmax(amp) / freqscale - 0.5
 		point(f"~n {x}")
@@ -1147,15 +1137,13 @@ def spectrogram_update():
 			else:
 				amp = supersample(amp, barcount, in_place=True)
 			amp = np.asanyarray(amp, dtype=np.float32)
-			b = amp.data
-			binfo = b"~e" + np.float64(b.nbytes).data + b
-			try:
-				sender.sendall(binfo)
-			except:
-				print_exc()
-				globals()["sender"] = socket.create_connection(("127.0.0.1", hwnd % 32768 + 16384), timeout=32)
+			if "spec-mem" not in globals():
+				globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
+					name=f"Miza-Player-{pid}-spec-mem",
+					create=False,
+				)
+			globals()["spec-mem"].buf[:len(amp) * 4] = amp.view(np.uint8).data
 		spec_buffer *= (1 / 3) ** dur
-		spectrogram_render()
 	except:
 		print_exc()
 
@@ -1166,9 +1154,9 @@ def spectrogram():
 	try:
 		if packet and sample is not None:
 			try:
-				buffer = globals()["spec-sample-16"]
+				buffer = globals()["spec-sample-32"]
 			except KeyError:
-				buffer = globals()["spec-sample-16"] = np.empty(len(sample), dtype=np.float32)
+				buffer = globals()["spec-sample-32"] = np.empty(len(sample), dtype=np.float32)
 			if sample.dtype != np.float32:
 				buffer[:] = sample
 				buffer *= 1 / channel.peak
@@ -1176,7 +1164,6 @@ def spectrogram():
 				buffer[:] = sample
 			spec_buffer[:-len(buffer)] = spec_buffer[len(buffer):]
 			spec_buffer[-len(buffer):] = buffer
-			ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 			spectrogram_update()
 	except:
 		print_exc()
@@ -1206,7 +1193,7 @@ def render():
 				amp = np.sum(np.abs(buffer)) / len(buffer)
 				p_amp = sqrt(amp)
 
-				if is_strict_minimised():
+				if is_minimised():
 					point(f"~y {p_amp}")
 				else:
 					if settings.oscilloscope and osize[0] and osize[1] and (not osci_fut or osci_fut.done()):
@@ -1376,7 +1363,6 @@ def play(pos):
 						quiet = 0
 				if sample.dtype == np.float32:
 					np.clip(sample, -channel.peak, channel.peak, out=sample)
-				sbuffer = sample
 				if channel.dtype != np.float32:
 					try:
 						globals()["s-buf32"][:] = sample
@@ -1384,6 +1370,8 @@ def play(pos):
 						globals()["s-buf32"] = sample.astype(np.float32)
 					sbuffer = globals()["s-buf32"]
 					sbuffer *= 1 / channel.peak
+				else:
+					sbuffer = sample
 				if sample.dtype != channel.dtype:
 					try:
 						if globals()["s-tempc"].dtype != channel.dtype:
@@ -1409,8 +1397,7 @@ def play(pos):
 					submit(OUTPUT_FILE.write, s.data)
 				if not point_fut or point_fut.done():
 					point_fut = submit(point, f"~{frame} {duration}")
-				if settings.spectrogram == 0 and settings.get("insights") != 0 or settings.spectrogram > 0:
-					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+				if settings.get("insights") != 0 or settings.spectrogram > 0:
 					if ssize[0] and ssize[1] and not is_minimised():
 						if spec_fut:
 							spec_fut.result()
@@ -1420,7 +1407,9 @@ def play(pos):
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						if not random.randint(0, 15):
+						t = pc()
+						if floor(t) > LT:
+							globals()["LT"] = t
 							cc = sc.get_speaker(DEVICE.id).channels
 							if cc != channel.channels:
 								raise
@@ -1429,11 +1418,19 @@ def play(pos):
 						fut = submit(channel.write, sample)
 						fut.result(timeout=0.8)
 					except:
+						if paused:
+							break
+						print_exc()
+						print(f"{channel.type} timed out.")
+						globals()["waiting"] = concurrent.futures.Future()
+						if i > 1:
+							PROC.terminate()
+						else:
+							channel.close()
+						globals()["channel"] = get_channel()
+						globals()["waiting"], w = None, waiting
+						w.set_result(None)
 						PROC.terminate()
-						# if paused:
-							# break
-						# print_exc()
-						# print(f"{channel.type} timed out.")
 						# globals()["waiting"] = concurrent.futures.Future()
 						# if i > 1:
 							# PROC.terminate()
@@ -1445,7 +1442,6 @@ def play(pos):
 					else:
 						break
 				if OUTPUT_VIDEO and settings.spectrogram > 0:
-					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 					if ssize[0] and ssize[1]:
 						t = pc()
 						while not video_write and pc() - t < 1:
@@ -1631,8 +1627,7 @@ def piano_player():
 					submit(OUTPUT_FILE.write, packet)
 				if not point_fut or point_fut.done():
 					point_fut = submit(point, f"~{frame} {duration}")
-				if settings.spectrogram == 0 and settings.get("insights") != 0 or settings.spectrogram > 0:
-					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
+				if settings.get("insights") != 0 or settings.spectrogram > 0:
 					if ssize[0] and ssize[1] and not is_minimised():
 						if spec_fut:
 							spec_fut.result()
@@ -1641,7 +1636,9 @@ def piano_player():
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						if not random.randint(0, 15):
+						t = pc()
+						if floor(t) > LT:
+							globals()["LT"] = t
 							cc = sc.get_speaker(DEVICE.id).channels
 							if cc != channel.channels:
 								raise
@@ -1650,9 +1647,17 @@ def piano_player():
 						fut = submit(channel.write, sample)
 						fut.result(timeout=0.8)
 					except:
+						print_exc()
+						print(f"{channel.type} timed out.")
+						globals()["waiting"] = concurrent.futures.Future()
+						if i > 1:
+							PROC.terminate()
+						else:
+							channel.close()
+						globals()["channel"] = get_channel()
+						globals()["waiting"], w = None, waiting
+						w.set_result(None)
 						PROC.terminate()
-						# print_exc()
-						# print(f"{channel.type} timed out.")
 						# globals()["waiting"] = concurrent.futures.Future()
 						# if i > 1:
 							# PROC.terminate()
@@ -1778,7 +1783,6 @@ ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_dela
 settings = cdict()
 alphakeys = prevkeys = ()
 buffoffs = 0
-ssize = (0, 0)
 lastpacket = None
 packet = None
 sample = None
@@ -1910,7 +1914,6 @@ while not sys.stdin.closed and failed < 8:
 			s = command[8:]
 			if s:
 				if " " in s:
-					ssize = np.frombuffer(globals()["spec-size"].buf[:8], dtype=np.uint32)
 					s, v = s.split(None, 1)
 					args = (
 						ffmpeg, "-y", "-hide_banner", "-v", "error",
@@ -2138,6 +2141,8 @@ while not sys.stdin.closed and failed < 8:
 				else:
 					fp = 0 if settings.speed >= 0 else fsize - 2
 				reading = submit(reader, f, pos=fp, reverse=settings.speed < 0, shuffling=pos == 0 and settings.shuffle == 2, pcm=pcm)
+			if is_url(stream):
+				proc.downloading = True
 		if point_fut and not point_fut.done():
 			point_fut.result()
 		point(f"~{pos * 30} {duration}")

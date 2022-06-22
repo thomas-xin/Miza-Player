@@ -77,7 +77,7 @@ class MultiAutoImporter:
 
 importer = MultiAutoImporter(
 	"numpy, contextlib, urllib, collections, math, traceback, requests, orjson",
-	"os, youtube_dl, random, time, base64, hashlib, re, psutil, subprocess, itertools, zipfile",
+	"os, yt_dlp, random, time, base64, hashlib, re, psutil, subprocess, itertools, zipfile",
 	pool=exc,
 	_globals=globals(),
 )
@@ -93,6 +93,7 @@ from math import *
 traceback.force()
 from traceback import print_exc
 reqs = requests.Session()
+youtube_dl = yt_dlp.force()
 
 
 class cdict(dict):
@@ -499,7 +500,7 @@ def html_decode(s):
 	return s.replace("&quot;", '"').replace("&apos;", "'")
 
 def time_parse(ts):
-	data = ts.split(":")
+	data = as_str(ts).split(":")
 	t = 0
 	mult = 1
 	while len(data):
@@ -527,7 +528,7 @@ is_tenor_url = lambda url: regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-
 is_imgur_url = lambda url: regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
 is_giphy_url = lambda url: regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
 is_youtube_url = lambda url: regexp("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
-is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
+is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r+[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
 is_deviantart_url = lambda url: regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
 
 def expired(stream):
@@ -676,7 +677,7 @@ def get_best_icon(entry):
 def get_best_audio(entry):
 	with suppress(KeyError):
 		return entry["stream"]
-	best = -1
+	best = -inf
 	try:
 		fmts = entry["formats"]
 	except KeyError:
@@ -688,7 +689,7 @@ def get_best_audio(entry):
 	replace = True
 	for fmt in fmts:
 		q = fmt.get("abr", 0)
-		if type(q) is not int:
+		if not isinstance(q, (int, float)):
 			q = 0
 		vcodec = fmt.get("vcodec", "none")
 		if vcodec not in (None, "none"):
@@ -717,6 +718,8 @@ def get_best_audio(entry):
 				fmts.append(fmt)
 		entry["formats"] = fmts
 		return get_best_audio(entry)
+	if not url:
+		raise KeyError("URL not found.")
 	return url
 
 
@@ -819,14 +822,14 @@ class AudioDownloader:
 		try:
 			yt_url = f"https://www.yt-download.org/file/mp3/{url}"
 			self.other_x += 1
-			resp = reqs.get(yt_url).content
+			resp = reqs.get(yt_url, timeout=60).content
 			search = b'<img class="h-20 w-20 md:h-48 md:w-48 mt-0 md:mt-12 lg:mt-0 rounded-full mx-auto md:mx-0 md:mr-6" src="'
 			resp = resp[resp.index(search) + len(search):]
 			thumbnail = resp[:resp.index(b'"')].decode("utf-8", "replace")
 			search = b'<h2 class="text-lg text-teal-600 font-bold m-2 text-center">'
 			resp = resp[resp.index(search) + len(search):]
 			title = html_decode(resp[:resp.index(b"</h2>")].decode("utf-8", "replace"))
-			resp = resp[resp.index(f'<a href="https://www.yt-download.org/download/{url}/mp3/192'.encode("utf-8")) + 9:]
+			resp = resp[resp.index(f'<a href="https://www.yt-download.org/download/{url}/mp3/256'.encode("utf-8")) + 9:]
 			stream = resp[:resp.index(b'"')].decode("utf-8", "replace")
 			resp = resp[:resp.index(b"</a>")]
 			search = b'<div class="text-shadow-1">'
@@ -835,7 +838,7 @@ class AudioDownloader:
 			entry = {
 				"formats": [
 					{
-						"abr": 192,
+						"abr": 256,
 						"url": stream,
 					},
 				],
@@ -1053,6 +1056,124 @@ class AudioDownloader:
 				out.append(entry)
 		return out
 
+	soundcloud_token = "7g7gIkrcAS05cJVf2FlIsnkOXtg4JdSe"
+
+	def get_soundcloud_playlist(self, url):
+		parts = url.split("?", 1)[0].split("/")
+		if parts[0] != "https:" or parts[2] not in ("soundcloud.com", "api-v2.soundcloud.com"):
+			raise TypeError("Not a SoundCloud playlist.")
+		if parts[-1] == "likes":
+			return self.get_soundcloud_likes(url)
+		api = "https://api-v2.soundcloud.com/"
+
+		resp = requests.get(url, headers=self.youtube_header())
+		resp.raise_for_status()
+		s = resp.text
+		if s[0] == "{" and s[-1] == "}":
+			t = resp.json()
+			return [cdict(
+				name=t["title"],
+				url=t["permalink_url"],
+				duration=t["duration"] / 1000,
+				thumbnail=t["artwork_url"],
+			)]
+		search = "<script>window.__sc_hydration = "
+		s = s[s.index(search) + len(search):]
+		s = s[:s.index(";</script>")]
+		data = orjson.loads(s)
+
+		emap = {}
+		entries = []
+		for hydratable in data:
+			if hydratable["hydratable"] == "playlist":
+				for t in hydratable["data"]["tracks"]:
+					try:
+						t["title"]
+					except KeyError:
+						tid = t["id"]
+						emap[tid] = len(entries)
+						entries.append(None)
+					else:
+						entry = cdict(
+							name=t["title"],
+							url=t["permalink_url"],
+							duration=t["duration"] / 1000,
+							thumbnail=t["artwork_url"],
+						)
+						entries.append(entry)
+
+		if emap:
+			ids = ",".join(map(str, emap))
+			url = f"{api}tracks?ids={ids}&client_id={self.soundcloud_token}"
+			resp = requests.get(url, headers=self.youtube_header())
+			if not resp.content:
+				resp.raise_for_status()
+			for t, p in zip(resp.json(), emap.values()):
+				entry = cdict(
+					name=t["title"],
+					url=t["permalink_url"],
+					duration=t["duration"] / 1000,
+					thumbnail=t["artwork_url"],
+				)
+				entries[p] = entry
+		return [e for e in entries if e]
+
+	def get_soundcloud_likes(self, url):
+		api = "https://api-v2.soundcloud.com/"
+		lim = 1000
+
+		uapi = api + "users/"
+		if url.startswith(uapi):
+			uid = url[len(uapi):].split("?", 1)[0]
+		else:
+			resp = requests.get(url, headers=self.youtube_header())
+			resp.raise_for_status()
+			s = resp.text
+			search = 'content="soundcloud://users:'
+			s = s[s.index(search) + len(search):]
+			uid = s[:s.index('"')]
+
+		futs = []
+		entries = []
+		while True:
+			url = f"{api}users/{uid}/likes?client_id={self.soundcloud_token}&limit={lim}"
+			resp = requests.get(url, headers=self.youtube_header())
+			if not resp.content:
+				resp.raise_for_status()
+			data = resp.json()
+			for e in data["collection"]:
+				try:
+					t = e["track"]
+				except KeyError:
+					p = e["playlist"]
+					url = p["permalink_url"]
+					if len(futs) >= 12:
+						futs.pop(0).result()
+					fut = create_future_ex(self.get_soundcloud_playlist, url)
+					futs.append(fut)
+					entries.append(fut)
+				else:
+					entry = cdict(
+						name=t["title"],
+						url=t["permalink_url"],
+						duration=t["duration"] / 1000,
+						thumbnail=t["artwork_url"],
+					)
+					entries.append(entry)
+			url = data.get("next_href")
+			if len(entries) < lim or not url:
+				break
+			url += f"client_id={self.soundcloud_token}&limit={lim}"
+
+		while True:
+			for i, e in enumerate(entries):
+				if isinstance(e, concurrent.futures.Future):
+					entries = entries[:i] + e.result() + entries[i + 1:]
+					break
+			else:
+				break
+		return entries
+
 	def ydl_errors(self, s):
 		return "this video has been removed" not in s and "private video" not in s and "has been terminated" not in s
 
@@ -1061,9 +1182,10 @@ class AudioDownloader:
 	# Repeatedly makes calls to youtube-dl until there is no more data to be collected.
 	def extract_true(self, url):
 		while not is_url(url):
-			with suppress(NotImplementedError):
-				return self.search_yt(regexp("ytsearch[0-9]*:").sub("", url, 1))[0]
-			resp = self.extract_from(url)
+			try:
+				resp = self.search_yt(regexp("ytsearch[0-9]*:").sub("", url, 1))[0]
+			except:
+				resp = self.extract_from(url)
 			if "entries" in resp:
 				resp = next(iter(resp["entries"]))
 			if "duration" in resp and "formats" in resp:
@@ -1246,6 +1368,11 @@ class AudioDownloader:
 					print_exc()
 				else:
 					return entries
+		elif regexp("^https:\\/\\/soundcloud\\.com\\/[A-Za-z0-9]+\\/sets\\/").search(item) or regexp("^https:\\/\\/soundcloud\\.com\\/[A-Za-z0-9]+\\/likes").search(item) or regexp("^https:\\/\\/api-v2\\.soundcloud\\.com\\/users\\/[0-9]+\\/likes").search(item):
+				try:
+					return self.get_soundcloud_playlist(item)
+				except:
+					print_exc()
 		elif regexp("(play|open|api)\\.spotify\\.com").search(item):
 			# Spotify playlist searches contain up to 100 items each
 			if "playlist" in item:
@@ -1335,12 +1462,12 @@ class AudioDownloader:
 					return self.search_yt(item)[:count]
 			# Otherwise call automatic extract_info function
 			resp = self.extract_info(item, count, search=search, mode=mode)
-			if resp.get("_type", None) == "url":
+			if resp.get("_type") == "url":
 				resp = self.extract_from(resp["url"])
 			if resp is None or not len(resp):
 				raise LookupError(f"No results for {item}")
 			# Check if result is a playlist
-			if resp.get("_type", None) == "playlist":
+			if resp.get("_type") == "playlist":
 				entries = resp["entries"]
 				if force:
 					for entry in entries:
@@ -1712,10 +1839,12 @@ lyric_trans = re.compile(
 )
 
 def extract_lyrics(s):
-	s = s[s.index("JSON.parse(") + len("JSON.parse("):]
+	s = s[s.index("__ = JSON.parse(") + len("__ = JSON.parse("):]
 	s = s[:s.index("</script>")]
-	if "window.__" in s:
+	try:
 		s = s[:s.index("window.__")]
+	except ValueError:
+		pass
 	s = s[:s.rindex(");")]
 	data = eval(s, {}, {})
 	d = eval_json(data)

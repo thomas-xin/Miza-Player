@@ -632,7 +632,8 @@ def add_to_playlist():
 			else:
 				with open(fn, "w", encoding="utf-8") as f:
 					json.dump(data, f, separators=(",", ":"))
-			easygui2.msgbox(
+			submit(
+				easygui2.msgbox,
 				None,
 				f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
 				title="Success!",

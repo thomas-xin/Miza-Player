@@ -523,7 +523,8 @@ def setup_buttons():
 											f"Playlist {repr(choice)} has been updated!",
 											title="Success!",
 										)
-						easygui2.textbox(
+						submit(
+							easygui2.textbox,
 							edit_playlist_b,
 							"Enter a list of URLs or file paths to include in the playlist!",
 							title="Miza Player",
@@ -552,7 +553,8 @@ def setup_buttons():
 						):
 							if os.path.exists(path):
 								os.remove(path)
-						easygui2.msgbox(
+						submit(
+							easygui2.msgbox,
 							None,
 							f"Playlist {repr(choice)} has been removed!",
 							title="Success!",

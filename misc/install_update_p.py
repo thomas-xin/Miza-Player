@@ -107,21 +107,21 @@ except:
 	print_exc()
 	subprocess.run([python, "-m", "pip", "install", "git+https://github.com/yt-dlp/yt-dlp.git", "--upgrade", "--user"])
 
-if os.name == "nt":
-	for k, v in (
-		("pyopengl", "3.1.5"),
-		("pyopengl-accelerate", "3.1.5"),
-		("glfw", "2.3.0"),
-	):
-		try:
-			if pkg_resources.get_distribution(k).version < v:
-				raise ValueError
-		except:
-			subprocess.run([sys.executable, "-m", "pipwin", "install", k])
-			try:
-				if pkg_resources.get_distribution(k).version < v:
-					raise ValueError
-			except:
-				subprocess.run([sys.executable, "-m", "pipwin", "refresh"])
-				subprocess.run([sys.executable, "-m", "pip", "-y", "uninstall", k])
-				subprocess.run([sys.executable, "-m", "pipwin", "install", k])
+# if os.name == "nt":
+	# for k, v in (
+		# ("pyopengl", "3.1.5"),
+		# ("pyopengl-accelerate", "3.1.5"),
+		# ("glfw", "2.3.0"),
+	# ):
+		# try:
+			# if pkg_resources.get_distribution(k).version < v:
+				# raise ValueError
+		# except:
+			# subprocess.run([sys.executable, "-m", "pipwin", "install", k])
+			# try:
+				# if pkg_resources.get_distribution(k).version < v:
+					# raise ValueError
+			# except:
+				# subprocess.run([sys.executable, "-m", "pipwin", "refresh"])
+				# subprocess.run([sys.executable, "-m", "pip", "-y", "uninstall", k])
+				# subprocess.run([sys.executable, "-m", "pipwin", "install", k])

@@ -132,7 +132,6 @@ toolbar = cdict(
 		spread=0,
 		alpha=0,
 		num=0,
-		spare=deque(),
 		particles=alist(),
 		seeking=False,
 	),

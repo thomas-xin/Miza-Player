@@ -104,7 +104,7 @@ try:
 	v = pkg_resources.get_distribution("yt_dlp").version
 	assert v >= "2022.3.8.1"
 except:
-	print_exc()
+	traceback.print_exc()
 	subprocess.run([python, "-m", "pip", "install", "git+https://github.com/yt-dlp/yt-dlp.git", "--upgrade", "--user"])
 
 # if os.name == "nt":

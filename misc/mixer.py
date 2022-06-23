@@ -1414,9 +1414,9 @@ def play(pos):
 							if cc != channel.channels:
 								raise
 						fut = submit(channel.wait)
-						fut.result(timeout=0.9)
+						fut.result(timeout=1.6)
 						fut = submit(channel.write, sample)
-						fut.result(timeout=0.8)
+						fut.result(timeout=1.2)
 					except:
 						if paused:
 							break
@@ -1643,9 +1643,9 @@ def piano_player():
 							if cc != channel.channels:
 								raise
 						fut = submit(channel.wait)
-						fut.result(timeout=0.9)
+						fut.result(timeout=1.6)
 						fut = submit(channel.write, sample)
-						fut.result(timeout=0.8)
+						fut.result(timeout=1.2)
 					except:
 						print_exc()
 						print(f"{channel.type} timed out.")

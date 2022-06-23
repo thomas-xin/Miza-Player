@@ -391,6 +391,7 @@ def setup_buttons():
 						options.history = options.history.uniq(sort=False)[:64]
 						entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
 						queue.extend(entries)
+					index = sidebar.get("lastsel")
 					if control.shuffle and len(queue) > 1:
 						queue[bool(start):].shuffle()
 					elif index is not None:
@@ -433,7 +434,7 @@ def setup_buttons():
 								if name:
 									entries[0]["name"] = name
 							else:
-								name = entries[0].name
+								name = entries[0].get("name") or name
 							if len(entries) > 1:
 								name += f" +{len(entries) - 1}"
 							def create_playlist_b(text):
@@ -449,12 +450,14 @@ def setup_buttons():
 									else:
 										with open(fn, "w", encoding="utf-8") as f:
 											json.dump(data, f, separators=(",", ":"))
-									easygui2.msgbox(
+									submit(
+										easygui2.msgbox,
 										None,
-										f"Playlist {repr(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
+										f"Playlist {json.dumps(text)} with {len(entries)} item{'s' if len(entries) != 1 else ''} has been added!",
 										title="Success!",
 									)
-							easygui2.enterbox(
+							submit(
+								easygui2.enterbox,
 								create_playlist_b,
 								"Enter a name for your new playlist!",
 								title="Miza Player",
@@ -494,9 +497,10 @@ def setup_buttons():
 							if text is not None:
 								if not text:
 									os.remove(fn)
-									easygui2.msgbox(
+									submit(
+										easygui2.msgbox,
 										None,
-										f"Playlist {repr(choice)} has been removed!",
+										f"Playlist {json.dumps(choice)} has been removed!",
 										title="Success!",
 									)
 								else:
@@ -509,18 +513,19 @@ def setup_buttons():
 									if entries:
 										entries = list(entries)
 										data = dict(queue=entries, stats={})
-										fn = "playlists/" + quote(text)[:244] + ".json"
+										out = "playlists/" + quote(text)[:244] + ".json"
 										if len(entries) > 1024:
-											fn = fn[:-5] + ".zip"
+											out = out[:-5] + ".zip"
 											b = bytes2zip(orjson.dumps(data))
-											with open(fn, "wb") as f:
+											with open(out, "wb") as f:
 												f.write(b)
 										else:
-											with open(fn, "w", encoding="utf-8") as f:
+											with open(out, "w", encoding="utf-8") as f:
 												json.dump(data, f, separators=(",", ":"))
-										easygui2.msgbox(
+										submit(
+											easygui2.msgbox,
 											None,
-											f"Playlist {repr(choice)} has been updated!",
+											f"Playlist {json.dumps(choice)} has been updated!",
 											title="Success!",
 										)
 						submit(
@@ -556,7 +561,7 @@ def setup_buttons():
 						submit(
 							easygui2.msgbox,
 							None,
-							f"Playlist {repr(choice)} has been removed!",
+							f"Playlist {json.dumps(choice)} has been removed!",
 							title="Success!",
 						)
 				easygui2.choicebox(

@@ -513,7 +513,7 @@ def setup_buttons():
 									if entries:
 										entries = list(entries)
 										data = dict(queue=entries, stats={})
-										out = "playlists/" + quote(text)[:244] + ".json"
+										out = "playlists/" + quote(choice)[:244] + ".json"
 										if len(entries) > 1024:
 											out = out[:-5] + ".zip"
 											b = bytes2zip(orjson.dumps(data))

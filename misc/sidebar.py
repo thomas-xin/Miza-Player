@@ -582,7 +582,7 @@ def play_now():
 		return
 	selected = [i for i, e in enumerate(queue) if e.get("selected")]
 	if not selected:
-		selected = [0]
+		selected = [sidebar.get("lastsel") or 0]
 	temp = queue[selected]
 	queue.pops(selected)
 	queue.extendleft(temp[::-1])
@@ -594,7 +594,7 @@ def play_next():
 	s = queue.popleft()
 	selected = [i for i, e in enumerate(queue) if e.get("selected")]
 	if not selected:
-		selected = [0]
+		selected = [sidebar.get("lastsel") or 0]
 	temp = queue[selected]
 	queue.pops(selected)
 	queue.extendleft(temp[::-1])
@@ -602,7 +602,9 @@ def play_next():
 def add_to_playlist():
 	entries = list(copy_entry(e) for e in queue if e.get("selected"))
 	if not entries:
-		entries = (copy_entry(entries[0]),)
+		if not sidebar.get("last_selected"):
+			return
+		entries = (copy_entry(sidebar.last_selected),)
 	url = entries[0]["url"]
 	if is_url(url):
 		ytdl = downloader.result()

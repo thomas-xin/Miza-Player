@@ -1411,14 +1411,16 @@ def prepare(entry, force=False, download=False):
 	if not entry.url:
 		return
 	fn = "cache/~" + shash(entry.url) + ".pcm"
-	if os.path.exists(fn) and os.path.getsize(fn) and isfinite(entry.get("duration") or inf):
-		entry.stream = fn
-		ytdl = downloader.result()
-		if entry.url in ytdl.searched:
-			resp = ytdl.searched[entry.url].data
-			if len(resp) == 1:
-				entry.name = resp[0].get("name")
-		return fn
+	if os.path.exists(fn) and os.path.getsize(fn):
+		dur = entry.get("duration")
+		if dur and not isinstance(dur, str) and isfinite(dur):
+			entry.stream = fn
+			ytdl = downloader.result()
+			if entry.url in ytdl.searched:
+				resp = ytdl.searched[entry.url].data
+				if len(resp) == 1:
+					entry.name = resp[0].get("name")
+			return fn
 	stream = entry.get("stream", "")
 	if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
 		entry.pop("stream", None)

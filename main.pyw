@@ -849,6 +849,7 @@ def setup_buttons():
 		sidebar.buttons.append(cdict(
 			name="Audio input",
 			sprite=microphone,
+			click=(lambda: None),
 			# click=enqueue_device,
 		))
 		reset_menu(full=False)
@@ -1421,27 +1422,34 @@ def prepare(entry, force=False, download=False):
 				if len(resp) == 1:
 					entry.name = resp[0].get("name")
 			return fn
+		elif force:
+			ytdl = downloader.result()
+			stream = ytdl.get_stream(entry, force=True, download=False)
+			entry.pop("lyrics", None)
+			entry.pop("surf", None)
+			entry.pop("lyrics_loading", None)
+			return stream
 	stream = entry.get("stream", "")
 	if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
 		entry.pop("stream", None)
 		stream = ""
 	if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
 		if not is_url(entry.url):
+			duration = entry.duration
 			if os.path.exists(entry.url):
 				stream = entry.stream = entry.url
-			duration = entry.duration
-			if not duration:
-				info = get_duration_2(stream)
-				duration = info[0]
-				if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
-					fi = stream
-					if not os.path.exists(fn):
-						fn = select_and_convert(fi)
-					duration = get_duration_2(fn)[0]
-					stream = entry.stream = fn
-				globals()["queue-length"] = -1
-			entry.duration = duration or entry.duration
-			return entry.stream
+				if not duration:
+					info = get_duration_2(stream)
+					duration = info[0]
+					if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
+						fi = stream
+						if not os.path.exists(fn):
+							fn = select_and_convert(fi)
+						duration = get_duration_2(fn)[0]
+						stream = entry.stream = fn
+					globals()["queue-length"] = -1
+				entry.duration = duration or entry.duration
+				return entry.stream
 		ytdl = downloader.result()
 		try:
 			resp = ytdl.search(entry.url)

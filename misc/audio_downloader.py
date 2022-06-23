@@ -550,13 +550,33 @@ shash = lambda s: base64.b64encode(hashlib.sha256(s.encode("utf-8")).digest()).r
 
 
 def round_min(x):
+	if type(x) is str:
+		if "." in x:
+			x = x.strip("0")
+			if len(x) > 8:
+				x = mpf(x)
+			else:
+				x = float(x)
+		else:
+			try:
+				return int(x)
+			except ValueError:
+				return float(x)
 	if type(x) is int:
 		return x
 	if type(x) is not complex:
 		if isfinite(x):
-			y = round(x)
-			if x == y:
-				return int(y)
+			if type(x) is globals().get("mpf", None):
+				y = int(x)
+				if x == y:
+					return y
+				f = float(x)
+				if str(x) == str(f):
+					return f
+			else:
+				y = math.round(x)
+				if x == y:
+					return int(y)
 		return x
 	else:
 		if x.imag == 0:
@@ -1709,12 +1729,14 @@ class AudioDownloader:
 		# If stream is still not found or is a soundcloud audio fragment playlist file, perform secondary youtube-dl search
 		if stream in (None, "none"):
 			data = self.search(entry["url"])
-			stream = data[0].setdefault("stream", data[0]["url"])
+			stream = data[0].get("stream") or data[0]["url"]
 			icon = data[0].setdefault("icon", data[0]["url"])
-		elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream)):
+			entry["duration"] = data[0].get("duration")
+		if not searched and (not is_url(stream) or not isfinite(float(entry.get("duration") or inf)) or stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream)):
 			data = self.extract(entry["url"])
-			stream = data[0].setdefault("stream", data[0]["url"])
+			stream = data[0].get("stream") or data[0]["url"]
 			icon = data[0].setdefault("icon", data[0]["url"])
+			entry.update(data[0])
 		entry["stream"] = stream
 		entry["icon"] = icon
 		if "googlevideo" in stream[:64]:

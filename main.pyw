@@ -1411,7 +1411,7 @@ def prepare(entry, force=False, download=False):
 	if not entry.url:
 		return
 	fn = "cache/~" + shash(entry.url) + ".pcm"
-	if os.path.exists(fn) and os.path.getsize(fn):
+	if os.path.exists(fn) and os.path.getsize(fn) and isfinite(entry.get("duration") or inf):
 		entry.stream = fn
 		ytdl = downloader.result()
 		if entry.url in ytdl.searched:

@@ -1982,7 +1982,7 @@ def unquote(s):
 		if (len(s) - 1) & 3 == 0:
 			s += b"="
 		return as_str(base64.urlsafe_b64decode(s))
-	return urllib.parse.unquote_plus(s)
+	return urllib.parse.unquote_plus(s.replace(" ", "+"))
 
 
 pt = None

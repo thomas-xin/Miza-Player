@@ -1709,14 +1709,19 @@ class AudioDownloader:
 		# If stream is still not found or is a soundcloud audio fragment playlist file, perform secondary youtube-dl search
 		if stream in (None, "none"):
 			data = self.search(entry["url"])
-			stream = data[0].setdefault("stream", data[0].url)
-			icon = data[0].setdefault("icon", data[0].url)
+			stream = data[0].setdefault("stream", data[0]["url"])
+			icon = data[0].setdefault("icon", data[0]["url"])
 		elif not searched and (stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream)):
 			data = self.extract(entry["url"])
-			stream = data[0].setdefault("stream", data[0].url)
-			icon = data[0].setdefault("icon", data[0].url)
+			stream = data[0].setdefault("stream", data[0]["url"])
+			icon = data[0].setdefault("icon", data[0]["url"])
 		entry["stream"] = stream
 		entry["icon"] = icon
+		if "googlevideo" in stream[:64]:
+			durstr = regexp("[&?]dur=([0-9\\.]+)").findall(stream)
+			if durstr:
+				entry["duration"] = round_min(durstr[0])
+		self.searched[entry["url"]].data[0].update(entry)
 		return stream
 
 	# Extracts full data for a single entry. Uses cached results for optimization.

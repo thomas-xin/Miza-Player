@@ -379,18 +379,27 @@ def setup_buttons():
 					if not os.path.exists(fn):
 						fn = fn[:-4] + ".json"
 					if os.path.exists(fn) and os.path.getsize(fn):
-						with open(fn, "rb") as f:
-							if zipfile.is_zipfile(f):
-								f.seek(0)
-								data = orjson.loads(zip2bytes(f.read()))
-							else:
-								f.seek(0)
-								data = json.load(f)
-						q = data.get("queue", ())
-						options.history.appendleft((choice, tuple(e["url"] for e in q)))
-						options.history = options.history.uniq(sort=False)[:64]
-						entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
-						queue.extend(entries)
+						fi = fn
+					else:
+						fi = "playlists/" + [item for item in os.listdir("playlists") if (item.endswith(".json") or item.endswith(".zip")) and unquote(item.rsplit(".", 1)[0]) == choice][0]
+					with open(fi, "rb") as f:
+						if zipfile.is_zipfile(f):
+							f.seek(0)
+							data = orjson.loads(zip2bytes(f.read()))
+						else:
+							f.seek(0)
+							data = json.load(f)
+					ytdl = downloader.result()
+					for e in data.get("queue", ()):
+						if e.get("url"):
+							url = e["url"]
+							if url not in ytdl.searched:
+								ytdl.searched[url] = cdict(t=time.time(), data=[astype(cdict, e)])
+					q = data.get("queue", ())
+					options.history.appendleft((choice, tuple(e["url"] for e in q)))
+					options.history = options.history.uniq(sort=False)[:64]
+					entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
+					queue.extend(entries)
 					index = sidebar.get("lastsel")
 					if control.shuffle and len(queue) > 1:
 						queue[bool(start):].shuffle()
@@ -416,8 +425,17 @@ def setup_buttons():
 						entries = deque()
 						for url in urls:
 							if url:
-								name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+								name = duration = None
+								if url in ytdl.searched:
+									resp = ytdl.searched[url].data
+									if len(resp) == 1:
+										name = resp[0].get("name")
+										duration = resp[0].get("duration")
+								if not name:
+									name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
 								entries.append(dict(name=name, url=url))
+								if duration:
+									entries[-1]["duration"] = duration
 						if entries:
 							entries = list(entries)
 							ytdl = downloader.result()
@@ -482,21 +500,27 @@ def setup_buttons():
 						if not os.path.exists(fn):
 							fn = fn[:-4] + ".json"
 						if os.path.exists(fn) and os.path.getsize(fn):
-							with open(fn, "rb") as f:
-								if zipfile.is_zipfile(f):
-									f.seek(0)
-									data = orjson.loads(zip2bytes(f.read()))
-								else:
-									f.seek(0)
-									data = json.load(f)
-							s = "\n".join(e["url"] for e in data.get("queue", ()) if e.get("url"))
+							fi = fn
 						else:
-							print(fn)
-							s = ""
+							fi = "playlists/" + [item for item in os.listdir("playlists") if (item.endswith(".json") or item.endswith(".zip")) and unquote(item.rsplit(".", 1)[0]) == choice][0]
+						with open(fi, "rb") as f:
+							if zipfile.is_zipfile(f):
+								f.seek(0)
+								data = orjson.loads(zip2bytes(f.read()))
+							else:
+								f.seek(0)
+								data = json.load(f)
+						ytdl = downloader.result()
+						for e in data.get("queue", ()):
+							if e.get("url"):
+								url = e["url"]
+								if url not in ytdl.searched:
+									ytdl.searched[url] = cdict(t=time.time(), data=[astype(cdict, e)])
+						s = "\n".join(e["url"] for e in data.get("queue", ()) if e.get("url"))
 						def edit_playlist_b(text):
 							if text is not None:
 								if not text:
-									os.remove(fn)
+									os.remove(fi)
 									submit(
 										easygui2.msgbox,
 										None,
@@ -504,12 +528,23 @@ def setup_buttons():
 										title="Success!",
 									)
 								else:
+									if fi != fn:
+										os.remove(fi)
 									urls = text.splitlines()
 									entries = deque()
 									for url in urls:
 										if url:
-											name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+											name = duration = None
+											if url in ytdl.searched:
+												resp = ytdl.searched[url].data
+												if len(resp) == 1:
+													name = resp[0].get("name")
+													duration = resp[0].get("duration")
+											if not name:
+												name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
 											entries.append(dict(name=name, url=url))
+											if duration:
+												entries[-1]["duration"] = duration
 									if entries:
 										entries = list(entries)
 										data = dict(queue=entries, stats={})
@@ -551,13 +586,14 @@ def setup_buttons():
 					)
 				def delete_playlist_a(choice):
 					if choice:
-						fn = quote(choice)[:244]
-						for path in (
-							"playlists/" + fn + ".zip",
-							"playlists/" + fn + ".json",
-						):
-							if os.path.exists(path):
-								os.remove(path)
+						fn = "playlists/" + quote(choice)[:244] + ".zip"
+						if not os.path.exists(fn):
+							fn = fn[:-4] + ".json"
+						if os.path.exists(fn) and os.path.getsize(fn):
+							fi = fn
+						else:
+							fi = "playlists/" + [item for item in os.listdir("playlists") if (item.endswith(".json") or item.endswith(".zip")) and unquote(item.rsplit(".", 1)[0]) == choice][0]
+						os.remove(fi)
 						submit(
 							easygui2.msgbox,
 							None,
@@ -3295,10 +3331,16 @@ addp.result()
 
 try:
 	if options.control.preserve and os.path.exists("dump.json"):
+		ytdl = downloader.result()
 		with open("dump.json", "rb") as f:
 			data = json.load(f)
 		if queue:
 			data.pop("pos", None)
+		for e in data.get("queue", ()):
+			if e.get("url"):
+				url = e["url"]
+				if url not in ytdl.searched:
+					ytdl.searched[url] = cdict(t=time.time(), data=[astype(cdict, e)])
 		entries = [cdict(e, duration=e.get("duration")) for e in data.get("queue", ())]
 		queue.extend(entries)
 		if data.get("editor"):

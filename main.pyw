@@ -3865,6 +3865,8 @@ try:
 		DISP.mmoved = False
 		t = pc()
 		delay = t - last_tick
+		if delay >= 8:
+			restart_mixer()
 		DISP.fps = 1 / max(d / 4, last_ratio)
 		d2 = max(0.001, d - delay)
 		last_ratio = (last_ratio * 7 + t - last_precise) / 8

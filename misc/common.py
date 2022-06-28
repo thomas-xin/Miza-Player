@@ -1988,7 +1988,7 @@ def unquote(s):
 pt = None
 def pc():
 	global pt
-	t = time.perf_counter()
+	t = time.time()
 	if not pt:
 		pt = t
 		return 0

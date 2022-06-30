@@ -3842,6 +3842,7 @@ try:
 			if tick < 2 or not tick % 15:
 				DISP.switch_to()
 				DISP.clear()
+				DISP.update_keys()
 			elif not options.spectrogram:
 				DISP.fill(
 					(0,) * 3,

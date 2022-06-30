@@ -1508,6 +1508,34 @@ def start_display():
 		"LCTRL", "RCTRL", "LSHIFT", "RSHIFT", "LALT", "RALT", "LMETA", "RMETA",
 	):
 		KEYMAP[getattr(K1, k)] = getattr(K2, "K_" + k)
+
+	if os.name == "nt":
+		DISP.key_map = key_map = {
+			# mouse.LEFT: 0x1,
+			# mouse.RIGHT: 0x2,
+			# mouse.MIDDLE: 0x4,
+			K2.K_BACKSPACE: 0x8,
+			K2.K_TAB: 0x9,
+			# K_CLEAR: 0xC,
+			K2.K_RETURN: 0xD,
+			K2.K_ESCAPE: 0x1B,
+			K2.K_SPACE: 0x20,
+			K2.K_LEFT: 0x25,
+			K2.K_UP: 0x26,
+			K2.K_RIGHT: 0x27,
+			K2.K_DOWN: 0x28,
+			K2.K_DELETE: 0x2E,
+			K2.K_LSHIFT: 0xA0,
+			K2.K_RSHIFT: 0xA1,
+			K2.K_LCTRL: 0xA2,
+			K2.K_RCTRL: 0xA3,
+			K2.K_LALT: 0xA4,
+			K2.K_RALT: 0xA5,
+		}
+		key_map.update({K2.__dict__[f"K_{i}"]: i + 0x30 for i in range(10)})
+		key_map.update({K2.__dict__[f"K_{chr(i + 32)}"]: i for i in range(65, 91)})
+		key_map.update({K2.__dict__[f"K_F{i}"]: i + 0x70 - 1 for i in range(1, 16)})
+
 	@DISP.event
 	def on_key_press(symbol, modifiers):
 		t = pc()
@@ -1523,6 +1551,24 @@ def start_display():
 			DISP.krelease[KEYMAP[symbol]] = pc()
 		except LookupError:
 			pass
+
+	def display_update_keys():
+		if os.name != "nt":
+			return
+		user32 = ctypes.windll.user32
+		for k, s in enumerate(DISP.kheld):
+			if not s:
+				continue
+			try:
+				v = DISP.key_map[k]
+			except KeyError:
+				continue
+			s = user32.GetAsyncKeyState(v)
+			if not s:
+				if v > 4:
+					DISP.kheld[k] = 0
+					DISP.krelease[k] = pc()
+	DISP.update_keys = display_update_keys
 
 	@DISP.event
 	def on_context_lost():

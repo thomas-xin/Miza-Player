@@ -53,12 +53,6 @@ with open("requirements.txt", "rb") as f:
 
 if os.name == "nt":
 	modlist.append("pipwin>=0.5.1")
-else:
-	modlist.extend((
-		"pyopengl>=3.1.5",
-		"pyopengl-accelerate>=3.1.5",
-		"glfw>=2.3.0",
-	))
 
 try:
 	import pkg_resources, struct
@@ -69,6 +63,7 @@ except ModuleNotFoundError:
 x = sys.version_info[1]
 psize = None
 
+modified = False
 installing = []
 install = lambda m: installing.append(subprocess.Popen([sys.executable, "-m", "pip", "install", "--upgrade", "--user", m]))
 
@@ -95,33 +90,28 @@ for mod in modlist:
 
 # Run pip on any modules that need installing
 if installing:
+	modified = True
 	print("Installing missing or outdated modules, please wait...")
 	subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "pip"])
-	for i in installing:
-		i.wait()
+	while installing:
+		i = installing.pop(0)
+		if i.wait():
+			if getattr(i, "attempts", 0) >= 3:
+				continue
+			proc = subprocess.Popen(proc.args)
+			proc.attempts = getattr(i, "attempts", 0) + 1
+			installing.append(proc)
 
 try:
 	v = pkg_resources.get_distribution("yt_dlp").version
-	assert v >= "2022.3.8.1"
+	assert v >= "2022.6.29"
 except:
 	traceback.print_exc()
-	subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/yt-dlp/yt-dlp.git", "--upgrade", "--user"])
+	modified = True
+	resp = subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/yt-dlp/yt-dlp.git", "--upgrade", "--user"])
+	v = pkg_resources.get_distribution("yt_dlp").version
+	assert v
 
-# if os.name == "nt":
-	# for k, v in (
-		# ("pyopengl", "3.1.5"),
-		# ("pyopengl-accelerate", "3.1.5"),
-		# ("glfw", "2.3.0"),
-	# ):
-		# try:
-			# if pkg_resources.get_distribution(k).version < v:
-				# raise ValueError
-		# except:
-			# subprocess.run([sys.executable, "-m", "pipwin", "install", k])
-			# try:
-				# if pkg_resources.get_distribution(k).version < v:
-					# raise ValueError
-			# except:
-				# subprocess.run([sys.executable, "-m", "pipwin", "refresh"])
-				# subprocess.run([sys.executable, "-m", "pip", "-y", "uninstall", k])
-				# subprocess.run([sys.executable, "-m", "pipwin", "install", k])
+if modified:
+	subprocess.Popen([sys.executable] + sys.argv)
+	raise SystemExit

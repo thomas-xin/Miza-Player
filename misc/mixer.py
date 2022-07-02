@@ -521,7 +521,7 @@ def duration_est():
 					raise
 			if hasattr(channel, "wait"):
 				fut = submit(channel.wait)
-				fut.result(timeout=1.5)
+				fut.result(timeout=3)
 		except:
 			print_exc()
 			PROC.terminate()

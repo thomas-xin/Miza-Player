@@ -861,6 +861,7 @@ def setup_buttons():
 				if selected:
 					common.OUTPUT_DEVICE = selected
 					globals()["DEVICE"] = get_device(common.OUTPUT_DEVICE)
+					print("Audio device changed.")
 					restart_mixer()
 			easygui2.choicebox(
 				output_device_a,
@@ -1646,7 +1647,7 @@ def skip():
 			sidebar.particles.append(e)
 		t = pc()
 		if t >= last_save + 10:
-			submit(save_settings)
+			globals()["last_save_fut"] = submit(save_settings)
 			globals()["last_save"] = t
 		if queue:
 			return enqueue(queue[0])
@@ -1868,11 +1869,13 @@ def mixer_stdout():
 				elif mixer and not mixer.is_running():
 					time.sleep(2)
 					if mixer and not mixer.is_running():
+						print("Mixer has crashed.")
 						restart_mixer()
 			else:
 				if not mixer or not mixer.is_running():
 					time.sleep(2)
 					if mixer and not mixer.is_running():
+						print("Mixer has crashed.")
 						restart_mixer()
 			if not s:
 				time.sleep(0.05)
@@ -3268,6 +3271,7 @@ def draw_menu():
 
 pdata = None
 def save_settings():
+	print("autosaving...")
 	temp = options.screensize
 	options.screensize = screensize2
 	if options != orig_options:
@@ -3329,6 +3333,7 @@ kheld = pygame.key.get_pressed()
 kprev = kclick = KeyList((None,)) * len(kheld)
 delay = 0
 last_tick = 0
+last_played = 0
 last_precise = 0
 last_ratio = 0
 status_freq = 6000
@@ -3865,9 +3870,13 @@ try:
 		d = 1 / fps
 		DISP.mmoved = False
 		t = pc()
+		if (not unfocused and not minimised) and is_active():
+			last_played = t
+		delplay = t - last_played
 		delay = t - last_tick
-		if delay >= 8:
+		if delay >= 8 or delplay >= 3600:
 			restart_mixer()
+			last_tick = last_played = t
 		DISP.fps = 1 / max(d / 4, last_ratio)
 		d2 = max(0.001, d - delay)
 		last_ratio = (last_ratio * 7 + t - last_precise) / 8
@@ -3889,6 +3898,8 @@ except Exception as ex:
 	futs.add(submit(reqx.delete, mp))
 	futs.add(submit(update_collections2))
 	DISP.close()
+	if globals().get("last_save_fut"):
+		last_save_fut.result()
 	save_settings()
 	if restarting:
 		futs.add(submit(os.system, f"start /MIN cmd /k {sys.executable} main.pyw"))

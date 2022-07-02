@@ -425,7 +425,7 @@ def start_mixer(devicename=None):
 		pygame.display.init()
 		start_display()
 	else:
-		print("Mixer subprocess has crashed; restarting...")
+		print("Restarting mixer subprocess...")
 	mixer = psutil.Popen(
 		(sys.executable, "-O", "misc/mixer.py"),
 		stdin=subprocess.PIPE,

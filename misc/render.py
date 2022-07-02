@@ -730,7 +730,7 @@ def animate_ripple(changed=False):
 		glColorPointer(4, GL_FLOAT, 0, c.ravel().ctypes)
 		verts.T[-1][:] = hi
 		glVertexPointer(3, GL_FLOAT, 0, verts.ravel().ctypes)
-		glDrawArrays(GL_LINES, 0, len(c))
+		glDrawArrays(GL_LINES, 0, len(c.ravel()) // 4)
 		if is_active():
 			c.T[-1] *= r
 

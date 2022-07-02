@@ -724,15 +724,17 @@ def animate_ripple(changed=False):
 			zs += x
 		rva = np.repeat(vertarray, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
 		linearray.append([colours, vertarray, rva])
-	r = 2 ** ((len(linearray) - 2) / len(linearray) - 1)
+	r = 1 if not linearray else 2 ** ((len(linearray) - 2) / len(linearray) - 1)
 
-	for c, _, verts in linearray:
-		glColorPointer(4, GL_FLOAT, 0, c.ravel().ctypes)
+	for cols, _, verts in linearray:
 		verts.T[-1][:] = hi
-		glVertexPointer(3, GL_FLOAT, 0, verts.ravel().ctypes)
-		glDrawArrays(GL_LINES, 0, len(c.ravel()) // 4)
+		ci = np.require(cols.ravel(), requirements="CA")
+		vi = np.require(verts.ravel(), requirements="CA")
+		glColorPointer(4, GL_FLOAT, 0, ci.ctypes)
+		glVertexPointer(3, GL_FLOAT, 0, vi.ctypes)
+		glDrawArrays(GL_LINES, 0, len(ci) // 4)
 		if is_active():
-			c.T[-1] *= r
+			cols.T[-1] *= r
 
 
 # r = 23 / 24

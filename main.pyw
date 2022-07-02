@@ -2579,15 +2579,19 @@ def render_settings(dur, ignore=False):
 			elif mclick[0]:
 				aediting[opt] = True
 			elif mclick[1]:
-				def opt_set_a(enter):
+				def opt_set_a(enter, opt):
 					if enter:
 						v = round_min(float(safe_eval(enter)) / 100)
 						aediting[opt] = True
+						orig, options.audio[opt] = options.audio[opt], v
+						if orig != v:
+							mixer.submit(f"~setting {opt} {v}", force=ignore or opt == "volume" or not queue)
 				easygui2.enterbox(
 					opt_set_a,
 					opt.capitalize(),
 					"Miza Player",
 					str(round_min(options.audio[opt] * 100)),
+					args=(opt,),
 				)
 			if aediting[opt]:
 				orig, options.audio[opt] = options.audio[opt], v

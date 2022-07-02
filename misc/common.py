@@ -1820,20 +1820,21 @@ class cbfunc:
 	def __init__(self, sub):
 		self.sub = sub
 
-	def __call__(self, *args, **kwargs):
+	def __call__(self, *argv, args=(), **kwargs):
 		DISP.kclick.reset()
 		if easygui2.lock:
 			return
 		easygui2.lock = True
-		self.cb = args[0] if args else None
-		fut = self.exc.submit(self.sub, *args[1:], **kwargs)
+		self.cb = argv[0] if argv else None
+		self.args = args
+		fut = self.exc.submit(self.sub, *argv[1:], **kwargs)
 		fut.add_done_callback(self.done)
 		return fut
 
 	def done(self, fut):
 		try:
 			if callable(self.cb):
-				self.cb(fut.result())
+				self.cb(fut.result(), *self.args)
 		except:
 			print_exc()
 		finally:

@@ -3870,7 +3870,7 @@ try:
 		d = 1 / fps
 		DISP.mmoved = False
 		t = pc()
-		if (not unfocused and not minimised) and is_active():
+		if (not unfocused and not minimised) or is_active():
 			last_played = t
 		delplay = t - last_played
 		delay = t - last_tick

@@ -302,6 +302,7 @@ def render_sidebar(dur=0):
 			selectable = i in selectables
 			if selectable or entry.get("selected"):
 				if mclick[1] and i == etarget:
+					entry.selected = True
 					sidebar.last_selected = entry
 					sidebar.lastsel = i
 					sidebar.menu = cdict(

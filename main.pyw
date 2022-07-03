@@ -1409,7 +1409,14 @@ def render_lyrics(entry):
 	except:
 		print_exc()
 
+def reset_entry(entry):
+	entry.pop("lyrics", None)
+	entry.pop("surf", None)
+	entry.pop("lyrics_loading", None)
+	return entry
+
 def prepare(entry, force=False, download=False):
+	reset_entry(entry)
 	if not entry.url:
 		return
 	fn = "cache/~" + shash(entry.url) + ".pcm"
@@ -1426,9 +1433,6 @@ def prepare(entry, force=False, download=False):
 		elif force:
 			ytdl = downloader.result()
 			stream = ytdl.get_stream(entry, force=True, download=False)
-			entry.pop("lyrics", None)
-			entry.pop("surf", None)
-			entry.pop("lyrics_loading", None)
 			return stream
 	stream = entry.get("stream", "")
 	if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
@@ -1471,9 +1475,7 @@ def prepare(entry, force=False, download=False):
 			return
 		else:
 			if entry.name != data.get("name"):
-				entry.pop("lyrics", None)
-				entry.pop("surf", None)
-				entry.pop("lyrics_loading", None)
+				reset_entry(entry)
 				if len(resp) == 1:
 					submit(render_lyrics, queue[0])
 			globals()["queue-length"] = -1

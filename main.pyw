@@ -423,6 +423,8 @@ def setup_buttons():
 					if text:
 						urls = text.splitlines()
 						entries = deque()
+						futs = deque()
+						futm = {}
 						for url in urls:
 							if url:
 								name = duration = None
@@ -431,12 +433,31 @@ def setup_buttons():
 									if len(resp) == 1:
 										name = resp[0].get("name")
 										duration = resp[0].get("duration")
+								else:
+									if len(futs) >= 8:
+										try:
+											futs.popleft().result()
+										except:
+											print_exc()
+									fut = submit(ytdl.search, url)
+									futs.append(fut)
+									futm[len(entries)] = fut
 								if not name:
 									name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
 								entries.append(dict(name=name, url=url))
 								if duration:
 									entries[-1]["duration"] = duration
 						if entries:
+							for k, v in futm.items():
+								try:
+									entry = v.result()[0]
+								except:
+									print_exc()
+								else:
+									entries[k]["name"] = entry["name"]
+									if entry.get("duration"):
+										entries[k]["duration"] = entry["duration"]
+									entries[k]["url"] = entry["url"]
 							entries = list(entries)
 							ytdl = downloader.result()
 							url = entries[0]["url"]
@@ -532,6 +553,8 @@ def setup_buttons():
 										os.remove(fi)
 									urls = text.splitlines()
 									entries = deque()
+									futs = deque()
+									futm = {}
 									for url in urls:
 										if url:
 											name = duration = None
@@ -540,12 +563,31 @@ def setup_buttons():
 												if len(resp) == 1:
 													name = resp[0].get("name")
 													duration = resp[0].get("duration")
+											else:
+												if len(futs) >= 8:
+													try:
+														futs.popleft().result()
+													except:
+														print_exc()
+												fut = submit(ytdl.search, url)
+												futs.append(fut)
+												futm[len(entries)] = fut
 											if not name:
 												name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
 											entries.append(dict(name=name, url=url))
 											if duration:
 												entries[-1]["duration"] = duration
 									if entries:
+										for k, v in futm.items():
+											try:
+												entry = v.result()[0]
+											except:
+												print_exc()
+											else:
+												entries[k]["name"] = entry["name"]
+												if entry.get("duration"):
+													entries[k]["duration"] = entry["duration"]
+												entries[k]["url"] = entry["url"]
 										entries = list(entries)
 										data = dict(queue=entries, stats={})
 										out = "playlists/" + quote(choice)[:244] + ".json"
@@ -669,6 +711,8 @@ def setup_buttons():
 						fut.result()
 					except (FileNotFoundError, PermissionError):
 						pass
+				ytdl = downloader.result()
+				ytdl.searched.clear()
 				return easygui2.msgbox(
 					None,
 					"Cache successfully cleared!",

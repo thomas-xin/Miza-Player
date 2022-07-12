@@ -2070,7 +2070,7 @@ def round_min(x):
 	if type(x) is str:
 		if "." in x:
 			x = x.strip("0")
-			if len(x) > 8:
+			if len(x) > 8 and "mpf" in globals():
 				x = mpf(x)
 			else:
 				x = float(x)

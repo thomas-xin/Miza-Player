@@ -1300,6 +1300,7 @@ def copy_entry(e):
 lyrics_cache = {}
 lyrics_renders = {}
 def render_lyrics(entry):
+	entry.lyrics_loading = True
 	lyrics_size = control.lyrics_size
 	try:
 		name = entry.name
@@ -1456,7 +1457,10 @@ def render_lyrics(entry):
 def reset_entry(entry):
 	entry.pop("lyrics", None)
 	entry.pop("surf", None)
-	entry.pop("lyrics_loading", None)
+	if entry.get("url") == queue[0].get("url"):
+		submit(render_lyrics, queue[0])
+	else:
+		entry.pop("lyrics_loading", None)
 	return entry
 
 def prepare(entry, force=False, download=False):
@@ -2025,7 +2029,6 @@ def ensure_next(e):
 	e.duration = e.get("duration") or False
 	e.pop("research", None)
 	if not e.get("lyrics_loading") and not e.get("lyrics"):
-		e.lyrics_loading = True
 		submit(render_lyrics, e)
 
 def enqueue(entry, start=True):
@@ -2034,7 +2037,6 @@ def enqueue(entry, start=True):
 			return None, inf
 		while queue[0] is None:
 			time.sleep(0.5)
-		queue[0].lyrics_loading = True
 		submit(render_lyrics, queue[0])
 		stream, duration = start_player()
 		progress.num = 0

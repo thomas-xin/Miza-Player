@@ -242,13 +242,17 @@ def bsend(*args):
 print = lambda *args, sep=" ", end="\n": point(repr(str(sep).join(map(str, args)) + end))
 print_exc = lambda: point(repr(traceback.format_exc()))
 
-def astype(obj, t, *args, **kwargs):
+def astype(obj, types, *args, **kwargs):
+	if isinstance(types, tuple):
+		tl = tuple(t for t in types if isinstance(t, type))
+	else:
+		tl = None
+	tl = tl or types
 	try:
-		if not isinstance(obj, t):
-			if callable(t):
-				return t(obj, *args, **kwargs)
-			return t
+		if not isinstance(obj, tl):
+			raise TypeError
 	except TypeError:
+		t = types[0] if isinstance(types, tuple) else types
 		if callable(t):
 			return t(obj, *args, **kwargs)
 		return t
@@ -512,26 +516,27 @@ def duration_est():
 	last_mt = 0
 	last_fs = 0
 	while True:
-		try:
-			t = pc()
-			if floor(t / 8) * 8 > LT:
-				globals()["LT"] = t
-				cc = sc.get_speaker(DEVICE.id).channels
-				if cc != channel.channels:
-					raise
-			if hasattr(channel, "wait"):
-				fut = submit(channel.wait)
-				fut.result(timeout=3)
-		except:
-			print_exc()
-			PROC.terminate()
+		if DEVICE:
+			try:
+				t = time.time()
+				if floor(t / 8) * 8 > LT:
+					globals()["LT"] = t
+					cc = sc.get_speaker(DEVICE.id).channels
+					if cc != channel.channels:
+						raise
+				if hasattr(channel, "wait"):
+					fut = submit(channel.wait)
+					fut.result(timeout=3)
+			except:
+				print_exc()
+				PROC.terminate()
 		try:
 			if not is_minimised() and stream and not is_url(stream) and (stream[0] != "<" or stream[-1] != ">") and os.path.exists(stream):
 				stat = None
 				if last_fn == stream:
 					stat = os.stat(stream)
 					if stat.st_mtime == last_mt and stat.st_size == last_fs:
-						time.sleep(1)
+						time.sleep(2)
 						continue
 				if not stat:
 					stat = os.stat(stream)
@@ -1407,7 +1412,7 @@ def play(pos):
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						t = pc()
+						t = time.time()
 						if floor(t) > LT:
 							globals()["LT"] = t
 							cc = sc.get_speaker(DEVICE.id).channels
@@ -1636,7 +1641,7 @@ def piano_player():
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						t = pc()
+						t = time.time()
 						if floor(t) > LT:
 							globals()["LT"] = t
 							cc = sc.get_speaker(DEVICE.id).channels
@@ -1934,6 +1939,15 @@ while not sys.stdin.closed and failed < 8:
 					OUTPUT_VIDEO.wait()
 					point("~V")
 				OUTPUT_FILE = OUTPUT_VIDEO = None
+			continue
+		if command.startswith("~eval"):
+			s = command[6:]
+			try:
+				code = compile(s, "<terminal.py>", "eval")
+			except:
+				code = compile(s, "<terminal.py>", "exec")
+			resp = eval(code, globals())
+			point(resp)
 			continue
 		if command.startswith("~setting"):
 			s = command[9:]

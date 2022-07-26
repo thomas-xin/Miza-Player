@@ -1743,6 +1743,14 @@ class AudioDownloader:
 			durstr = regexp("[&?]dur=([0-9\\.]+)").findall(stream)
 			if durstr:
 				entry["duration"] = round_min(durstr[0])
+		if entry["url"] not in self.searched:
+			self.searched[entry["url"]] = cdict(
+				t=utc(),
+				data=[cdict(entry)],
+			)
+		else:
+			with suppress(KeyError):
+				self.searched[entry["url"]]["duration"] = entry["duration"]
 		self.searched[entry["url"]].data[0].update(entry)
 		return stream
 

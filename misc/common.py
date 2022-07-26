@@ -168,13 +168,17 @@ import math
 from math import *
 
 
-def astype(obj, t, *args, **kwargs):
+def astype(obj, types, *args, **kwargs):
+	if isinstance(types, tuple):
+		tl = tuple(t for t in types if isinstance(t, type))
+	else:
+		tl = None
+	tl = tl or types
 	try:
-		if not isinstance(obj, t):
-			if callable(t):
-				return t(obj, *args, **kwargs)
-			return t
+		if not isinstance(obj, tl):
+			raise TypeError
 	except TypeError:
+		t = types[0] if isinstance(types, tuple) else types
 		if callable(t):
 			return t(obj, *args, **kwargs)
 		return t
@@ -2067,39 +2071,26 @@ def round(x, y=None):
 	return x
 
 def round_min(x):
-	if type(x) is str:
+	if isinstance(x, str):
 		if "." in x:
-			x = x.strip("0")
-			if len(x) > 8 and "mpf" in globals():
-				x = mpf(x)
-			else:
-				x = float(x)
+			x = float(x.strip("0"))
 		else:
 			try:
 				return int(x)
 			except ValueError:
 				return float(x)
-	if type(x) is int:
+	if isinstance(x, int):
 		return x
-	if type(x) is not complex:
-		if isfinite(x):
-			if type(x) is globals().get("mpf", None):
-				y = int(x)
-				if x == y:
-					return y
-				f = float(x)
-				if str(x) == str(f):
-					return f
-			else:
-				y = math.round(x)
-				if x == y:
-					return int(y)
-		return x
-	else:
+	if isinstance(x, complex):
 		if x.imag == 0:
 			return round_min(x.real)
 		else:
 			return round_min(complex(x).real) + round_min(complex(x).imag) * (1j)
+	if isfinite(x):
+		y = math.round(x)
+		if x == y:
+			return int(y)
+	return x
 
 def round_random(x):
 	try:

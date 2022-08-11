@@ -109,7 +109,8 @@ importer = MultiAutoImporter(
 	pool=exc,
 	_globals=globals(),
 )
-import requests, psutil, soundcard, ctypes, struct, io
+import requests, psutil, ctypes, struct, io
+import soundcard as sc
 
 async_wait = lambda: time.sleep(0.005)
 sys.setswitchinterval(0.008)
@@ -228,16 +229,25 @@ if update_collections:
 		print("Sound library extraction complete.")
 
 def state(i):
-	mixer.stdin.write(f"~state {int(i)}\n".encode("utf-8"))
-	mixer.stdin.flush()
+	try:
+		mixer.stdin.write(f"~state {int(i)}\n".encode("utf-8"))
+		mixer.stdin.flush()
+	except:
+		print_exc()
 
 def clear():
-	mixer.stdin.write(f"~clear\n".encode("utf-8"))
-	mixer.stdin.flush()
+	try:
+		mixer.stdin.write(f"~clear\n".encode("utf-8"))
+		mixer.stdin.flush()
+	except:
+		print_exc()
 
 def drop(i):
-	mixer.stdin.write(f"~drop {i}\n".encode("utf-8"))
-	mixer.stdin.flush()
+	try:
+		mixer.stdin.write(f"~drop {i}\n".encode("utf-8"))
+		mixer.stdin.flush()
+	except:
+		print_exc()
 
 mixer_lock = None
 laststart = set()
@@ -408,8 +418,8 @@ if not isinstance(options.control.get("spiral-vertices"), list):
 import soundcard as sc
 CFFI = cffi.FFI()
 
-DEVICE = sc.default_speaker()
-OUTPUT_DEVICE = DEVICE.name
+DEVICE = None
+OUTPUT_DEVICE = ""
 reset_menu = lambda *args, **kwargs: None
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "TRUE"
@@ -478,7 +488,7 @@ def start_mixer(devicename=None):
 			s.append(f"~setting insights {options.setdefault('insights', 1)}\n")
 			if devicename:
 				s.append(f"~output {devicename}\n")
-			elif OUTPUT_DEVICE:
+			else:
 				s.append(f"~output {OUTPUT_DEVICE}\n")
 			mixer.stdin.write("".join(s).encode("utf-8"))
 			try:

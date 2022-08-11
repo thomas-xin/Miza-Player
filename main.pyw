@@ -752,7 +752,7 @@ def setup_buttons():
 		toolbar.buttons.append(cdict(
 			name="Editor",
 			image=edit,
-			click=edit_1,
+			click=None,
 		))
 		reset_menu(full=False)
 		repeat = button_images.repeat.result()
@@ -903,15 +903,19 @@ def setup_buttons():
 			f = f"%0{len(str(len(devices)))}d"
 			def output_device_a(selected):
 				if selected:
+					if "\x7f" in selected:
+						selected = None
 					common.OUTPUT_DEVICE = selected
-					globals()["DEVICE"] = get_device(common.OUTPUT_DEVICE)
+					# globals()["DEVICE"] = get_device(common.OUTPUT_DEVICE)
 					print("Audio device changed.")
 					restart_mixer()
+			devicenames = ["Default\x7f" + sc.default_speaker().name]
+			devicenames.extend(d.name for d in devices)
 			easygui2.choicebox(
 				output_device_a,
 				"Change the output audio device!",
 				title="Miza Player",
-				choices=[d.name for d in devices],
+				choices=devicenames,
 			)
 		def end_recording():
 			mixer.submit("~record")
@@ -1786,12 +1790,20 @@ def wait_on():
 			print_exc()
 		time.sleep(1)
 
-def get_device(name, default=True):
+def get_device(name=None):
+	if not name:
+		return
+	global DEVICE
 	try:
-		return sc.get_speaker(name)
+		DEVICE = sc.get_speaker(name)
 	except (IndexError, RuntimeError):
-		if default:
-			return sc.default_speaker()
+		pass
+	else:
+		point("~W")
+		return DEVICE
+	point(f"~w {OUTPUT_DEVICE}")
+	DEVICE = sc.default_speaker()
+	return DEVICE
 
 PG_USED = None
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
@@ -1899,7 +1911,6 @@ def sc_player(d):
 	return player
 
 get_channel = lambda: sc_player(get_device(common.OUTPUT_DEVICE))
-channel = get_channel()
 
 def mixer_stdout():
 	try:
@@ -2338,7 +2349,7 @@ def update_menu():
 					sidebar.menu = 0
 					if callable(button.click):
 						button.click()
-					else:
+					elif button.click:
 						button.click[min(mclick.index(1), len(button.click) - 1)]()
 			except AttributeError:
 				while "rect" not in button:
@@ -2358,7 +2369,7 @@ def update_menu():
 				sidebar.menu = 0
 				if callable(click):
 					click()
-				else:
+				elif click:
 					click[min(mclick.index(1), len(click) - 1)]()
 	else:
 		for button in sidebar.buttons:
@@ -3442,6 +3453,7 @@ try:
 			submit(render_lyrics, queue[0])
 	else:
 		DISP.set_visible(True)
+	toolbar.editor = 0
 	tick = 0
 	while True:
 		if not tick + 2 & 8191:
@@ -3926,7 +3938,7 @@ try:
 			last_played = t
 		delplay = t - last_played
 		delay = t - last_tick
-		if delay >= 8 or delplay >= 3600:
+		if delay >= 8 or delplay >= 3600 and common.OUTPUT_DEVICE:
 			restart_mixer()
 			last_tick = last_played = t
 		DISP.fps = 1 / max(d / 4, last_ratio)

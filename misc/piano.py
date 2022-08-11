@@ -1,4 +1,5 @@
 editor = player.editor
+channel = None
 note_names = (
 	"C",
 	"C#",
@@ -284,6 +285,8 @@ BUFSIZ = round(48000 * 2 * 4 / 30)
 reset_buff = np.zeros(BUFSIZ, dtype=np.float32)
 def editor_update():
 	globals()["editor"] = player.editor
+	if not globals()["channel"]:
+		globals()["channel"] = get_channel()
 	mixer.clear()
 	player.broken = False
 	editor.playing_notes.clear()

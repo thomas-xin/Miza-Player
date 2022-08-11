@@ -45,12 +45,13 @@ class MultiAutoImporter:
 			_globals.update(zip(args, futs))
 
 importer = MultiAutoImporter(
-	"numpy, math, cffi, soundcard, pygame, random, hashlib, orjson, time, traceback, base64",
+	"numpy, math, cffi, pygame, pyglet, random, hashlib, orjson, time, traceback, base64",
 	"httpx, contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
 	"psutil", "subprocess, re",
 	pool=exc,
 	_globals=globals(),
 )
+import soundcard as sc
 math.force()
 from math import *
 numpy.force()
@@ -258,10 +259,9 @@ def astype(obj, types, *args, **kwargs):
 		return t
 	return obj
 
-
-sc = soundcard.force()
-
-def get_device(name):
+def get_device(name=None):
+	if not name:
+		return
 	global DEVICE
 	try:
 		DEVICE = sc.get_speaker(name)
@@ -274,55 +274,139 @@ def get_device(name):
 	DEVICE = sc.default_speaker()
 	return DEVICE
 
+audio_format = pyglet.media.codecs.AudioFormat(
+	channels=2,
+	sample_size=16,
+	sample_rate=48000,
+)
+
+class Source(pyglet.media.Source):
+
+	emptybuff = b"\x00" * 8192
+	audio_format = audio_format
+
+	def __init__(self):
+		self.buffer = deque()
+		self.position = 0
+
+	def get_audio_data(self, num_bytes, compensation_time=0):
+		if not self.buffer:
+			data = self.emptybuff[:num_bytes]
+		elif len(self.buffer) == 1:
+			data = bytes(self.buffer.popleft())
+		else:
+			data = b""
+			while len(self.buffer) > 1 and len(data) < num_bytes:
+				data += self.buffer.popleft()
+		if len(data) > num_bytes:
+			data, extra = data[:num_bytes], data[num_bytes:]
+			self.buffer.appendleft(extra)
+		pos = self.position
+		ts = max(0.004, len(data) / (audio_format.sample_rate * audio_format.sample_size * audio_format.channels / 8))
+		self.position += ts
+		return pyglet.media.codecs.AudioData(data, len(data), pos, inf, [])
+
+class Player(pyglet.media.Player):
+
+	type = "pyglet"
+	peak = 32767
+	dtype = np.int16
+	channels = 2
+
+	def __init__(self):
+		super().__init__()
+		self.paused = False
+		self.entry = Source()
+		self.wait()
+		point(self.entry)
+
+	def write(self, data):
+		self.wait()
+		data = data.data
+		if len(self.entry.buffer) >= 1:
+			ts = max(0.004, len(data) / (audio_format.sample_rate * audio_format.sample_size * audio_format.channels / 8)) - 0.004
+			time.sleep(ts)
+		if not self.paused:
+			self.entry.buffer.append(data)
+
+	def wait(self):
+		while self.playing and not self.paused and self.source and len(self.entry.buffer) >= 4:
+			async_wait()
+		if not self.entry.buffer:
+			# for i in range(3):
+				# self.entry.buffer.append(self.entry.emptybuff)
+			super().pause()
+		if len(self.entry.buffer) >= 1:
+			if not self.source:
+				self.queue(self.entry)
+			if not self.paused and not self.playing:
+				self.play()
+
+	def pause(self):
+		self.paused = True
+		# self.entry.buffer.clear()
+		# super().pause()
+
+	def resume(self):
+		self.paused = False
+		self.play()
+
+	stop = pause
+	# def stop(self):
+		# self.pause()
+
 PG_USED = None
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
-def sc_player(d):
-	cc = d.channels
-	t = (d.name, cc)
-	try:
-		if not PG_USED or PG_USED == t:
-			raise RuntimeError
-		player = d.player(SR, cc, 2048)
-	except RuntimeError:
-		if not PG_USED:
-			pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
-		globals()["PG_USED"] = t
-		player = pygame.mixer
-		player.type = "pygame"
-		player.dtype = np.int16
-		player.peak = 32767
-		player.resume = player.unpause
-		def stop():
-			player._data_ = ()
-		player.pause = stop
-		player.stop = stop
-		try:
-			player.resume()
-		except:
-			print_exc()
+def sc_player(d=None):
+	if not d:
+		player = Player()
 	else:
-		player.__enter__()
-		player.type = "soundcard"
-		player.dtype = np.float32
-		player.peak = 1
-		player.resume = lambda: None
-		player.pause = player.stop = lambda: setattr(player, "_data_", ())
-	player.closed = False
-	player.playing = None
-	player.fut = None
+		cc = d.channels
+		t = (d.name, cc)
+		try:
+			if not PG_USED or PG_USED == t:
+				raise RuntimeError
+			player = d.player(SR, cc, 2048)
+		except RuntimeError:
+			if not PG_USED:
+				pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
+			globals()["PG_USED"] = t
+			player = pygame.mixer
+			player.type = "pygame"
+			player.dtype = np.int16
+			player.peak = 32767
+			player.resume = player.unpause
+			def stop():
+				player._data_ = ()
+			player.pause = stop
+			player.stop = stop
+			try:
+				player.resume()
+			except:
+				print_exc()
+		else:
+			player.__enter__()
+			player.type = "soundcard"
+			player.dtype = np.float32
+			player.peak = 1
+			player.resume = lambda: None
+			player.pause = player.stop = lambda: setattr(player, "_data_", ())
+		player.channels = cc
 	if not getattr(player, "_data_", None):
 		player._data_ = ()
-	player.channels = cc
+	player.closed = False
+	player.is_playing = None
+	player.fut = None
 	# a monkey-patched play function that has a better buffer
 	# (soundcard's normal one is insufficient for continuous playback)
 	def play(self):
 		while True:
 			if self.closed or paused and not paused.done() or not fut and not alphakeys or cleared:
-				if len(self._data_) > 4800 * cc:
-					self._data_ = self._data_[-4800 * cc:]
+				if len(self._data_) > 6400 * cc:
+					self._data_ = self._data_[-6400 * cc:]
 				return
 			towrite = self._render_available_frames()
-			if towrite < 50 * cc:
+			if towrite < 3200 * cc:
 				async_wait()
 				continue
 			if self.fut:
@@ -347,6 +431,7 @@ def sc_player(d):
 	def write(data):
 		if player.closed:
 			return
+		cc = player.channels
 		if cc < 2:
 			if data.dtype == np.float32:
 				data = np.add(data[::2], data[1::2], out=data[:len(data) >> 1])
@@ -376,35 +461,40 @@ def sc_player(d):
 		player._data_ = np.concatenate((player._data_, data))
 		player.fut.set_result(None)
 		return verify()
-	player.write = write
+	if player.type != "pyglet":
+		player.write = write
 	def close():
 		if player.type == "pygame":
 			player._data_ = ()
 			return pygame.mixer.pause()
+		if player.type == "pyglet":
+			return player.delete()
 		player.closed = True
 		try:
 			player.__exit__(None, None, None)
 		except:
 			print_exc()
 	player.close = close
-	def wait():
-		if player.type == "pygame":
+	if player.type != "pyglet":
+		def wait():
+			cc = player.channels
+			if player.type == "pygame":
+				verify()
+				while len(player._data_) >= 4:
+					async_wait()
+				return
+			if not len(player._data_):
+				return
 			verify()
-			while len(player._data_) >= 4:
+			while len(player._data_) > 6400 * cc:
 				async_wait()
-			return
-		if not len(player._data_):
-			return
-		verify()
-		while len(player._data_) > 6400 * cc:
-			async_wait()
-		while player.fut and not player.fut.done():
-			player.fut.result()
+			while player.fut and not player.fut.done():
+				player.fut.result()
+		player.wait = wait
 	def verify():
-		if not player.playing or player.playing.done():
+		if not player.is_playing or player.is_playing.done():
 			func = play2 if player.type == "pygame" else play
-			player.playing = submit(func, player)
-	player.wait = wait
+			player.is_playing = submit(func, player)
 	if player.type == "pygame":
 		verify()
 	return player
@@ -414,7 +504,7 @@ DEVICE = None
 OUTPUT_DEVICE = None
 OUTPUT_FILE = OUTPUT_VIDEO = None
 video_write = None
-channel = cdict(close=lambda: None)
+channel = get_channel()
 
 ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
@@ -521,9 +611,10 @@ def duration_est():
 				t = time.time()
 				if floor(t / 8) * 8 > LT:
 					globals()["LT"] = t
-					cc = sc.get_speaker(DEVICE.id).channels
-					if cc != channel.channels:
-						raise
+					if DEVICE:
+						cc = sc.get_speaker(DEVICE.id).channels
+						if cc != channel.channels:
+							raise
 				if hasattr(channel, "wait"):
 					fut = submit(channel.wait)
 					fut.result(timeout=3)
@@ -1046,6 +1137,7 @@ globals()["stat-mem"] = multiprocessing.shared_memory.SharedMemory(
 )
 globals()["osize"] = np.frombuffer(globals()["stat-mem"].buf[8:16], dtype=np.uint32)
 globals()["ssize"] = np.frombuffer(globals()["stat-mem"].buf[16:24], dtype=np.uint32)
+sbuff2 = np.empty(3200, dtype=np.float32)
 
 stderr_lock = None
 def oscilloscope(buffer):
@@ -1058,7 +1150,8 @@ def oscilloscope(buffer):
 				name=f"Miza-Player-{pid}-osci-mem",
 				create=False,
 			)
-		temp = np.asanyarray(sbuffer[:3200], dtype=np.float32)
+		temp = np.clip(sbuffer[:3200], -1, 1, out=sbuff2, casting="unsafe")
+		# temp = np.asanyarray(sbuffer[:3200], dtype=np.float32)
 		globals()["osci-mem"].buf[:12800] = temp.view(np.uint8).data
 	except:
 		print_exc()
@@ -1415,9 +1508,10 @@ def play(pos):
 						t = time.time()
 						if floor(t) > LT:
 							globals()["LT"] = t
-							cc = sc.get_speaker(DEVICE.id).channels
-							if cc != channel.channels:
-								raise
+							if DEVICE:
+								cc = sc.get_speaker(DEVICE.id).channels
+								if cc != channel.channels:
+									raise
 						fut = submit(channel.wait)
 						fut.result(timeout=1.6)
 						fut = submit(channel.write, sample)
@@ -1644,9 +1738,10 @@ def piano_player():
 						t = time.time()
 						if floor(t) > LT:
 							globals()["LT"] = t
-							cc = sc.get_speaker(DEVICE.id).channels
-							if cc != channel.channels:
-								raise
+							if DEVICE:
+								cc = sc.get_speaker(DEVICE.id).channels
+								if cc != channel.channels:
+									raise
 						fut = submit(channel.wait)
 						fut.result(timeout=1.6)
 						fut = submit(channel.write, sample)
@@ -1911,7 +2006,8 @@ while not sys.stdin.closed and failed < 8:
 			OUTPUT_DEVICE = command[8:]
 			waiting = concurrent.futures.Future()
 			submit(channel.close)
-			channel = get_channel()
+			if OUTPUT_DEVICE or channel.type != "pyglet":
+				channel = get_channel()
 			waiting, w = None, waiting
 			w.set_result(None)
 			continue

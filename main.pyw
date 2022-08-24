@@ -3921,6 +3921,7 @@ try:
 			DISP.mheld[:] = [0] * len(DISP.mheld)
 			DISP.kheld[:] = [0] * len(DISP.kheld)
 			sidebar.particles.clear()
+		DISP.dispatch_events()
 		if unfocused:
 			if options.control.unfocus:
 				fps = 7.5
@@ -3947,7 +3948,6 @@ try:
 		last_precise = t
 		last_tick = max(last_tick + d, t - 0.125)
 		time.sleep(d2)
-		DISP.dispatch_events()
 		if getattr(DISP, "cLoSeD", False):
 			raise StopIteration
 		if minimised:

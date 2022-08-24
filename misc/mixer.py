@@ -405,20 +405,24 @@ def sc_player(d=None):
 				if len(self._data_) > 6400 * cc:
 					self._data_ = self._data_[-6400 * cc:]
 				return
+			w2 = 1600 * cc
 			towrite = self._render_available_frames()
-			if towrite < 3200 * cc:
+			t2 = towrite << 1
+			if towrite < w2:
 				async_wait()
 				continue
 			if self.fut:
 				self.fut.result()
 			self.fut = concurrent.futures.Future()
 			if not len(self._data_):
-				self._data_ = SC_EMPTY[:cc * 1600]
-			b = self._data_[:towrite << 1].data
+				self._data_ = SC_EMPTY[:w2]
+			if t2 > len(self._data_) + w2:
+				t2 = len(self._data_) + w2
+			b = self._data_[:t2].data
 			buffer = self._render_buffer(towrite)
 			CFFI.memmove(buffer[0], b, b.nbytes)
 			self._render_release(towrite)
-			self._data_ = self._data_[towrite << 1:]
+			self._data_ = self._data_[t2:]
 			if self.closed:
 				return
 			self.fut.set_result(None)

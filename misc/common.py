@@ -1348,7 +1348,7 @@ def start_display():
 			)
 			glDisable(mbi.target)
 		glFinish()
-		DISP.flip()
+		# DISP.flip()
 	DISP.update = display_update
 
 	class display_subsurface:

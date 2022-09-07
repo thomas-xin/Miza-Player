@@ -712,9 +712,9 @@ def get_best_audio(entry):
 		if not isinstance(q, (int, float)):
 			q = 0
 		if q <= 0:
-			if fmt.get("asr", 0) > 0:
+			if fmt.get("asr"):
 				q = fmt["asr"] / 1000
-			elif fmt.get("audio_channels", 0) > 0:
+			elif fmt.get("audio_channels"):
 				q = fmt["audio_channels"]
 		vcodec = fmt.get("vcodec", "none")
 		if vcodec not in (None, "none"):

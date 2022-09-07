@@ -711,11 +711,17 @@ def get_best_audio(entry):
 		q = fmt.get("abr", 0)
 		if not isinstance(q, (int, float)):
 			q = 0
+		if q <= 0:
+			if fmt.get("asr", 0) > 0:
+				q = fmt["asr"] / 1000
+			elif fmt.get("audio_channels", 0) > 0:
+				q = fmt["audio_channels"]
 		vcodec = fmt.get("vcodec", "none")
 		if vcodec not in (None, "none"):
 			q -= 1
 		if not fmt["url"].startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
 			replace = False
+		# print(fmt["url"], q)
 		if q > best or replace:
 			best = q
 			url = fmt["url"]
@@ -745,7 +751,7 @@ def get_best_audio(entry):
 
 # Manages all audio searching and downloading.
 class AudioDownloader:
-	
+
 	_globals = globals()
 	ydl_opts = {
 		# "verbose": 1,

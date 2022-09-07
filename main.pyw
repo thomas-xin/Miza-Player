@@ -3686,7 +3686,7 @@ try:
 								(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
 								z=1,
 							)
-						if entry.lyrics == "":
+						if entry.get("lyrics") == "":
 							s = f"No lyrics found for {entry.name}."
 						else:
 							s = entry.lyrics[0]

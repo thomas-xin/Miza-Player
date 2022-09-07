@@ -104,7 +104,7 @@ if installing:
 
 try:
 	v = pkg_resources.get_distribution("yt_dlp").version
-	assert v >= "2022.6.29"
+	assert v >= "2022.8.19"
 except:
 	traceback.print_exc()
 	modified = True

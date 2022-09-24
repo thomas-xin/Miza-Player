@@ -55,6 +55,10 @@ if os.name == "nt":
 	modlist.append("pipwin>=0.5.1")
 
 try:
+	import pip
+except ModuleNotFoundError:
+	subprocess.run([sys.executable, "-m", "ensurepip"])
+try:
 	import pkg_resources, struct
 except ModuleNotFoundError:
 	subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "setuptools"])

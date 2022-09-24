@@ -428,6 +428,7 @@ def setup_buttons():
 						for url in urls:
 							if url:
 								name = duration = None
+								ytdl = downloader.result()
 								if url in ytdl.searched:
 									resp = ytdl.searched[url].data
 									if len(resp) == 1:
@@ -460,7 +461,7 @@ def setup_buttons():
 									entries[k]["url"] = entry["url"]
 							entries = list(entries)
 							ytdl = downloader.result()
-							url = entries[0]["url"]
+							# url = entries[0]["url"]
 							if is_url(url):
 								name = None
 								if url in ytdl.searched:
@@ -587,7 +588,7 @@ def setup_buttons():
 												entries[k]["name"] = entry["name"]
 												if entry.get("duration"):
 													entries[k]["duration"] = entry["duration"]
-												entries[k]["url"] = entry["url"]
+												# entries[k]["url"] = entry["url"]
 										entries = list(entries)
 										data = dict(queue=entries, stats={})
 										out = "playlists/" + quote(choice)[:244] + ".json"

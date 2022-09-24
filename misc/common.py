@@ -1,5 +1,7 @@
 import os, sys, subprocess, time, concurrent.futures
 
+from install_update_p import *
+
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 from concurrent.futures import thread
 
@@ -131,7 +133,6 @@ except FileNotFoundError:
 hasmisc = os.path.exists("misc")
 pyv = sys.version_info[1]
 print_exc = traceback.print_exc
-from install_update_p import *
 
 
 is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")

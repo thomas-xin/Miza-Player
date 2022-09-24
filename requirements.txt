@@ -1,6 +1,5 @@
 bs4>=0.0.1
 easygui>=0.98.3
-httpx[http2,brotli]>=0.23.0
 numpy>=1.23.2
 orjson>=3.7.12
 pillow>=9.2.0

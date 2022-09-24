@@ -1881,16 +1881,11 @@ elif os.path.exists(commitr):
 	os.remove(commitr)
 
 reqs = requests.Session()
-import httpx
-try:
-	reqx = httpx.Client(http2=True)
-except:
-	reqx = httpx.Client(http2=False)
 
 def update_repo(force=False):
 	# print("Checking for updates...")
 	try:
-		resp = reqx.get("https://github.com/thomas-xin/Miza-Player")
+		resp = reqs.get("https://github.com/thomas-xin/Miza-Player")
 		s = resp.text
 		try:
 			search = '<include-fragment src="/thomas-xin/Miza-Player/tree-commit/'
@@ -1976,7 +1971,7 @@ def update_repo(force=False):
 		print_exc()
 
 def update_collections2():
-	resp = reqx.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py")
+	resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py")
 	b = resp.content
 	with open(collections2f, "wb") as f:
 		f.write(b)
@@ -3506,7 +3501,7 @@ def get_duration_2(filename):
 	if filename:
 		dur, bps, cdc = _get_duration_2(filename, 4)
 		if not dur and is_url(filename):
-			resp = reqx.head(filename)
+			resp = reqs.head(filename)
 			head = fcdict(resp.headers)
 			if "content-length" not in head:
 				dur, bps, cdc = _get_duration_2(filename, 20)
@@ -3665,7 +3660,7 @@ def org2xm(org, dat=None):
 	r_org = None
 	if not org or type(org) is not bytes:
 		if is_url(org):
-			r = reqx.get(org)
+			r = reqs.get(org)
 			data = r.content
 		else:
 			r_org = org
@@ -3690,7 +3685,7 @@ def org2xm(org, dat=None):
 	# Load custom sample bank if specified
 	if dat is not None and is_url(dat):
 		with open(r_dat, "wb") as f:
-			r = reqx.get(dat)
+			r = reqs.get(dat)
 			f.write(r.content)
 	else:
 		if type(dat) is bytes and dat:
@@ -3700,7 +3695,7 @@ def org2xm(org, dat=None):
 			r_dat = "sndlib/ORG210EN.DAT"
 			orig = True
 			if not os.path.exists(r_dat):
-				resp = reqx.get("https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true")
+				resp = reqs.get("https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true")
 				with open(r_dat, "wb") as f:
 					f.write(resp.content)
 	args = ["org2xm.exe", r_org, r_dat]
@@ -3719,7 +3714,7 @@ def org2xm(org, dat=None):
 	return r_xm
 
 def mid2mp3(mid):
-	url = reqx.post(
+	url = reqs.post(
 		"https://hostfast.onlineconverter.com/file/send",
 		files={
 			"class": (None, "audio"),
@@ -3733,7 +3728,7 @@ def mid2mp3(mid):
 	fn = url.rsplit("/", 1)[-1].strip("\x00")
 	for i in range(360):
 		t = utc()
-		test = reqx.get(f"https://hostfast.onlineconverter.com/file/{fn}").content
+		test = reqs.get(f"https://hostfast.onlineconverter.com/file/{fn}").content
 		if test == b"d":
 			break
 		delay = utc() - t
@@ -3742,7 +3737,7 @@ def mid2mp3(mid):
 	ts = ts_us()
 	r_mp3 = f"cache/{ts}.mp3"
 	with open(r_mp3, "wb") as f:
-		f.write(reqx.get(f"https://hostfast.onlineconverter.com/file/{fn}/download").content)
+		f.write(reqs.get(f"https://hostfast.onlineconverter.com/file/{fn}/download").content)
 	return r_mp3
 
 def png2wav(png):

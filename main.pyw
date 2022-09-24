@@ -3960,7 +3960,7 @@ try:
 		tick += 1
 except Exception as ex:
 	futs = set()
-	futs.add(submit(reqx.delete, mp))
+	futs.add(submit(reqs.delete, mp))
 	futs.add(submit(update_collections2))
 	DISP.close()
 	if globals().get("last_save_fut"):

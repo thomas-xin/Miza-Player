@@ -46,7 +46,7 @@ class MultiAutoImporter:
 
 importer = MultiAutoImporter(
 	"numpy, math, cffi, pygame, pyglet, random, hashlib, orjson, time, traceback, base64",
-	"httpx, contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
+	"requests, contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
 	"psutil", "subprocess, re",
 	pool=exc,
 	_globals=globals(),
@@ -65,6 +65,7 @@ sys.setswitchinterval(0.005)
 
 is_minimised = lambda: globals()["stat-mem"].buf[0] & 1
 
+reqs = requests.Session()
 
 pt = None
 pt2 = None
@@ -546,18 +547,13 @@ def _get_duration(filename, _timeout=12):
 			bps = float(resp[1])
 	return dur, bps
 
-try:
-	reqx = httpx.Client(http2=True)
-except:
-	reqx = httpx.Client(http2=False)
-
 def get_duration(filename):
 	if not is_url(filename) and filename.endswith(".pcm"):
 		return os.path.getsize(filename) / (48000 * 2 * 2)
 	if filename:
 		dur, bps = _get_duration(filename, 4)
 		if not dur and is_url(filename):
-			resp = reqx.head(filename)
+			resp = reqs.head(filename)
 			head = {k.casefold(): v for k, v in resp.headers.items()}
 			if "content-length" not in head:
 				return _get_duration(filename, 20)[0]
@@ -651,44 +647,35 @@ def header():
 	}
 
 def proxy_download(url, fn=None, proxy=True, timeout=24):
-	reqx = globals().get("reqx")
-	if not reqx:
-		import httpx
-		try:
-			reqx = httpx.Client(http2=True)
-		except:
-			reqx = httpx.Client(http2=False)
 	if proxy:
 		loc = random.choice(("eu", "us"))
 		i = random.randint(1, 17)
 		stream = f"https://{loc}{i}.proxysite.com/includes/process.php?action=update"
 		print(url, stream, fn, sep="\n")
-		req = reqx.stream(
-			"POST",
+		req = reqs.post(
 			stream,
 			data=dict(d=url, allowCookies="on"),
 			headers=header(),
-			follow_redirects=True,
 			timeout=timeout,
+			stream=True,
 		)
 	else:
-		req = reqx.stream(
-			"GET",
+		req = reqs.get(
 			url,
 			headers=header(),
-			follow_redirects=True,
 			timeout=timeout,
+			stream=True
 		)
 	with req as resp:
 		if resp.status_code not in range(200, 400):
 			raise ConnectionError(resp.status_code, resp)
 		if not fn:
-			return resp.read()
+			return resp.content
 		try:
 			size = int(resp.headers["Content-Length"])
 		except (KeyError, ValueError):
 			size = None
-		it = resp.iter_bytes(65536)
+		it = resp.iter_content(65536)
 		with open(fn, "wb") as f:
 			try:
 				while True:
@@ -709,7 +696,7 @@ def proxy_download(url, fn=None, proxy=True, timeout=24):
 				print(f"Incomplete download ({pos} < {size}), resuming...")
 				h = header()
 				h["Range"] = f"bytes={pos}-"
-				resp = reqx.get(url, headers=h, timeout=timeout, stream=True)
+				resp = reqs.get(url, headers=h, timeout=timeout, stream=True)
 				resp.raise_for_status()
 				it = resp.iter_content(65536)
 				with open(fn, "ab") as f:

@@ -221,7 +221,7 @@ if update_collections:
 		subprocess.Popen(sox, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 		subprocess.Popen(org2xm, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 	except FileNotFoundError:
-		url = "https://mizabot.xyz/d/Bdb_Q4Sjqg"
+		url = "https://mizabot.xyz/d/BeqCmKhumw"
 		subprocess.run((sys.executable, "-O", "downloader.py", "-threads", "8", url, "sndlib.zip"), cwd="misc")
 		with zipfile.ZipFile("misc/sndlib.zip", "r") as z:
 			z.extractall("sndlib")

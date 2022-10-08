@@ -64,6 +64,14 @@ except ModuleNotFoundError:
 	subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "setuptools"])
 	import pkg_resources, struct
 
+if sys.version_info.major == 3 and sys.version_info.minor >= 10:
+	import collections
+	try:
+		setattr(collections, "MutableMapping", collections.abc.MutableMapping)
+	except AttributeError:
+		collections.MutableMapping = collections.abc.Mapping
+	collections.Mapping = collections.abc.Mapping
+
 x = sys.version_info[1]
 psize = None
 
@@ -108,7 +116,7 @@ if installing:
 
 try:
 	v = pkg_resources.get_distribution("yt_dlp").version
-	assert v >= "2022.8.19"
+	assert v >= "2022.10.4"
 except:
 	traceback.print_exc()
 	modified = True

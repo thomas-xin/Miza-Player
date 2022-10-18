@@ -126,6 +126,8 @@ org2xm = "org2xm.exe" if os.name == "nt" else "org2xm"
 
 collections2f = "misc/collections2.tmp"
 try:
+	if not os.path.exists("sndlib/ffmpeg.exe"):
+		raise FileNotFoundError
 	update_collections = utc() - os.path.getmtime(collections2f) >= 300
 except FileNotFoundError:
 	update_collections = True
@@ -217,11 +219,13 @@ if update_collections:
 
 	print("Verifying FFmpeg, SoX, and Org2XM installations...")
 	try:
+		if not os.path.exists("sndlib/ffmpeg.exe") or os.path.getsize("sndlib/ffmpeg.exe") != 369152:
+			raise FileNotFoundError
 		subprocess.Popen(ffmpeg, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 		subprocess.Popen(sox, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 		subprocess.Popen(org2xm, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 	except FileNotFoundError:
-		url = "https://mizabot.xyz/d/BeqCmKhumw"
+		url = "https://mizabot.xyz/d/BetQdwJy_w"
 		subprocess.run((sys.executable, "-O", "downloader.py", "-threads", "8", url, "sndlib.zip"), cwd="misc")
 		with zipfile.ZipFile("misc/sndlib.zip", "r") as z:
 			z.extractall("sndlib")
@@ -1451,8 +1455,6 @@ def start_display():
 		DISP.mmoved = True
 		mpos = (mpos[0], DISP.height - mpos[1] - 1)
 		DISP.mpos[:] = mpos
-	@DISP.event
-	def on_mouse_enter(*mpos):
 		DISP.mouse_in = True
 	DISP.mheld = [False] * 5
 	DISP.mclick = list(DISP.mheld)

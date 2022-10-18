@@ -1869,7 +1869,7 @@ def render_notes(i, notes):
 
 
 seen_urls = set()
-ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-v", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+ffmpeg_start = (ffmpeg, "-y", "-fast", "-hide_banner", "-v", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
 settings = cdict()
 alphakeys = prevkeys = ()
@@ -2008,7 +2008,7 @@ while not sys.stdin.closed and failed < 8:
 				if " " in s:
 					s, v = s.split(None, 1)
 					args = (
-						ffmpeg, "-y", "-hide_banner", "-v", "error",
+						ffmpeg, "-y", "-fast", "-hide_banner", "-v", "error",
 						"-hwaccel", "auto", "-an",
 						"-f", "rawvideo", "-pix_fmt", "rgb24",
 						"-video_size", "x".join(map(str, ssize)),

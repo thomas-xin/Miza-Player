@@ -930,7 +930,7 @@ def setup_buttons():
 				fn = sidebar.recording.split("/", 1)[-1][1:].split(".", 1)[0] + fmt
 				def end_recording_a(fn):
 					if fn:
-						args = f"{ffmpeg} -hide_banner -y -v error"
+						args = f"{ffmpeg} -fast -hide_banner -y -v error"
 						if sidebar.get("filming"):
 							args += f" -i {sidebar.filming}"
 							globals()["video-render"].result()
@@ -2058,7 +2058,7 @@ def enqueue(entry, start=True):
 		print_exc()
 	return None, inf
 
-ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+ffmpeg_start = (ffmpeg, "-y", "-fast", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 concat_buff = b"\x00" * (48000 * 2 * 2)
 
 def download(entries, fn, settings=False):

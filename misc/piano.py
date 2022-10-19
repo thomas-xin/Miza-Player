@@ -217,7 +217,6 @@ def render_project(fn):
 	proc = psutil.Popen((
 		ffmpeg,
 		"-y",
-		"-fast",
 		"-nostdin",
 		"-hide_banner",
 		"-v",

@@ -1919,7 +1919,7 @@ def update_repo(force=False):
 					subprocess.run(["git"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 					b = None
 				except FileNotFoundError:
-					resp = reqx.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main")
+					resp = reqs.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main")
 					b = resp.content
 				if not options.control.autoupdate:
 					r = fut.result()

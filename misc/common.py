@@ -254,13 +254,13 @@ def drop(i):
 	except:
 		print_exc()
 
-mixer_lock = None
 laststart = set()
 def mixer_submit(s, force, debug):
-	global mixer_lock
+	if not mixer.is_running():
+		raise RuntimeError(mixer.stdout.read())
 	if force < 2:
-		while mixer_lock:
-			mixer_lock.result()
+		while mixer.lock:
+			mixer.lock.result()
 	if not force:
 		# A special rate limit system that will skip requests spammed too fast, but will allow the last one after a delay
 		ts = pc()
@@ -274,7 +274,7 @@ def mixer_submit(s, force, debug):
 					return
 			laststart.clear()
 		laststart.add(ts)
-	mixer_lock = concurrent.futures.Future()
+	mixer.lock = concurrent.futures.Future()
 	try:
 		if type(s) is bytes:
 			mixer.stdin.write(s)
@@ -290,10 +290,10 @@ def mixer_submit(s, force, debug):
 				mixer.stdin.write(b"\n")
 		mixer.stdin.flush()
 	except:
-		temp, mixer_lock = mixer_lock, None
+		temp, mixer.lock = mixer.lock, None
 		temp.set_result(None)
 		raise
-	temp, mixer_lock = mixer_lock, None
+	temp, mixer.lock = mixer.lock, None
 	temp.set_result(None)
 
 asettings = cdict(
@@ -451,6 +451,7 @@ def start_mixer(devicename=None):
 		stdout=subprocess.PIPE,
 		bufsize=65536,
 	)
+	mixer.lock = None
 	try:
 		pid = os.getpid()
 		mixer.state = lambda i=0: state(i)
@@ -501,6 +502,8 @@ def start_mixer(devicename=None):
 			except OSError:
 				print(mixer.stderr.read(), end="")
 				raise
+			while mixer.lock:
+				mixer.lock.result()
 			mixer.new = True
 	except:
 		print_exc()

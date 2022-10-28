@@ -46,7 +46,7 @@ class MultiAutoImporter:
 
 importer = MultiAutoImporter(
 	"numpy, math, cffi, pygame, pyglet, random, hashlib, orjson, time, traceback, base64",
-	"requests, contextlib, colorsys, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
+	"requests, contextlib, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
 	"psutil", "subprocess, re",
 	pool=exc,
 	_globals=globals(),
@@ -2080,6 +2080,7 @@ while not sys.stdin.closed and failed < 8:
 			pos, duration, cdc, sh = s
 			pos, duration = map(float, (pos, duration))
 			stream = base64.b85decode(command.encode("ascii")).decode("utf-8", "replace")
+		# print(stream)
 		shuffling = False
 		if proc:
 			proc_waiting = True

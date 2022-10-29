@@ -1906,11 +1906,14 @@ submit(piano_player)
 submit(ensure_parent)
 pc()
 waiting = None
+# with open("test.txt", "wb"):
+	# pass
 while not sys.stdin.closed and failed < 8:
 	try:
 		command = sys.stdin.readline()
+		# print("\x7f" + command)
 		if not command:
-			failed += 1
+			# failed += 1
 			continue
 		failed = 0
 		command = command.rstrip().rstrip("\x00")

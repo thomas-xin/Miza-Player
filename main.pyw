@@ -1666,7 +1666,7 @@ def start_player(pos=None, force=False):
 			player.needs_shuffle = not is_url(stream)
 		es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
 		s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
-		print(s)
+		# print(s)
 		mixer.submit(s, force=False)
 		player.pos = pos
 		player.index = player.pos * 30

@@ -45,18 +45,20 @@ class MultiAutoImporter:
 			_globals.update(zip(args, futs))
 
 importer = MultiAutoImporter(
-	"numpy, math, cffi, pygame, pyglet, random, hashlib, orjson, time, traceback, base64",
-	"requests, contextlib, ctypes, collections, weakref, samplerate, itertools, io, zipfile",
+	"pygame, pyglet, random, hashlib, orjson, traceback, base64",
+	"requests, ctypes, weakref, samplerate, itertools, io, zipfile",
 	"psutil", "subprocess, re",
 	pool=exc,
 	_globals=globals(),
 )
 import soundcard as sc
-math.force()
+import math
 from math import *
-numpy.force()
+import numpy
 np = numpy
+import cffi
 CFFI = cffi.FFI()
+import collections, contextlib, time
 deque = collections.deque
 suppress = contextlib.suppress
 

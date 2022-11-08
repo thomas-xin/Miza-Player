@@ -106,12 +106,12 @@ if installing:
 	print("Installing missing or outdated modules, please wait...")
 	subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "pip"])
 	while installing:
-		i = installing.pop(0)
-		if i.wait():
-			if getattr(i, "attempts", 0) >= 3:
+		proc = installing.pop(0)
+		if proc.wait():
+			if getattr(proc, "attempts", 0) >= 3:
 				continue
 			proc = subprocess.Popen(proc.args)
-			proc.attempts = getattr(i, "attempts", 0) + 1
+			proc.attempts = getattr(proc, "attempts", 0) + 1
 			installing.append(proc)
 
 try:

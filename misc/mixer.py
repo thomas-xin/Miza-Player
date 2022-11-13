@@ -1,6 +1,11 @@
 # ONE SMALL STEP FOR MAN, ONE GIANT LEAP FOR SMUDGE KIND! Invaded once again on the 6th March >:D
 
 import os, sys, traceback
+
+c = sys.stdin.readline()
+if c == "~init\n":
+	sys.stderr.write("~I\n")
+
 pid = os.getppid()
 
 sys.stdout.write = lambda *args, **kwargs: None
@@ -45,7 +50,7 @@ class MultiAutoImporter:
 			_globals.update(zip(args, futs))
 
 importer = MultiAutoImporter(
-	"pygame, pyglet, random, hashlib, orjson, traceback, base64",
+	"numpy, pygame, pyglet, random, hashlib, orjson, traceback, base64",
 	"requests, ctypes, weakref, samplerate, itertools, io, zipfile",
 	"psutil", "subprocess, re",
 	pool=exc,
@@ -54,7 +59,6 @@ importer = MultiAutoImporter(
 import soundcard as sc
 import math
 from math import *
-import numpy
 np = numpy
 import cffi
 CFFI = cffi.FFI()
@@ -321,7 +325,7 @@ class Player(pyglet.media.Player):
 		self.paused = False
 		self.entry = Source()
 		self.wait()
-		point(self.entry)
+		# point(self.entry)
 
 	def write(self, data):
 		self.wait()
@@ -1915,7 +1919,7 @@ while not sys.stdin.closed and failed < 8:
 		command = sys.stdin.readline()
 		# print("\x7f" + command)
 		if not command:
-			# failed += 1
+			failed += 1
 			continue
 		failed = 0
 		command = command.rstrip().rstrip("\x00")

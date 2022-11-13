@@ -445,45 +445,54 @@ def start_mixer(devicename=None):
 		start_display()
 	else:
 		print("Restarting mixer subprocess...")
+	pid = os.getpid()
+	if hasmisc and not restarting:
+		w, h = pygame.display.list_modes()[0]
+		import multiprocessing.shared_memory
+		globals()["multiprocessing"] = multiprocessing
+		# Stores computed LDFT buckets to render as spectrogram
+		globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
+			name=f"Miza-Player-{pid}-spec-mem",
+			create=True,
+			size=8192,
+		)
+		# Stores computed PCM packets to render as oscilloscope
+		globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
+			name=f"Miza-Player-{pid}-osci-mem",
+			create=True,
+			size=12800,
+		)
+		# 0: minimised | unfocused
+		# 6~8: barcount
+		# 8~12, 12~16: osci width, osci height
+		# 16~20, 20~24: spec width, spec height
+		globals()["stat-mem"] = multiprocessing.shared_memory.SharedMemory(
+			name=f"Miza-Player-{pid}-stat-mem",
+			create=True,
+			size=4096,
+		)
 	mixer = psutil.Popen(
 		(sys.executable, "-O", "misc/mixer.py"),
 		stdin=subprocess.PIPE,
 		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
 		bufsize=65536,
 	)
 	mixer.lock = None
 	try:
-		pid = os.getpid()
 		mixer.state = lambda i=0: state(i)
 		mixer.clear = lambda: clear()
 		mixer.drop = lambda i=0: drop(i)
 		mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
+		mixer.stdin.write(b"~init\n")
+		mixer.stdin.flush()
+		fut = submit(mixer.stderr.readline)
+		temp = fut.result(timeout=8).strip().decode("ascii")
+		if temp != "~I":
+			print(temp)
+			mixer.kill()
+			raise RuntimeError(f"Unexpected response from mixer {mixer.stderr.read()}")
 		if hasmisc:
-			if not restarting:
-				w, h = pygame.display.list_modes()[0]
-				import multiprocessing.shared_memory
-				globals()["multiprocessing"] = multiprocessing
-				# Stores computed LDFT buckets to render as spectrogram
-				globals()["spec-mem"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{pid}-spec-mem",
-					create=True,
-					size=8192,
-				)
-				# Stores computed PCM packets to render as oscilloscope
-				globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{pid}-osci-mem",
-					create=True,
-					size=12800,
-				)
-				# 0: minimised | unfocused
-				# 6~8: barcount
-				# 8~12, 12~16: osci width, osci height
-				# 16~20, 20~24: spec width, spec height
-				globals()["stat-mem"] = multiprocessing.shared_memory.SharedMemory(
-					name=f"Miza-Player-{pid}-stat-mem",
-					create=True,
-					size=4096,
-				)
 			s = []
 			d = options.audio.copy()
 			d.update(options.control)
@@ -507,6 +516,8 @@ def start_mixer(devicename=None):
 			mixer.new = True
 	except:
 		print_exc()
+		if mixer and mixer.is_running():
+			mixer.kill()
 	return mixer
 
 

@@ -460,7 +460,7 @@ def start_mixer(devicename=None):
 		globals()["osci-mem"] = multiprocessing.shared_memory.SharedMemory(
 			name=f"Miza-Player-{pid}-osci-mem",
 			create=True,
-			size=12800,
+			size=12801,
 		)
 		# 0: minimised | unfocused
 		# 6~8: barcount
@@ -486,12 +486,20 @@ def start_mixer(devicename=None):
 		mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
 		mixer.stdin.write(b"~init\n")
 		mixer.stdin.flush()
-		fut = submit(mixer.stderr.readline)
-		temp = fut.result(timeout=8).strip().decode("ascii")
+		while True:
+			fut = submit(mixer.stderr.readline)
+			temp = fut.result(timeout=8).strip().decode("ascii")
+			if temp.startswith("~"):
+				if temp == "~I":
+					break
+				print(temp)
+			else:
+				raise RuntimeError(temp)
 		if temp != "~I":
 			print(temp)
 			mixer.kill()
 			raise RuntimeError(f"Unexpected response from mixer {mixer.stderr.read()}")
+		# print(temp)
 		if hasmisc:
 			s = []
 			d = options.audio.copy()

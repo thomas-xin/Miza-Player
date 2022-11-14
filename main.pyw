@@ -3931,7 +3931,7 @@ try:
 			else:
 				fps = 24
 		elif getattr(DISP, "mmoved", False):
-			fps = 40
+			fps = 60
 		else:
 			fps = 30
 		globals()["fps"] = fps

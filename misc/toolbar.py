@@ -252,7 +252,9 @@ def render_oscilloscope():
 	try:
 		glEnableClientState(GL_VERTEX_ARRAY)
 		glEnableClientState(GL_COLOR_ARRAY)
-		samples = np.frombuffer(globals()["osci-mem"].buf[:12800], dtype=np.float32)
+		while globals()["osci-mem"].buf[0]:
+			time.sleep(0.004)
+		samples = np.frombuffer(globals()["osci-mem"].buf[1:12801], dtype=np.float32)
 		osci_buf[:] = samples
 
 		for i in range(2):

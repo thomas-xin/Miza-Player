@@ -2,16 +2,17 @@
 
 import os, sys, traceback
 
-c = sys.stdin.readline()
-if c == "~init\n":
-	sys.stderr.write("~I\n")
+# c = sys.stdin.readline()
+# if c == "~init\n":
+	# sys.stderr.write("~I\n")
+# sys.stderr.write("~STARTED\n")
 
 pid = os.getppid()
 
 sys.stdout.write = lambda *args, **kwargs: None
 import concurrent.futures
 
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=12)
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 
 class MultiAutoImporter:
 
@@ -49,13 +50,17 @@ class MultiAutoImporter:
 				futs.append(self.ImportedModule(arg, pool, _globals))
 			_globals.update(zip(args, futs))
 
-importer = MultiAutoImporter(
-	"numpy, pygame, pyglet, random, hashlib, orjson, traceback, base64",
-	"requests, ctypes, weakref, samplerate, itertools, io, zipfile",
-	"psutil", "subprocess, re",
-	pool=exc,
-	_globals=globals(),
-)
+# importer = MultiAutoImporter(
+	# "numpy, pygame, pyglet, random, hashlib, orjson, traceback, base64",
+	# "requests, ctypes, weakref, samplerate, itertools, io, zipfile",
+	# "psutil", "subprocess, multiprocessing, re",
+	# pool=exc,
+	# _globals=globals(),
+# )
+# sys.stderr.write("~IMPORTING\n")
+import numpy, pygame, pyglet, random, hashlib, orjson, traceback, base64
+import requests, ctypes, weakref, samplerate, itertools, io, zipfile
+import psutil, subprocess, multiprocessing, re
 import soundcard as sc
 import math
 from math import *
@@ -72,6 +77,8 @@ sys.setswitchinterval(0.005)
 is_minimised = lambda: globals()["stat-mem"].buf[0] & 1
 
 reqs = requests.Session()
+sys.stdin.readline()
+sys.stderr.write("~I\n")
 
 pt = None
 pt2 = None
@@ -182,7 +189,7 @@ def _adjust_thread_count(self):
 
 concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
 
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
+# exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 submit = exc.submit
 
 class cdict(dict):
@@ -1149,12 +1156,14 @@ def oscilloscope(buffer):
 			)
 		temp = np.clip(sbuffer[:3200], -1, 1, out=sbuff2, casting="unsafe")
 		# temp = np.asanyarray(sbuffer[:3200], dtype=np.float32)
-		globals()["osci-mem"].buf[:12800] = temp.view(np.uint8).data
+		globals()["osci-mem"].buf[0] = 1
+		globals()["osci-mem"].buf[1:12801] = temp.view(np.uint8).data
+		globals()["osci-mem"].buf[0] = 0
 	except:
 		print_exc()
-osci_clear = b"\x00" * 12800
+osci_clear = b"\x00" * 12801
 def clear_osci():
-	globals()["osci-mem"].buf[:12800] = osci_clear
+	globals()["osci-mem"].buf[:12801] = osci_clear
 
 higher_bound = "C10"
 highest_note = "C~D~EF~G~A~B".index(higher_bound[0].upper()) - 9 + ("#" in higher_bound)
@@ -1271,12 +1280,12 @@ osci_fut = None
 spec_fut = None
 spec2_fut = None
 def render():
-	global lastpacket, osci_fut, spec_fut, spec2_fut, packet_advanced, sbuffer
+	global lastpacket, osci_fut, spec_fut, spec2_fut, packet_advanced, sbuffer, sblock
 	try:
 		while True:
 			t = pc()
 			sleep = 0.005
-			if lastpacket != id(packet) and sbuffer is not None:
+			if lastpacket != id(packet) and sbuffer is not None and not sblock:
 				lastpacket = id(packet)
 				if len(sbuffer) > 3200:
 					buffer = sbuffer[:3200]
@@ -1323,7 +1332,7 @@ emptymem = memoryview(emptybuff)
 emptysample = np.frombuffer(emptybuff, dtype=np.uint16)
 
 def play(pos):
-	global file, fn, proc, drop, quiet, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, packet_advanced, packet_advanced2, packet_advanced3, sfut, video_write
+	global file, fn, proc, drop, quiet, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, sblock, packet_advanced, packet_advanced2, packet_advanced3, sfut, video_write
 	skipzeros = False
 	try:
 		frame = pos * 30
@@ -1459,12 +1468,14 @@ def play(pos):
 				if sample.dtype == np.float32:
 					np.clip(sample, -channel.peak, channel.peak, out=sample)
 				if channel.dtype != np.float32:
+					sblock = True
 					try:
 						globals()["s-buf32"][:] = sample
 					except KeyError:
 						globals()["s-buf32"] = sample.astype(np.float32)
 					sbuffer = globals()["s-buf32"]
 					sbuffer *= 1 / channel.peak
+					sblock = False
 				else:
 					sbuffer = sample
 				if sample.dtype != channel.dtype:
@@ -1874,6 +1885,7 @@ def render_notes(i, notes):
 	return samples
 
 
+# sys.stderr.write("~LOADED\n")
 seen_urls = set()
 ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-v", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
 ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
@@ -1884,6 +1896,7 @@ lastpacket = None
 packet = None
 sample = None
 sbuffer = None
+sblock = False
 cdc = "auto"
 duration = inf
 stream = ""
@@ -1914,6 +1927,7 @@ pc()
 waiting = None
 # with open("test.txt", "wb"):
 	# pass
+# sys.stderr.write("~INITIATED\n")
 while not sys.stdin.closed and failed < 8:
 	try:
 		command = sys.stdin.readline()
@@ -2084,6 +2098,9 @@ while not sys.stdin.closed and failed < 8:
 			fn = file = proc = None
 			pygame.mixer.quit()
 			break
+		elif command == "~init":
+			bsend(b"~I\n")
+			continue
 		elif command != "~replay":
 			s = sys.stdin.readline().rstrip().split(" ", 3)
 			pos, duration, cdc, sh = s

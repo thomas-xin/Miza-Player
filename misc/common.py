@@ -235,24 +235,36 @@ if update_collections:
 
 def state(i):
 	try:
-		mixer.stdin.write(f"~state {int(i)}\n".encode("utf-8"))
+		s = f"~state {int(i)}\n".encode("utf-8")
+		fut = submit(mixer.stdin.write, s)
+		fut.result(timeout=1)
 		mixer.stdin.flush()
 	except:
 		print_exc()
+		if mixer and mixer.is_running():
+			mixer.kill()
 
 def clear():
 	try:
-		mixer.stdin.write(f"~clear\n".encode("utf-8"))
+		s = f"~clear\n".encode("utf-8")
+		fut = submit(mixer.stdin.write, s)
+		fut.result(timeout=1)
 		mixer.stdin.flush()
 	except:
 		print_exc()
+		if mixer and mixer.is_running():
+			mixer.kill()
 
 def drop(i):
 	try:
-		mixer.stdin.write(f"~drop {i}\n".encode("utf-8"))
+		s = f"~drop {i}\n".encode("utf-8")
+		fut = submit(mixer.stdin.write, s)
+		fut.result(timeout=1)
 		mixer.stdin.flush()
 	except:
 		print_exc()
+		if mixer and mixer.is_running():
+			mixer.kill()
 
 laststart = set()
 def mixer_submit(s, force, debug):
@@ -276,22 +288,23 @@ def mixer_submit(s, force, debug):
 		laststart.add(ts)
 	mixer.lock = concurrent.futures.Future()
 	try:
-		if type(s) is bytes:
-			mixer.stdin.write(s)
-			mixer.stdin.write(b"\n")
-		else:
+		if not isinstance(s, (bytes, memoryview)):
 			s = as_str(s)
 			if not s.endswith("\n") and len(s) < 2048:
 				s += "\n"
 			if debug:
 				sys.stdout.write(s)
-			mixer.stdin.write(s.encode("utf-8"))
-			if not s.endswith("\n"):
-				mixer.stdin.write(b"\n")
+			s = s.encode("utf-8")
+		if not s.endswith(b"\n"):
+			s += b"\n"
+		fut = submit(mixer.stdin.write, s)
+		fut.result(timeout=1)
 		mixer.stdin.flush()
 	except:
 		temp, mixer.lock = mixer.lock, None
 		temp.set_result(None)
+		if mixer and mixer.is_running():
+			mixer.kill()
 		raise
 	temp, mixer.lock = mixer.lock, None
 	temp.set_result(None)

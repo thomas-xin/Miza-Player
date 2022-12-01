@@ -2,7 +2,7 @@ EFS = 16
 DFS = 12
 def render_dragging():
 	base, maxitems = sidebar.base, sidebar.maxitems
-	lq2 = sidebar.lastsel
+	lq2 = sidebar.setdefault("lastsel", None)
 	for i, entry in enumerate(queue[base:base + maxitems], base):
 		if not entry.get("selected"):
 			continue

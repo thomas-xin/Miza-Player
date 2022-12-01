@@ -555,7 +555,7 @@ def _get_duration(filename, _timeout=12):
 	except (IndexError, ValueError):
 		dur = None
 	bps = None
-	if len(resp) > 1:
+	if resp and len(resp) > 1:
 		with suppress(ValueError):
 			bps = float(resp[1])
 	return dur, bps
@@ -756,9 +756,19 @@ def download(url, fn):
 						os.remove(fi)
 					except:
 						pass
-		if url.endswith(".pcm") and fn.endswith(".pcm") and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
+		if (fn.endswith(".webm") or url.endswith(".pcm") and fn.endswith(".pcm")) and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
 			if url != fn:
 				os.rename(url, fn)
+			downloading.discard(fn)
+			return
+		if fn.endswith(".webm") and is_url(url):
+			resp = reqs.get(
+				url,
+				headers=header(),
+			)
+			b = resp.content
+			with open(fn, "wb") as f:
+				f.write(b)
 			downloading.discard(fn)
 			return
 		if not is_url(url):
@@ -2139,14 +2149,17 @@ while not sys.stdin.closed and failed < 8:
 			reading = None
 		ext = construct_options()
 		if is_url(stream):
-			fn = "cache/~" + sh + ".pcm"
-			if os.path.exists(fn) and abs(os.path.getsize(fn) / 48000 / 2 / 2 - duration) < 1:
-				stream = fn
-				fn = None
-				file = None
-			elif pos or not duration < inf or ext:
-				ts = time.time_ns() // 1000
-				fn = "cache/\x7f" + str(ts) + ".pcm"
+			for fmt in ("webm", "pcm"):
+				fn = "cache/~" + sh + "." + fmt
+				if os.path.exists(fn) and abs(os.path.getsize(fn) / 48000 / 2 / 2 - duration) < 1:
+					stream = fn
+					fn = None
+					file = None
+					break
+			else:
+				if pos or not duration < inf or ext:
+					ts = time.time_ns() // 1000
+					fn = "cache/\x7f" + str(ts) + ".pcm"
 		else:
 			fn = None
 			file = None
@@ -2217,7 +2230,7 @@ while not sys.stdin.closed and failed < 8:
 			cmd = ffmpeg_start
 			if is_url(stream):
 				cmd += ffmpeg_stream
-				fn2 = "cache/~" + sh + ".pcm"
+				fn2 = "cache/~" + sh + ".webm"
 				if sh in seen_urls and not os.path.exists(fn2):
 					submit(download, stream, fn2)
 				else:
@@ -2225,14 +2238,22 @@ while not sys.stdin.closed and failed < 8:
 			cmd = list(cmd)
 			pcm = False
 			if not fn:
+				if stream.rsplit(".", 1)[-1] in ("mp4", "mov", "avi", "mkv"):
+					cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
+					pcm = True
 				if stream.endswith(".pcm"):
 					cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
 					pcm = True
 				elif cdc == "mp3":
 					cmd.extend(("-c:a", "mp3"))
+				elif cdc == "webm":
+					cmd.extend(("-c:a", "copy"))
 			cmd.extend(("-nostdin", "-i", "-" if f else stream))
 			cmd.extend(ext)
-			cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
+			if fn and fn.endswith(".webm"):
+				cmd.extend(("-f", "webm", "-c:a", "copy", fn or "-"))
+			else:
+				cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))
 			if pos and not f:
 				i = cmd.index("-i")
 				ss = "-ss"

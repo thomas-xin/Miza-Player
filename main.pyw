@@ -97,6 +97,7 @@ player = cdict(
 		held_notes=set(),
 		held_update=None,
 	),
+	shuffler = 0
 )
 def change_mode(mode):
 	player.editor.fade = options.editor.mode == mode
@@ -1472,7 +1473,7 @@ def prepare(entry, force=False, download=False):
 	reset_entry(entry)
 	if not entry.url:
 		return
-	fn = "cache/~" + shash(entry.url) + ".pcm"
+	fn = "cache/~" + shash(entry.url) + ".webm"
 	if os.path.exists(fn) and os.path.getsize(fn):
 		dur = entry.get("duration")
 		if dur and not isinstance(dur, str) and isfinite(dur):
@@ -1572,8 +1573,12 @@ def prepare(entry, force=False, download=False):
 	stream = stream.strip()
 	duration = entry.duration
 	if not duration:
-		info = get_duration_2(stream)
-		duration = info[0]
+		try:
+			info = get_duration_2(stream)
+			duration = info[0]
+		except:
+			print_exc()
+			duration = None
 		if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
 			fi = stream
 			if not os.path.exists(fn):
@@ -1583,7 +1588,7 @@ def prepare(entry, force=False, download=False):
 		globals()["queue-length"] = -1
 	elif stream and is_url(stream) and download:
 		es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
-		mixer.submit(f"~download {es} cache/~{shash(entry.url)}.pcm")
+		mixer.submit(f"~download {es} cache/~{shash(entry.url)}.webm")
 	entry.duration = duration or entry.duration
 	return stream
 
@@ -1594,11 +1599,15 @@ def start_player(pos=None, force=False):
 	except IndexError:
 		return skip()
 	if control.loop < 2 and len(queue) > 1:
-		if control.shuffle:
+		thresh = min(8, max(2, len(queue) / 8))
+		if control.shuffle > 1 or player.shuffler >= thresh:
 			ensure_next(queue[1])
-		else:
-			for e in queue[1:min(len(queue), 8)]:
-				ensure_next(e)
+			thresh = 0
+		elif control.shuffle:
+			thresh -= player.shuffler
+			player.shuffler += 1
+		for e in queue[1:min(len(queue), thresh)]:
+			ensure_next(e)
 	duration = entry.duration or 300
 	if pos is None:
 		if audio.speed >= 0:
@@ -1637,7 +1646,7 @@ def start_player(pos=None, force=False):
 			duration = info[0]
 			if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
 				fi = stream
-				fn = "cache/~" + shash(fi) + ".pcm"
+				fn = "cache/~" + shash(fi) + ".webm"
 				if not os.path.exists(fn):
 					fn = select_and_convert(fi)
 				duration = get_duration_2(fn)[0]
@@ -1692,8 +1701,13 @@ last_save = 0
 def skip():
 	if queue:
 		e = queue.popleft()
-		if control.shuffle:
+		if control.shuffle > 1:
 			queue[1:].shuffle()
+		elif control.shuffle:
+			thresh = min(8, max(2, len(queue) / 8))
+			if player.shuffler >= thresh:
+				queue[1:].shuffle()
+				player.shuffler = 0
 		if control.loop == 2:
 			queue.appendleft(e)
 		elif control.loop == 1:
@@ -3985,7 +3999,7 @@ except Exception as ex:
 	for e in os.scandir("cache"):
 		fn = e.name
 		if e.is_file(follow_symlinks=False):
-			if fn.endswith(".pcm"):
+			if fn.endswith(".webm"):
 				if fn[0] in "\x7f&":
 					futs.add(submit(os.remove, e.path))
 				elif fn[0] == "~":

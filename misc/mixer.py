@@ -761,7 +761,7 @@ def download(url, fn):
 				os.rename(url, fn)
 			downloading.discard(fn)
 			return
-		if fn.endswith(".webm") and is_url(url):
+		if fn.endswith(".webm") and is_url(url) and url.rsplit(".", 1)[-1] not in ("mp4", "mov", "avi", "mkv"):
 			resp = reqs.get(
 				url,
 				headers=header(),
@@ -2238,9 +2238,6 @@ while not sys.stdin.closed and failed < 8:
 			cmd = list(cmd)
 			pcm = False
 			if not fn:
-				if stream.rsplit(".", 1)[-1] in ("mp4", "mov", "avi", "mkv"):
-					cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
-					pcm = True
 				if stream.endswith(".pcm"):
 					cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2"))
 					pcm = True
@@ -2250,6 +2247,8 @@ while not sys.stdin.closed and failed < 8:
 					cmd.extend(("-c:a", "copy"))
 			cmd.extend(("-nostdin", "-i", "-" if f else stream))
 			cmd.extend(ext)
+			if fn and stream.rsplit(".", 1)[-1] in ("mp4", "mov", "avi", "mkv"):
+				fn = fn.rsplit(".", 1) + ".pcm"
 			if fn and fn.endswith(".webm"):
 				cmd.extend(("-f", "webm", "-c:a", "copy", fn or "-"))
 			else:

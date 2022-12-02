@@ -1605,7 +1605,6 @@ def start_player(pos=None, force=False):
 			thresh = 0
 		elif control.shuffle:
 			thresh -= player.shuffler
-			player.shuffler += 1
 		for e in queue[1:min(len(queue), thresh)]:
 			ensure_next(e)
 	duration = entry.duration or 300
@@ -1708,6 +1707,8 @@ def skip():
 			if player.shuffler >= thresh:
 				queue[1:].shuffle()
 				player.shuffler = 0
+			else:
+				player.shuffler += 1
 		if control.loop == 2:
 			queue.appendleft(e)
 		elif control.loop == 1:

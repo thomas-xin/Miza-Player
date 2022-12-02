@@ -1599,7 +1599,7 @@ def start_player(pos=None, force=False):
 	except IndexError:
 		return skip()
 	if control.loop < 2 and len(queue) > 1:
-		thresh = min(8, max(2, len(queue) / 8))
+		thresh = min(8, max(2, len(queue) / 8)) + 1
 		if control.shuffle > 1 or player.shuffler >= thresh:
 			ensure_next(queue[1])
 			thresh = 0
@@ -3402,6 +3402,32 @@ def save_settings():
 		with open("dump.json", "w", encoding="utf-8") as f:
 			json.dump(data, f, separators=(",", ":"), default=json_default)
 	options.screensize = temp
+	for e in os.scandir("cache"):
+		fn = e.name
+		if e.is_file(follow_symlinks=False):
+			if fn.endswith(".webm"):
+				if fn[0] in "\x7f&":
+					submit(os.remove, e.path)
+				elif fn[0] == "~":
+					s = e.stat()
+					if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 3 or utc() - s.st_mtime > 86400 * 14 or utc() - s.st_mtime < 5:
+						submit(os.remove, e.path)
+			else:
+				try:
+					os.remove(e.path)
+				except:
+					pass
+	if os.path.exists("misc/cache"):
+		for fn in os.listdir("misc/cache"):
+			try:
+				os.remove("misc/cache/" + fn)
+			except:
+				pass
+	if os.path.exists("misc/temp.tmp"):
+		try:
+			os.remove("misc/temp.tmp")
+		except:
+			pass
 
 
 orig = code = ""
@@ -3997,32 +4023,6 @@ except Exception as ex:
 	for c in PROC.children(recursive=True):
 		futs.add(submit(c.terminate))
 	mixer = None
-	for e in os.scandir("cache"):
-		fn = e.name
-		if e.is_file(follow_symlinks=False):
-			if fn.endswith(".webm"):
-				if fn[0] in "\x7f&":
-					futs.add(submit(os.remove, e.path))
-				elif fn[0] == "~":
-					s = e.stat()
-					if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 3 or utc() - s.st_mtime > 86400 * 14 or utc() - s.st_mtime < 5:
-						futs.add(submit(os.remove, e.path))
-			else:
-				try:
-					os.remove(e.path)
-				except:
-					pass
-	if os.path.exists("misc/cache"):
-		for fn in os.listdir("misc/cache"):
-			try:
-				os.remove("misc/cache/" + fn)
-			except:
-				pass
-	if os.path.exists("misc/temp.tmp"):
-		try:
-			os.remove("misc/temp.tmp")
-		except:
-			pass
 	for fut in futs:
 		try:
 			fut.result(timeout=1)

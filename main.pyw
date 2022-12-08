@@ -1605,7 +1605,8 @@ def start_player(pos=None, force=False):
 			thresh = 0
 		elif control.shuffle:
 			thresh -= player.shuffler
-		for e in queue[1:min(len(queue), thresh)]:
+		# print(thresh)
+		for e in queue[1:min(len(queue), thresh) + 1]:
 			ensure_next(e)
 	duration = entry.duration or 300
 	if pos is None:

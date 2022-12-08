@@ -702,7 +702,7 @@ def proxy_download(url, fn=None, proxy=True, timeout=24):
 				from traceback import print_exc
 				print_exc()
 		if size:
-			while True:
+			for i in range(3):
 				pos = os.path.getsize(fn)
 				if pos >= size:
 					break
@@ -720,10 +720,13 @@ def proxy_download(url, fn=None, proxy=True, timeout=24):
 								raise StopIteration
 							f.write(b)
 					except StopIteration:
-						break
+						continue
 					except:
 						from traceback import print_exc
 						print_exc()
+			pos = os.path.getsize(fn)
+			if pos < size:
+				raise EOFError(f"{url}: Incomplete download ({pos} < {size}), unable to resolve.")
 		return fn
 
 is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r+[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)

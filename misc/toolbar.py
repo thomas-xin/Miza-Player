@@ -157,9 +157,10 @@ def render_spinny_trails():
 			alpha = (p.life - 2.5) / 24
 			if alpha <= 0:
 				continue
-			for j in shuffle(range(3)):
-				point = [cos(p.angle + j * tau / 3) * p.rad, sin(p.angle + j * tau / 3) * p.rad]
-				li = p.life ** 1.2 * p.r ** 0.7 / 16 + 0.5
+			li = p.life ** 1.2 * p.r ** 0.7 / 16 + 0.5
+			for j in range(3):
+				ao = j * tau / 3
+				point = [cos(p.angle + ao) * p.rad, sin(p.angle + ao) * p.rad]
 				pos = (p.centre[0] + point[0], DISP.height - p.centre[1] - point[1])
 				verts[i * 3 + j] = [
 					(pos[0] - li, pos[1] - li),

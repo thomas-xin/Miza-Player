@@ -1332,7 +1332,8 @@ def start_display():
 			else:
 				active += 1
 				sp.used = False
-		DISP.active.difference_update(pops)
+		if pops:
+			DISP.active.difference_update(pops)
 		batches = 0
 		for i in sorted(DISP.batches):
 			batch = DISP.batches[i]

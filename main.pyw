@@ -4172,6 +4172,8 @@ try:
 				fps = 24
 		elif getattr(DISP, "mmoved", False):
 			fps = 60
+		elif options.get("spectrogram", 0) == 0:
+			fps = 60
 		else:
 			fps = 30
 		globals()["fps"] = fps

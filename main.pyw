@@ -3892,21 +3892,21 @@ try:
 									print("Loading", url)
 									player.video_loading = submit(load_video, url, pos=player.pos, bak=queue[0].get("icon"), sig=queue[0].url)
 							if not player.sprite:
-								try:
-									no_lyrics_source = no_lyrics_fut.result()
-								except (FileNotFoundError, PermissionError):
-									pass
-								else:
-									no_lyrics_size = limit_size(*no_lyrics_source.get_size(), *player.rect[2:])
-									no_lyrics = globals().get("no_lyrics")
-									if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
-										no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size)
-									blit_complex(
-										DISP,
-										no_lyrics,
-										(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
-										z=1,
-									)
+								# try:
+									# no_lyrics_source = no_lyrics_fut.result()
+								# except (FileNotFoundError, PermissionError):
+									# pass
+								# else:
+									# no_lyrics_size = limit_size(*no_lyrics_source.get_size(), *player.rect[2:])
+									# no_lyrics = globals().get("no_lyrics")
+									# if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
+										# no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size)
+									# blit_complex(
+										# DISP,
+										# no_lyrics,
+										# (player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
+										# z=1,
+									# )
 								if pc() % 0.25 < 0.125:
 									col = (255,) * 3
 								else:
@@ -3985,7 +3985,10 @@ try:
 								z=1,
 							)
 						if entry.get("lyrics") == "":
-							s = f"No lyrics found for {entry.name}."
+							if options.get("spectrogram", 0) == 0:
+								s = f"No video found for {entry.name}."
+							else:
+								s = f"No lyrics found for {entry.name}."
 						else:
 							s = entry.lyrics[0]
 						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))

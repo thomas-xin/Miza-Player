@@ -1619,7 +1619,7 @@ def prepare(entry, force=False, download=False):
 			entry.update(e)
 		else:
 			entry.icon = entry.video = entry.url
-		entry.novid = False
+		entry.pop("novid", None)
 		print(entry)
 	fn = "cache/~" + shash(entry.url) + ".webm"
 	if os.path.exists(fn) and os.path.getsize(fn):
@@ -3900,7 +3900,7 @@ try:
 								if url:
 									print("Loading", url)
 									player.video_loading = submit(load_video, url, pos=player.pos, bak=queue[0].get("icon"), sig=queue[0].url)
-								else:
+								elif "novid" not in queue[0]:
 									queue[0].novid = True
 							if not player.sprite:
 								# try:

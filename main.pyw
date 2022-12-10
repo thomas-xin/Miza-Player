@@ -3211,7 +3211,7 @@ def draw_menu():
 		elif in_rect(mpos, player.rect):
 			if mclick[1]:
 				s = options.get("spectrogram")
-				if not s:
+				if s == 1:
 					def change_font_size():
 						def change_font_size_a(enter):
 							if enter:
@@ -3261,7 +3261,7 @@ def draw_menu():
 							("Reset lyrics", reset_lyrics),
 						),
 					)
-				elif s == 3:
+				elif s == 4:
 					def _change_polytope(v):
 						options.control["gradient-vertices"] = v
 						mixer.submit(f"~setting #gradient-vertices {v}")
@@ -3320,7 +3320,7 @@ def draw_menu():
 							("Load 3D model", change_model),
 						),
 					)
-				elif s == 4:
+				elif s == 5:
 					def change_vertices():
 						vertices = options.control["spiral-vertices"]
 						v = vertices[0]

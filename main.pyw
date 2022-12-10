@@ -1547,7 +1547,10 @@ def prepare(entry, force=False, download=False):
 	if force > 2 and not entry.get("icon"):
 		ytdl = downloader.result()
 		e = ytdl.extract(entry.url)[0]
-		ytdl.searched[e.url].data[0] = e
+		try:
+			ytdl.searched[e.url].data[0] = e
+		except KeyError:
+			pass
 		entry.update(e)
 		print(entry)
 	fn = "cache/~" + shash(entry.url) + ".webm"

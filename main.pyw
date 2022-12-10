@@ -3884,7 +3884,7 @@ try:
 								if sp.scale != scale:
 									sp.scale = scale
 							batch.used = True
-							sp.changed -= 1
+							sp.changed = max(0, sp.changed - 1)
 						else:
 							if (not player.video or not player.video.is_running() and not abs(player.video.pos - player.pos) < 1) and not player.get("video_loading"):
 								url = queue[0].get("video") or queue[0].get("icon")
@@ -4238,7 +4238,7 @@ try:
 				fps = 24
 		elif getattr(DISP, "mmoved", False):
 			fps = 60
-		elif player.video and player.sprite and player.sprite.changed:
+		elif player.video and player.sprite and player.sprite.changed > 0:
 			fps = 60
 			player.sprite.changed = 0
 		else:

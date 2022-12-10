@@ -1264,7 +1264,7 @@ def load_video(url, pos=0, sig=None):
 				break
 			curr = i / fps + pos
 			proc.pos = curr
-			while im and proc.is_running() and curr > player.pos:
+			while im and proc.is_running() and curr > player.pos or is_minimised():
 				time.sleep(0.04)
 			# print(curr, len(b), i, fps)
 			if not im:

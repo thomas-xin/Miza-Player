@@ -1608,6 +1608,7 @@ def prepare(entry, force=False, download=False):
 	if not entry.url:
 		return
 	if force > 2 and not entry.get("icon"):
+		entry.novid = False
 		if is_url(entry.url):
 			ytdl = downloader.result()
 			e = ytdl.extract(entry.url)[0]
@@ -1618,6 +1619,7 @@ def prepare(entry, force=False, download=False):
 			entry.update(e)
 		else:
 			entry.icon = entry.video = entry.url
+		entry.novid = False
 		print(entry)
 	fn = "cache/~" + shash(entry.url) + ".webm"
 	if os.path.exists(fn) and os.path.getsize(fn):

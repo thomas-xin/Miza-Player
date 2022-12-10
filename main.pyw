@@ -987,7 +987,7 @@ def send_status():
 	pass
 
 cached_fns = {}
-def _enqueue_local(*files, probe=True, index=None):
+def _enqueue_local(*files, probe=True, index=None, allowshuffle=True):
 	try:
 		if not files:
 			return
@@ -1044,6 +1044,8 @@ def _enqueue_local(*files, probe=True, index=None):
 					duration=dur,
 					cdc=cdc,
 					pos=start,
+					icon=fn,
+					video=fn,
 				)
 			if not title:
 				title = entry.name
@@ -1053,21 +1055,21 @@ def _enqueue_local(*files, probe=True, index=None):
 				options.history = options.history.uniq(sort=False)[:64]
 			if not entries:
 				queue.append(entry)
-		if control.shuffle and len(queue) > 1:
-			queue[bool(start):].shuffle()
-		elif index is not None:
+		if index is not None:
 			temp = list(queue[start:])
 			queue[index + len(temp):] = queue[index:-len(temp)]
 			queue[index:index + len(temp)] = temp
 			if index < 1:
 				submit(enqueue, queue[0])
+		elif allowshuffle and control.shuffle and len(queue) > 1:
+			queue[bool(start):].shuffle()
 		sidebar.loading = False
 	except:
 		sidebar.loading = False
 		print_exc()
 
 eparticle = dict(colour=(255,) * 3)
-def _enqueue_search(query, index=None):
+def _enqueue_search(query, index=None, allowshuffle=True):
 	try:
 		if not query:
 			return
@@ -1082,7 +1084,7 @@ def _enqueue_search(query, index=None):
 		else:
 			if entries:
 				entry = entries[0]
-				name = entry.name
+				name = entry["name"]
 				if len(entries) > 1:
 					name += f" +{len(entries) - 1}"
 				url = query if is_url(query) and len(entries) > 1 else entry.url
@@ -1092,14 +1094,14 @@ def _enqueue_search(query, index=None):
 				queue.extend(entries)
 			else:
 				sidebar.particles.append(cdict(eparticle))
-		if control.shuffle and len(queue) > 1:
-			queue[bool(start):].shuffle()
-		elif index is not None:
+		if index is not None:
 			temp = list(queue[start:])
 			queue[index + len(temp):] = queue[index:-len(temp)]
 			queue[index:index + len(temp)] = temp
 			if index < 1:
 				submit(enqueue, queue[0])
+		elif allowshuffle and control.shuffle and len(queue) > 1:
+			queue[bool(start):].shuffle()
 		sidebar.loading = False
 	except:
 		sidebar.loading = False
@@ -1114,7 +1116,7 @@ def enqueue_auto(*queries, index=None):
 			continue
 		if is_url(q) or not os.path.exists(q):
 			if i < 1:
-				futs.append(submit(_enqueue_search, q))
+				futs.append(submit(_enqueue_search, q, allowshuffle=index is None))
 			else:
 				for fut in futs:
 					fut.result()
@@ -1122,17 +1124,17 @@ def enqueue_auto(*queries, index=None):
 				name = q.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
 				queue.append(cdict(name=name, url=q, duration=None, pos=start))
 		else:
-			futs.append(submit(_enqueue_local, q, probe=i < 1))
+			futs.append(submit(_enqueue_local, q, probe=i < 1, allowshuffle=index is None))
 	for fut in futs:
 		fut.result()
-	if control.shuffle and len(queue) > 1:
-		queue[bool(start):].shuffle()
-	elif index is not None:
+	if index is not None:
 		temp = list(queue[start:])
 		queue[index + len(temp):] = queue[index:-len(temp)]
 		queue[index:index + len(temp)] = temp
 		if index < 1:
 			submit(enqueue, queue[0])
+	elif control.shuffle and len(queue) > 1:
+		queue[bool(start):].shuffle()
 
 def load_project(fn, switch=True):
 	if switch and not toolbar.editor:
@@ -1245,7 +1247,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 				if iterations < 2 and is_url(url):
 					if bak and bak != url:
 						try:
-							return load_video(bak, pos=pos, sig=sig, iterations=inf)
+							return load_video(bak, pos=pos, sig=proc.url, iterations=inf)
 						except:
 							pass
 					h = header()
@@ -1278,7 +1280,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 						except ValueError:
 							pass
 						else:
-							return load_video(res, pos=pos, bak=bak, sig=sig, iterations=iterations + 1)
+							return load_video(res, pos=pos, bak=bak, sig=proc.url, iterations=iterations + 1)
 				raise TypeError(f'File "{url}" is not supported.')
 			info = res.split("x", 3)
 		except:
@@ -1327,7 +1329,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			if not proc.is_running():
 				break
 		if pos >= dur - 1:
-			while pos < player.pos + 1 and queue and sig == queue[0].url:
+			while pos < player.pos + 1 and queue and proc.url == queue[0].url:
 				pos = player.pos
 				proc.pos = pos
 				time.sleep(0.08)
@@ -1338,7 +1340,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		proc.pos = inf
 	except:
 		print_exc()
-		if queue and sig == queue[0].url:
+		if queue and proc.url == queue[0].url:
 			queue[0].novid = True
 	finally:
 		player.video_loading = None
@@ -1606,13 +1608,16 @@ def prepare(entry, force=False, download=False):
 	if not entry.url:
 		return
 	if force > 2 and not entry.get("icon"):
-		ytdl = downloader.result()
-		e = ytdl.extract(entry.url)[0]
-		try:
-			ytdl.searched[e.url].data[0] = e
-		except KeyError:
-			pass
-		entry.update(e)
+		if is_url(entry.url):
+			ytdl = downloader.result()
+			e = ytdl.extract(entry.url)[0]
+			try:
+				ytdl.searched[e.url].data[0] = e
+			except KeyError:
+				pass
+			entry.update(e)
+		else:
+			entry.icon = entry.video = entry.url
 		print(entry)
 	fn = "cache/~" + shash(entry.url) + ".webm"
 	if os.path.exists(fn) and os.path.getsize(fn):
@@ -1844,6 +1849,8 @@ def delete_entry(e):
 
 last_save = 0
 def skip():
+	if player.video:
+		player.video.url = None
 	if queue:
 		e = queue.popleft()
 		if control.shuffle > 1:
@@ -3891,6 +3898,8 @@ try:
 								if url:
 									print("Loading", url)
 									player.video_loading = submit(load_video, url, pos=player.pos, bak=queue[0].get("icon"), sig=queue[0].url)
+								else:
+									queue[0].novid = True
 							if not player.sprite:
 								# try:
 									# no_lyrics_source = no_lyrics_fut.result()
@@ -3925,8 +3934,9 @@ try:
 									z=2,
 								)
 				elif queue or lyrics_entry:
+					novid = queue and queue[0] and queue[0].get("novid") and options.get("spectrogram", 0) == 0
 					entry = lyrics_entry or queue[0]
-					if "lyrics" not in entry:
+					if not novid and "lyrics" not in entry:
 						if pc() % 0.25 < 0.125:
 							col = (255,) * 3
 						else:
@@ -3944,7 +3954,7 @@ try:
 							font="Rockwell",
 							z=2,
 						)
-					elif entry.lyrics:
+					elif not novid and entry.lyrics:
 						rect = (player.rect[2] - 8, player.rect[3] - 92)
 						if not entry.get("lyrics_loading") and rect != entry.lyrics[1].get_size():
 							entry.lyrics_loading = True
@@ -3984,25 +3994,27 @@ try:
 								(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
 								z=1,
 							)
-						if entry.get("lyrics") == "":
-							if options.get("spectrogram", 0) == 0:
-								s = f"No video found for {entry.name}."
-							else:
-								s = f"No lyrics found for {entry.name}."
-						else:
+						if novid:
+							s = f"No video found for {entry.name}."
+						elif entry.get("lyrics") == "":
+							s = f"No lyrics found for {entry.name}."
+						elif "lyrics" in entry:
 							s = entry.lyrics[0]
-						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
-						message_display(
-							s,
-							size,
-							(player.rect[2] >> 1, size),
-							(255, 0, 0),
-							surface=DISP.subsurf(player.rect),
-							cache=True,
-							background=(0,) * 3,
-							font="Rockwell",
-							z=2,
-						)
+						else:
+							s = ""
+						if s:
+							size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
+							message_display(
+								s,
+								size,
+								(player.rect[2] >> 1, size),
+								(255, 0, 0),
+								surface=DISP.subsurf(player.rect),
+								cache=True,
+								background=(0,) * 3,
+								font="Rockwell",
+								z=2,
+							)
 			if not video_sourced and player.video:
 				if player.sprite:
 					player.sprite.delete()

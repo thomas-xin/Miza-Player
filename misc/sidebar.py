@@ -309,7 +309,7 @@ def render_sidebar(dur=0):
 						buttons=(
 							("Copy URL (CTRL+C)", copy_queue, entry),
 							("Copy name", copy_name, entry),
-							("Paste (CTRL+V)", paste_queue),
+							("Paste here (CTRL+V)", paste_queue),
 							("Play now", play_now),
 							("Play next", play_next),
 							("Add to playlist", add_to_playlist),

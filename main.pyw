@@ -1241,6 +1241,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		try:
 			res = as_str(p.stdout.read()).strip()
 			if not res:
+				print("Iteration", iterations, url)
 				if iterations < 2 and is_url(url):
 					if bak and bak != url:
 						try:
@@ -1320,6 +1321,8 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 				im.set_data("RGB", size[0] * 3, b)
 			proc.im = im
 			proc.im2 = None
+			if player.sprite:
+				player.sprite.changed += 1
 			i += 1
 			if not proc.is_running():
 				break
@@ -1328,7 +1331,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 				pos = player.pos
 				proc.pos = pos
 				time.sleep(0.08)
-				if im:
+				if im and not proc.im:
 					proc.im = im
 					proc.im2 = None
 		print("Video exited!")
@@ -3869,6 +3872,7 @@ try:
 									group=DISP.get_group(2),
 								)
 								sp.scale = scale
+								sp.changed = 0
 							else:
 								sp = player.sprite
 								if sp.image != tex:
@@ -4233,8 +4237,9 @@ try:
 				fps = 24
 		elif getattr(DISP, "mmoved", False):
 			fps = 60
-		elif player.video and player.sprite:
+		elif player.video and player.sprite and player.sprite.changed:
 			fps = 60
+			player.sprite.changed = 0
 		else:
 			fps = 30
 		globals()["fps"] = fps

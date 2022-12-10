@@ -1214,7 +1214,7 @@ if len(sys.argv) > 1:
 		submit(enqueue_auto, *sys.argv[1:])
 
 
-def load_video(url, pos=0, sig=None):
+def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 	try:
 		if player.video and player.video.is_running():
 			try:
@@ -1222,11 +1222,16 @@ def load_video(url, pos=0, sig=None):
 			except psutil.NoSuchProcess:
 				pass
 		# print("Loading", url)
-		h = header()
-		cmd = ("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate", "-of", "csv=s=x:p=0", url)
+		cmd = ("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate,duration", "-of", "csv=s=x:p=0", url)
 		print(cmd)
 		p = psutil.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y", "-ss", str(pos), "-i", url, "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0", "-"]
+		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y"]
+		if not iterations:
+			cmd2 += ["-ss", str(pos)]
+		cmd2 += ["-i", url, "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0"]
+		if iterations:
+			cmd2 += ["-vframes", "1"]
+		cmd2 += ["-"]
 		print(cmd2)
 		proc = psutil.Popen(cmd2, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1048576)
 		proc.url = sig
@@ -1236,25 +1241,66 @@ def load_video(url, pos=0, sig=None):
 		try:
 			res = as_str(p.stdout.read()).strip()
 			if not res:
+				if iterations < 2 and is_url(url):
+					if bak and bak != url:
+						try:
+							return load_video(bak, pos=pos, sig=sig, iterations=inf)
+						except:
+							pass
+					h = header()
+					resp = reqs.get(url, headers=h, stream=True)
+					url = resp.url
+					head = resp.headers
+					ctype = [t.strip() for t in head.get("Content-Type", "").split(";")]
+					if "text/html" in ctype:
+						it = resp.iter_content(65536)
+						data = next(it)
+						s = data.decode("utf-8")
+						try:
+							s = s[s.index("<meta") + 5:]
+							search = 'http-equiv="refresh" content="'
+							try:
+								s = s[s.index(search) + len(search):]
+								s = s[:s.index('"')]
+								res = None
+								for k in s.split(";"):
+									temp = k.strip()
+									if temp.casefold().startswith("url="):
+										res = temp[4:]
+										break
+								if not res:
+									raise ValueError
+							except ValueError:
+								search ='property="og:image" content="'
+								s = s[s.index(search) + len(search):]
+								res = s[:s.index('"')]
+						except ValueError:
+							pass
+						else:
+							return load_video(res, pos=pos, bak=bak, sig=sig, iterations=iterations + 1)
 				raise TypeError(f'File "{url}" is not supported.')
-			info = res.split("x", 2)
+			info = res.split("x", 3)
 		except:
 			print(as_str(p.stderr.read()), end="")
 			raise
 		size = tuple(map(int, info[:2]))
 		try:
-			fps = eval(info[-1], {}, {})
-		except (ValueError, TypeError, SyntaxError, ZeroDivisionError):
+			fps = eval(info[2], {}, {})
+		except (ValueError, TypeError, SyntaxError, ZeroDivisionError, NameError):
 			fps = 30
+		try:
+			dur = eval(info[3], {}, {})
+		except (ValueError, TypeError, SyntaxError, ZeroDivisionError, NameError):
+			dur = 0
 		bcount *= int(np.prod(size))
 		proc.fps = fps
 		proc.size = size
-		print(size, bcount, fps, pos)
+		print(size, bcount, fps, pos, dur)
 		proc.tex = proc.im = proc.im2 = None
 		player.video = proc
 		i = 0
 		im = None
-		while proc.is_running():
+		while True:
 			b = proc.stdout.read(bcount)
 			while len(b) < bcount:
 				if not b or not proc.is_running():
@@ -1275,10 +1321,22 @@ def load_video(url, pos=0, sig=None):
 			proc.im = im
 			proc.im2 = None
 			i += 1
+			if not proc.is_running():
+				break
+		if pos >= dur - 1:
+			while pos < player.pos + 1 and queue and sig == queue[0].url:
+				pos = player.pos
+				proc.pos = pos
+				time.sleep(0.08)
+				if im:
+					proc.im = im
+					proc.im2 = None
 		print("Video exited!")
 		proc.pos = inf
 	except:
 		print_exc()
+		if queue and sig == queue[0].url:
+			queue[0].novid = True
 	finally:
 		player.video_loading = None
 
@@ -3756,7 +3814,7 @@ try:
 				if options.get("spectrogram", 0) > 1:
 					rect = player.rect
 					render_spectrogram(rect)
-				elif queue and queue[0] and options.get("spectrogram", 0) == 0:
+				elif queue and queue[0] and not queue[0].get("novid") and options.get("spectrogram", 0) == 0:
 					video_sourced = True
 					if player.video:
 						if player.video.url != queue[0].url:
@@ -3827,7 +3885,7 @@ try:
 								url = queue[0].get("video") or queue[0].get("icon")
 								if url:
 									print("Loading", url)
-									player.video_loading = submit(load_video, url, pos=player.pos, sig=queue[0].url)
+									player.video_loading = submit(load_video, url, pos=player.pos, bak=queue[0].get("icon"), sig=queue[0].url)
 							if not player.sprite:
 								try:
 									no_lyrics_source = no_lyrics_fut.result()

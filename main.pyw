@@ -3872,7 +3872,7 @@ try:
 									group=DISP.get_group(2),
 								)
 								sp.scale = scale
-								sp.changed = 0
+								sp.changed = 1
 							else:
 								sp = player.sprite
 								if sp.image != tex:
@@ -3884,6 +3884,7 @@ try:
 								if sp.scale != scale:
 									sp.scale = scale
 							batch.used = True
+							sp.changed -= 1
 						else:
 							if (not player.video or not player.video.is_running() and not abs(player.video.pos - player.pos) < 1) and not player.get("video_loading"):
 								url = queue[0].get("video") or queue[0].get("icon")

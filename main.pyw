@@ -1216,7 +1216,7 @@ if len(sys.argv) > 1:
 
 def load_video(url, pos=0, sig=None):
 	try:
-		if player.video:
+		if player.video and player.video.is_running():
 			player.video.terminate()
 		# print("Loading", url)
 		h = header()
@@ -1227,6 +1227,7 @@ def load_video(url, pos=0, sig=None):
 		print(cmd2)
 		proc = psutil.Popen(cmd2, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1048576)
 		proc.url = sig
+		proc.pos = pos
 		bcount = 3
 		mode = "RGB"
 		try:
@@ -1245,7 +1246,6 @@ def load_video(url, pos=0, sig=None):
 		bcount *= int(np.prod(size))
 		proc.fps = fps
 		proc.size = size
-		proc.pos = pos
 		print(size, bcount, fps, pos)
 		proc.tex = proc.im = proc.im2 = None
 		player.video = proc
@@ -1276,6 +1276,8 @@ def load_video(url, pos=0, sig=None):
 		proc.pos = inf
 	except:
 		print_exc()
+	finally:
+		player.video_loading = None
 
 
 sidebar.abspos = 0
@@ -3754,11 +3756,21 @@ try:
 						if player.video.url != queue[0].url:
 							print("Video changed", player.video.url, queue[0].url)
 							video_sourced = False
-						elif player.video.pos > player.pos + 1:
-							print("Video seeked", player.video.pos, player.pos)
-							video_sourced = False
+						if not player.get("video_loading"):
+							if player.video.pos > player.pos + 1:
+								print("Video seeked backwards", player.video.pos, player.pos)
+								if player.video.is_running():
+									player.video.terminate()
+								player.video_loading = None
+								# video_sourced = False
+							elif player.video.pos < player.pos - 7:
+								print("Video seeked forwards", player.video.pos, player.pos)
+								if player.video.is_running():
+									player.video.terminate()
+								player.video_loading = None
+								# video_sourced = False
 					if video_sourced:
-						if player.video and player.video.im:
+						if player.video and (player.video.is_running() or abs(player.video.pos - player.pos) < 1) and player.video.im:
 							im = player.video.im
 							if not player.video.tex:
 								# player.video.tex = None
@@ -3799,43 +3811,44 @@ try:
 									sp.scale = scale
 							batch.used = True
 						else:
-							if not player.video and not player.get("video_loading"):
+							if (not player.video or not player.video.is_running() and not abs(player.video.pos - player.pos) < 1) and not player.get("video_loading"):
 								url = queue[0].get("video") or queue[0].get("icon")
 								if url:
 									print("Loading", url)
 									player.video_loading = submit(load_video, url, pos=player.pos, sig=queue[0].url)
-							try:
-								no_lyrics_source = no_lyrics_fut.result()
-							except (FileNotFoundError, PermissionError):
-								pass
-							else:
-								no_lyrics_size = limit_size(*no_lyrics_source.get_size(), *player.rect[2:])
-								no_lyrics = globals().get("no_lyrics")
-								if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
-									no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size)
-								blit_complex(
-									DISP,
-									no_lyrics,
-									(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
-									z=1,
+							if not player.sprite:
+								try:
+									no_lyrics_source = no_lyrics_fut.result()
+								except (FileNotFoundError, PermissionError):
+									pass
+								else:
+									no_lyrics_size = limit_size(*no_lyrics_source.get_size(), *player.rect[2:])
+									no_lyrics = globals().get("no_lyrics")
+									if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
+										no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size)
+									blit_complex(
+										DISP,
+										no_lyrics,
+										(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
+										z=1,
+									)
+								if pc() % 0.25 < 0.125:
+									col = (255,) * 3
+								else:
+									col = (255, 0, 0)
+								s = f"Loading video for {queue[0].name}..."
+								size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
+								message_display(
+									s,
+									size,
+									(player.rect[2] >> 1, size),
+									col,
+									surface=DISP.subsurf(player.rect),
+									cache=True,
+									background=(0,) * 3,
+									font="Rockwell",
+									z=2,
 								)
-							if pc() % 0.25 < 0.125:
-								col = (255,) * 3
-							else:
-								col = (255, 0, 0)
-							s = f"Loading video for {queue[0].name}..."
-							size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
-							message_display(
-								s,
-								size,
-								(player.rect[2] >> 1, size),
-								col,
-								surface=DISP.subsurf(player.rect),
-								cache=True,
-								background=(0,) * 3,
-								font="Rockwell",
-								z=2,
-							)
 				elif queue or lyrics_entry:
 					entry = lyrics_entry or queue[0]
 					if "lyrics" not in entry:

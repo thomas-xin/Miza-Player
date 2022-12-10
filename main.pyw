@@ -4238,7 +4238,7 @@ try:
 				fps = 24
 		elif getattr(DISP, "mmoved", False):
 			fps = 60
-		elif player.video and player.sprite and player.sprite.changed > 0:
+		elif player.video and player.sprite and player.sprite.changed > 0 and player.fps > 35:
 			fps = 60
 			player.sprite.changed = 0
 		else:

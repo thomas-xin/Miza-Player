@@ -2510,9 +2510,14 @@ def update_menu():
 			)
 	c = options.get("toolbar_colour", (64, 0, 96))
 	if toolbar.resizing or in_rect(mpos, toolbar.rect):
-		hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+		hls = colorsys.rgb_to_hls(*(i / 255 for i in c[:3]))
 		hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.2)
-		c = verify_colour(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
+		tc = verify_colour(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
+		if len(c) > 3:
+			tc.append(c[3])
+			c = tc
+		else:
+			c = tc
 	toolbar.colour = c
 	if any(mclick):
 		for button in toolbar.buttons:
@@ -2555,9 +2560,14 @@ def update_menu():
 			sidebar.resizer = True
 	c = options.get("sidebar_colour", (64, 0, 96))
 	if sidebar.resizing or in_rect(mpos, sidebar.rect):
-		hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+		hls = colorsys.rgb_to_hls(*(i / 255 for i in c[:3]))
 		hls = (hls[0], max(0, hls[1] + 1 / 24),  hls[2] / 1.2)
-		c = verify_colour(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
+		sc = verify_colour(round(i * 255) for i in colorsys.hls_to_rgb(*hls))
+		if len(c) > 3:
+			sc.append(c[3])
+			c = sc
+		else:
+			c = sc
 	sidebar.colour = c
 	sidebar.relpos = (sidebar.get("relpos", 0) * (ratio - 1) + bool(sidebar.abspos)) / ratio
 	scroll_height = screensize[1] - toolbar_height - 72
@@ -2566,7 +2576,7 @@ def update_menu():
 	scroll_pos = sidebar.scroll.pos / (32 * max(1, len(queue)) - screensize[1] + toolbar_height + 52 + 16) * (scroll_height - scroll_rat) + 52 + 16
 	sidebar.scroll.select_rect = (sidebar.scroll.rect[0], scroll_pos, sidebar.scroll.rect[2], scroll_rat)
 	c = options.get("sidebar_colour", (64, 0, 96))
-	hls = colorsys.rgb_to_hls(*(i / 255 for i in c))
+	hls = colorsys.rgb_to_hls(*(i / 255 for i in c[:3]))
 	light = 1 - (1 - hls[1]) / 4
 	if hls[2]:
 		sat = 1 - (1 - hls[2]) / 2
@@ -2625,7 +2635,7 @@ def get_ripple(i, mode="toolbar"):
 		d = 0
 	else:
 		d = i * 2 - 3
-	h, l, s = colorsys.rgb_to_hls(*(i / 255 for i in c))
+	h, l, s = colorsys.rgb_to_hls(*(i / 255 for i in c[:3]))
 	h = (h + d * 5 / 12) % 1
 	s = 1 - (1 - s) / 2
 	l = 1 - (1 - l) / 2
@@ -3031,7 +3041,7 @@ def render_settings(dur, ignore=False):
 	sidebar.more_angle = sidebar.more_angle * rat + sidebar.more * (1 - rat)
 	lum = 223 if hovered else 191
 	c = options.get("sidebar_colour", (64, 0, 96))
-	hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c)))
+	hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c[:3])))
 	light = 1 - (1 - hls[1]) / 4
 	if hls[2]:
 		sat = 1 - (1 - hls[2]) / 2
@@ -3115,9 +3125,22 @@ def draw_menu():
 		if mclick[1] and sidebar.menu is None:
 
 			def set_colour():
-				colour = get_colour()
-				if colour:
-					options.sidebar_colour = colour
+				def get_colour_a(enter):
+					if enter:
+						enter = int(enter.lstrip("#"), 16)
+						if enter >= 16777216:
+							enter = ((enter >> 24) & 255, (enter >> 16) & 255, (enter >> 8) & 255, enter & 255)
+						else:
+							enter = ((enter >> 16) & 255, (enter >> 8) & 255, enter & 255)
+						if isinstance(enter, tuple) and len(enter) in (3, 4):
+							options.sidebar_colour = enter
+				v = options.get("sidebar_colour", (64, 0, 96))
+				easygui2.enterbox(
+					get_colour_a,
+					"Change sidebar colour",
+					title="Miza Player",
+					default="#" + "".join(("0" + hex(i)[2:])[-2:] for i in v).upper(),
+				)
 
 			sidebar.menu = cdict(
 				buttons=(
@@ -3197,9 +3220,23 @@ def draw_menu():
 		if mclick[1] and sidebar.menu is None:
 
 			def set_colour():
-				colour = get_colour()
-				if colour:
-					options.toolbar_colour = colour
+				def get_colour_a(enter):
+					if enter:
+						enter = int(enter.lstrip("#"), 16)
+						if enter >= 16777216:
+							enter = ((enter >> 24) & 255, (enter >> 16) & 255, (enter >> 8) & 255, enter & 255)
+						else:
+							enter = ((enter >> 16) & 255, (enter >> 8) & 255, enter & 255)
+						if isinstance(enter, tuple) and len(enter) in (3, 4):
+							options.toolbar_colour = enter
+				v = options.get("toolbar_colour", (64, 0, 96))
+				easygui2.enterbox(
+					get_colour_a,
+					"Change toolbar colour",
+					title="Miza Player",
+					default="#" + "".join(("0" + hex(i)[2:])[-2:] for i in v).upper(),
+				)
+
 
 			sidebar.menu = cdict(
 				buttons=(
@@ -3371,7 +3408,7 @@ def draw_menu():
 			# globals()["sidebar_rendered"] = None
 		maxb = (sidebar_width - 12) // 44
 		c = options.get("sidebar_colour", (64, 0, 96))
-		hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c)))
+		hls = list(colorsys.rgb_to_hls(*(i / 255 for i in c[:3])))
 		light = 1 - (1 - hls[1]) / 4
 		if hls[2]:
 			sat = 1 - (1 - hls[2]) / 2

@@ -460,7 +460,7 @@ def render_toolbar():
 		else:
 			lum = 96
 		lum += button.get("flash", 0)
-		hls = colorsys.rgb_to_hls(*(i / 255 for i in tc))
+		hls = colorsys.rgb_to_hls(*(i / 255 for i in tc[:3]))
 		light = 1 - (1 - hls[1]) / 4
 		if hls[2]:
 			sat = 1 - (1 - hls[2]) / 2

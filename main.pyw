@@ -1217,7 +1217,10 @@ if len(sys.argv) > 1:
 def load_video(url, pos=0, sig=None):
 	try:
 		if player.video and player.video.is_running():
-			player.video.terminate()
+			try:
+				player.video.terminate()
+			except psutil.NoSuchProcess:
+				pass
 		# print("Loading", url)
 		h = header()
 		cmd = ("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate", "-of", "csv=s=x:p=0", url)
@@ -3760,13 +3763,19 @@ try:
 							if player.video.pos > player.pos + 1:
 								print("Video seeked backwards", player.video.pos, player.pos)
 								if player.video.is_running():
-									player.video.terminate()
+									try:
+										player.video.terminate()
+									except psutil.NoSuchProcess:
+										pass
 								player.video_loading = None
 								# video_sourced = False
 							elif player.video.pos < player.pos - 7:
 								print("Video seeked forwards", player.video.pos, player.pos)
 								if player.video.is_running():
-									player.video.terminate()
+									try:
+										player.video.terminate()
+									except psutil.NoSuchProcess:
+										pass
 								player.video_loading = None
 								# video_sourced = False
 					if video_sourced:
@@ -3930,7 +3939,10 @@ try:
 					player.sprite.delete()
 				player.sprite = None
 				if player.video and player.video.is_running():
-					player.video.terminate()
+					try:
+						player.video.terminate()
+					except psutil.NoSuchProcess:
+						pass
 				player.video = None
 				player.video_loading = None
 			update_menu()

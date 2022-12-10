@@ -107,7 +107,7 @@ class MultiAutoImporter:
 importer = MultiAutoImporter(
 	"PIL, numpy, traceback",
 	"cffi, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, zipfile",
-	"pickle, hashlib, base64, urllib, weakref, orjson, copy, json",
+	"io, pickle, hashlib, base64, urllib, weakref, orjson, copy, json",
 	pool=exc,
 	_globals=globals(),
 )
@@ -233,38 +233,215 @@ if update_collections:
 		add_to_path()
 		print("Sound library extraction complete.")
 
-def state(i):
+
+class seq(io.BufferedRandom, collections.abc.MutableSequence, contextlib.AbstractContextManager):
+
+	BUF = 262144
+	iter = None
+	mode = "rb+"
+
+	def __init__(self, obj, filename=None, buffer_size=None):
+		if buffer_size:
+			self.BUF = buffer_size
+		self.closer = getattr(obj, "close", None)
+		self.high = 0
+		self.finished = False
+		if isinstance(obj, io.IOBase):
+			if isinstance(obj, io.BytesIO):
+				self.data = obj
+			elif hasattr(obj, "getbuffer"):
+				self.data = io.BytesIO(obj.getbuffer())
+			else:
+				obj.seek(0)
+				self.data = io.BytesIO(obj.read())
+				obj.seek(0)
+			self.finished = True
+		elif isinstance(obj, bytes) or isinstance(obj, bytearray) or isinstance(obj, memoryview):
+			self.data = io.BytesIO(obj)
+			self.high = len(obj)
+			self.finished = True
+		elif isinstance(obj, collections.abc.Iterable):
+			self.iter = iter(obj)
+			self.data = io.BytesIO()
+		elif getattr(obj, "iter_content", None):
+			self.iter = obj.iter_content(self.BUF)
+			self.data = io.BytesIO()
+		else:
+			raise TypeError(f"a bytes-like object is required, not '{type(obj)}'")
+		self.filename = filename
+		self.buffer = {}
+		self.pos = 0
+		self.limit = None
+
+	seekable = lambda self: True
+	readable = lambda self: True
+	writable = lambda self: False
+	isatty = lambda self: False
+	flush = lambda self: None
+	tell = lambda self: self.pos
+
+	def seek(self, pos=0):
+		self.pos = pos
+
+	def read(self, size=None):
+		out = self.peek(size)
+		self.pos += len(out)
+		return out
+
+	def peek(self, size=None):
+		if not size:
+			if self.limit is not None:
+				return self[self.pos:self.limit]
+			return self[self.pos:]
+		if self.limit is not None:
+			return self[self.pos:min(self.pos + size, self.limit)]
+		return self[self.pos:self.pos + size]
+
+	def truncate(self, limit=None):
+		self.limit = limit
+
+	def fileno(self):
+		raise OSError
+
+	def __getitem__(self, k):
+		if self.finished:
+			return self.data.getbuffer()[k]
+		if type(k) is slice:
+			start = k.start or 0
+			stop = k.stop or inf
+			step = k.step or 1
+			rev = step < 0
+			if rev:
+				start, stop, step = stop + 1, start + 1, -step
+			curr = start // self.BUF * self.BUF
+			out = deque()
+			out.append(self.load(curr))
+			curr += self.BUF
+			while curr < stop:
+				temp = self.load(curr)
+				if not temp:
+					break
+				out.append(temp)
+				curr += self.BUF
+			b = memoryview(b"".join(out))
+			b = b[start % self.BUF:]
+			if isfinite(stop):
+				b = b[:stop - start]
+			if step != 1:
+				b = b[::step]
+			if rev:
+				b = b[::-1]
+			return b
+		base = k // self.BUF
+		with suppress(KeyError):
+			return self.load(base)[k % self.BUF]
+		raise IndexError("seq index out of range")
+
+	def __str__(self):
+		if self.filename is None:
+			return str(self.data)
+		if self.filename:
+			return f"<seq name='{self.filename}'>"
+		return f"<seq object at {hex(id(self))}"
+
+	def __iter__(self):
+		i = 0
+		while True:
+			x = self[i]
+			if x:
+				yield x
+			else:
+				break
+			i += 1
+
+	def __getattribute__(self, k):
+		if k in ("name", "filename"):
+			try:
+				return object.__getattribute__(self, "filename")
+			except AttributeError:
+				k = "name"
+		else:
+			try:
+				return object.__getattribute__(self, k)
+			except AttributeError:
+				pass
+		return object.__getattribute__(self.data, k)
+
+	close = lambda self: self.closer() if self.closer else None
+	__exit__ = lambda self, *args: self.close()
+
+	def load(self, k):
+		if self.finished:
+			return self.data.getbuffer()[k:k + self.BUF]
+		with suppress(KeyError):
+			return self.buffer[k]
+		seek = getattr(self.data, "seek", None)
+		if seek:
+			if self.iter is not None and k + self.BUF >= self.high:
+				out = deque()
+				try:
+					while k + self.BUF >= self.high:
+						temp = next(self.iter)
+						if not temp:
+							raise StopIteration
+						out.append(temp)
+						self.high += len(temp)
+				except StopIteration:
+					out.appendleft(self.data.getbuffer())
+					self.data = io.BytesIO(b"".join(out))
+					self.finished = True
+					return self.data.getbuffer()[k:k + self.BUF]
+				out.appendleft(self.data.getbuffer())
+				self.data = io.BytesIO(b"".join(out))
+			self.buffer[k] = b = self.data.getbuffer()[k:k + self.BUF]
+			return b
+		try:
+			while self.high < k:
+				temp = next(self.data)
+				if not temp:
+					raise StopIteration
+				if self.high in self.buffer:
+					self.buffer[self.high] += temp
+				else:
+					self.buffer[self.high] = temp
+				self.high += self.BUF
+		except StopIteration:
+			self.data = io.BytesIO(b"".join(self.buffer.values()))
+			self.finished = True
+			return self.data.getbuffer()[k:k + self.BUF]
+		return self.buffer.get(k, b"")
+
+def header():
+	return {
+		"User-Agent": f"Mozilla/5.{random.randint(1, 9)}",
+		"DNT": "1",
+		"X-Forwarded-For": ".".join(str(random.randint(1, 254)) for _ in range(4)),
+	}
+
+
+def mixer_verify(fut):
 	try:
-		s = f"~state {int(i)}\n".encode("utf-8")
-		fut = submit(mixer.stdin.write, s)
 		fut.result(timeout=1)
 		mixer.stdin.flush()
 	except:
 		print_exc()
 		if mixer and mixer.is_running():
 			mixer.kill()
+
+def state(i):
+	s = f"~state {int(i)}\n".encode("utf-8")
+	fut = submit(mixer.stdin.write, s)
+	submit(mixer_verify, fut)
 
 def clear():
-	try:
-		s = f"~clear\n".encode("utf-8")
-		fut = submit(mixer.stdin.write, s)
-		fut.result(timeout=1)
-		mixer.stdin.flush()
-	except:
-		print_exc()
-		if mixer and mixer.is_running():
-			mixer.kill()
+	s = f"~clear\n".encode("utf-8")
+	fut = submit(mixer.stdin.write, s)
+	submit(mixer_verify, fut)
 
 def drop(i):
-	try:
-		s = f"~drop {i}\n".encode("utf-8")
-		fut = submit(mixer.stdin.write, s)
-		fut.result(timeout=1)
-		mixer.stdin.flush()
-	except:
-		print_exc()
-		if mixer and mixer.is_running():
-			mixer.kill()
+	s = f"~drop {i}\n".encode("utf-8")
+	fut = submit(mixer.stdin.write, s)
+	submit(mixer_verify, fut)
 
 laststart = set()
 def mixer_submit(s, force, debug):

@@ -97,7 +97,9 @@ player = cdict(
 		held_notes=set(),
 		held_update=None,
 	),
-	shuffler = 0
+	shuffler=2147483647,
+	video=None,
+	sprite=None,
 )
 def change_mode(mode):
 	player.editor.fade = options.editor.mode == mode
@@ -749,7 +751,7 @@ def setup_buttons():
 				mixer.submit(f"~setting spectrogram -1")
 				pygame.display.set_caption(f"Miza Player ~ {project_name}")
 			else:
-				mixer.submit(f"~setting spectrogram {options.spectrogram}")
+				mixer.submit(f"~setting spectrogram {options.spectrogram - 1}")
 				pygame.display.set_caption("Miza Player")
 		toolbar.buttons.append(cdict(
 			name="Editor",
@@ -1212,6 +1214,70 @@ if len(sys.argv) > 1:
 		submit(enqueue_auto, *sys.argv[1:])
 
 
+def load_video(url, pos=0, sig=None):
+	try:
+		if player.video:
+			player.video.terminate()
+		# print("Loading", url)
+		h = header()
+		cmd = ("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate", "-of", "csv=s=x:p=0", url)
+		print(cmd)
+		p = psutil.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y", "-ss", str(pos), "-i", url, "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0", "-"]
+		print(cmd2)
+		proc = psutil.Popen(cmd2, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1048576)
+		proc.url = sig
+		bcount = 3
+		mode = "RGB"
+		try:
+			res = as_str(p.stdout.read()).strip()
+			if not res:
+				raise TypeError(f'File "{url}" is not supported.')
+			info = res.split("x", 2)
+		except:
+			print(as_str(p.stderr.read()), end="")
+			raise
+		size = tuple(map(int, info[:2]))
+		try:
+			fps = eval(info[-1], {}, {})
+		except (ValueError, TypeError, SyntaxError, ZeroDivisionError):
+			fps = 30
+		bcount *= int(np.prod(size))
+		proc.fps = fps
+		proc.size = size
+		proc.pos = pos
+		print(size, bcount, fps, pos)
+		proc.tex = proc.im = proc.im2 = None
+		player.video = proc
+		i = 0
+		im = None
+		while proc.is_running():
+			b = proc.stdout.read(bcount)
+			while len(b) < bcount:
+				if not b or not proc.is_running():
+					break
+				b += proc.stdout.read(bcount - len(b))
+			if len(b) < bcount:
+				break
+			curr = i / fps + pos
+			proc.pos = curr
+			while im and proc.is_running() and curr > player.pos:
+				time.sleep(0.04)
+			# print(curr, len(b), i, fps)
+			if not im:
+				im = pyglet.image.ImageData(*size, "RGB", b)
+				player.video_loading = None
+			else:
+				im.set_data("RGB", size[0] * 3, b)
+			proc.im = im
+			proc.im2 = None
+			i += 1
+		print("Video exited!")
+		proc.pos = inf
+	except:
+		print_exc()
+
+
 sidebar.abspos = 0
 osize = None
 ssize = None
@@ -1322,7 +1388,7 @@ def render_lyrics(entry):
 			else:
 				entry.lyrics = lyrics
 				return
-		if options.spectrogram:
+		if options.spectrogram != 0:
 			return
 		rect = (player.rect[2] - 8, player.rect[3] - 92)
 		if entry.get("lyrics") and entry.lyrics[1].get_size() == rect:
@@ -1473,6 +1539,12 @@ def prepare(entry, force=False, download=False):
 	reset_entry(entry)
 	if not entry.url:
 		return
+	if force > 2 and not entry.get("icon"):
+		ytdl = downloader.result()
+		e = ytdl.extract(entry.url)[0]
+		ytdl.searched[e.url].data[0] = e
+		entry.update(e)
+		print(entry)
 	fn = "cache/~" + shash(entry.url) + ".webm"
 	if os.path.exists(fn) and os.path.getsize(fn):
 		dur = entry.get("duration")
@@ -1483,6 +1555,8 @@ def prepare(entry, force=False, download=False):
 				resp = ytdl.searched[entry.url].data
 				if len(resp) == 1:
 					entry.name = resp[0].get("name")
+					entry.video = resp[0].get("video")
+					entry.icon = resp[0].get("icon")
 			return fn
 		elif force:
 			ytdl = downloader.result()
@@ -1594,6 +1668,8 @@ def prepare(entry, force=False, download=False):
 
 def start_player(pos=None, force=False):
 	# print("start_player", queue[0], pos, force)
+	if options.get("spectrogram", 0) == 0:
+		force = 2
 	try:
 		entry = queue[0]
 	except IndexError:
@@ -3205,9 +3281,9 @@ def draw_menu():
 					)
 			else:
 				player.flash_s = 32
-				options.spectrogram = (options.get("spectrogram", 0) + 1) % 5
-				mixer.submit(f"~setting spectrogram {options.spectrogram}")
-				if not options.spectrogram and queue:
+				options.spectrogram = (options.get("spectrogram", 0) + 1) % 6
+				mixer.submit(f"~setting spectrogram {options.spectrogram - 1}")
+				if options.spectrogram == 1 and queue:
 					submit(render_lyrics, queue[0])
 					if player.get("spec"):
 						player.spec.fill((0, 0, 0))
@@ -3667,10 +3743,99 @@ try:
 					mixer.submit("~keys " + ",".join(map(str, notekeys)))
 			crosshair = False
 			hovertext = None
+			video_sourced = False
 			if not toolbar.editor:
-				if options.get("spectrogram"):
+				if options.get("spectrogram", 0) > 1:
 					rect = player.rect
 					render_spectrogram(rect)
+				elif queue[0] and options.get("spectrogram", 0) == 0:
+					video_sourced = True
+					if player.video:
+						if player.video.url != queue[0].url:
+							print("Video changed", player.video.url, queue[0].url)
+							video_sourced = False
+						elif player.video.pos > player.pos + 1:
+							print("Video seeked", player.video.pos, player.pos)
+							video_sourced = False
+					if video_sourced:
+						if player.video and player.video.im:
+							im = player.video.im
+							if not player.video.tex:
+								# player.video.tex = None
+								# tex = pyglet.image.Texture.create(im.width, im.height, rectangle=True)
+								tex = im.get_texture()
+								player.video.tex = tex = tex.get_transform(flip_y=True)
+								tex.anchor_y = 0
+							tex = player.video.tex
+							if player.video.im2 != player.video.im:
+								# tex = im.get_texture()
+								# player.video.tex = tex = tex.get_transform(flip_y=True)
+								tex.blit_into(player.video.im, 0, 0, 0)
+								# print(tex)
+								player.video.im2 = player.video.im
+							size = limit_size(im.width, im.height, *player.rect[2:])
+							x = player.rect[2] - size[0] >> 1
+							y = (player.rect[3] - size[1] >> 1) + toolbar_height
+							scale = size[0] / tex.width
+							batch = DISP.get_batch(0)
+							if not player.sprite:
+								player.sprite = sp = pyglet.sprite.Sprite(
+									tex,
+									x=x,
+									y=y,
+									batch=batch,
+									group=DISP.get_group(2),
+								)
+								sp.scale = scale
+							else:
+								sp = player.sprite
+								if sp.image != tex:
+									sp.image = tex
+								if sp.x != x:
+									sp.x = x
+								if sp.y != y:
+									sp.y = y
+								if sp.scale != scale:
+									sp.scale = scale
+							batch.used = True
+						else:
+							if not player.video and not player.get("video_loading"):
+								url = queue[0].get("video") or queue[0].get("icon")
+								if url:
+									print("Loading", url)
+									player.video_loading = submit(load_video, url, pos=player.pos, sig=queue[0].url)
+							try:
+								no_lyrics_source = no_lyrics_fut.result()
+							except (FileNotFoundError, PermissionError):
+								pass
+							else:
+								no_lyrics_size = limit_size(*no_lyrics_source.get_size(), *player.rect[2:])
+								no_lyrics = globals().get("no_lyrics")
+								if not no_lyrics or no_lyrics.get_size() != no_lyrics_size:
+									no_lyrics = globals()["no_lyrics"] = pygame.transform.scale(no_lyrics_source, no_lyrics_size)
+								blit_complex(
+									DISP,
+									no_lyrics,
+									(player.rect[2] - no_lyrics.get_width() >> 1, player.rect[3] - no_lyrics.get_height() >> 1),
+									z=1,
+								)
+							if pc() % 0.25 < 0.125:
+								col = (255,) * 3
+							else:
+								col = (255, 0, 0)
+							s = f"Loading video for {queue[0].name}..."
+							size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
+							message_display(
+								s,
+								size,
+								(player.rect[2] >> 1, size),
+								col,
+								surface=DISP.subsurf(player.rect),
+								cache=True,
+								background=(0,) * 3,
+								font="Rockwell",
+								z=2,
+							)
 				elif queue or lyrics_entry:
 					entry = lyrics_entry or queue[0]
 					if "lyrics" not in entry:
@@ -3747,6 +3912,14 @@ try:
 							font="Rockwell",
 							z=2,
 						)
+			if not video_sourced and player.video:
+				if player.sprite:
+					player.sprite.delete()
+				player.sprite = None
+				if player.video and player.video.is_running():
+					player.video.terminate()
+				player.video = None
+				player.video_loading = None
 			update_menu()
 			if toolbar.colour:
 				render_toolbar()
@@ -3957,7 +4130,7 @@ try:
 				DISP.switch_to()
 				DISP.clear()
 				DISP.update_keys()
-			elif not options.spectrogram:
+			elif options.spectrogram in (0, 1):
 				DISP.fill(
 					(0,) * 3,
 					player.rect,

@@ -1300,12 +1300,13 @@ def render():
 			sleep = 0.005
 			if lastpacket != id(packet) and sbuffer is not None and not sblock:
 				lastpacket = id(packet)
+				sblock = True
 				if len(sbuffer) > 3200:
 					buffer = sbuffer[:3200]
 					sbuffer = sbuffer[3200:]
 					sleep = 1 / 30
 				else:
-					buffer = sbuffer
+					buffer = sbuffer.copy()
 
 				amp = np.sum(np.abs(buffer)) / len(buffer)
 				p_amp = sqrt(amp)
@@ -1332,6 +1333,7 @@ def render():
 
 						if packet:
 							point("~x " + " ".join(map(str, out)))
+				sblock = False
 
 			packet_advanced = False
 			dur = sleep + t - pc()
@@ -1461,6 +1463,7 @@ def play(pos):
 							np.multiply(sample, settings.volume, out=sample)
 						except:
 							sample = sample * settings.volume
+						# sample = np.clip(sample, -channel.peak, channel.peak, out=sample).astype(np.int16)
 					if s is not None:
 						if sample.dtype != np.float32:
 							try:
@@ -1478,9 +1481,20 @@ def play(pos):
 						quiet += 1
 					else:
 						quiet = 0
-				if sample.dtype == np.float32:
-					np.clip(sample, -channel.peak, channel.peak, out=sample)
+				if sample.dtype != np.int16:
+					sample = np.clip(sample, -channel.peak, channel.peak, out=sample)
+				if sample.dtype != channel.dtype:
+					# try:
+						# if globals()["s-tempc"].dtype != channel.dtype:
+							# raise KeyError
+						# globals()["s-tempc"][:] = sample
+					# except KeyError:
+						# globals()["s-tempc"] = sample.astype(channel.dtype)
+					# sample = globals()["s-tempc"]
+					sample = sample.astype(channel.dtype)
 				if channel.dtype != np.float32:
+					while sblock:
+						time.sleep(0.004)
 					sblock = True
 					try:
 						globals()["s-buf32"][:] = sample
@@ -1491,14 +1505,6 @@ def play(pos):
 					sblock = False
 				else:
 					sbuffer = sample
-				if sample.dtype != channel.dtype:
-					try:
-						if globals()["s-tempc"].dtype != channel.dtype:
-							raise KeyError
-						globals()["s-tempc"][:] = sample
-					except KeyError:
-						globals()["s-tempc"] = sample.astype(channel.dtype)
-					sample = globals()["s-tempc"]
 				lastpacket = None
 				packet = sample.data
 				packet_advanced = True

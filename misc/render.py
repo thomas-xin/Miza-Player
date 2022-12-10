@@ -747,7 +747,7 @@ def animate_ripple(changed=False):
 
 def ensure_bars():
 	specs = options.get("spectrogram", 0)
-	if specs == 2:
+	if specs == 3:
 		bi = bars2
 	else:
 		bi = bars
@@ -759,16 +759,16 @@ def ensure_bars():
 
 def update_bars():
 	specs = options.get("spectrogram", 0)
-	if specs == 2:
+	if specs == 3:
 		bi = bars2
 	else:
 		bi = bars
 	dur = 1 / fps
-	if specs == 2:
+	if specs == 3:
 		dur *= 3
-	elif specs == 3:
-		dur *= 1.5
 	elif specs == 4:
+		dur *= 1.5
+	elif specs == 5:
 		dur *= 2
 	for bar in bi:
 		bar.update(dur=dur)
@@ -779,19 +779,19 @@ def render_spectrogram(rect):
 	global sp_changed, last, pc_, vertices
 	pc_ = player.pos
 	specs = options.get("spectrogram", 0)
-	if specs == 3:
+	if specs == 4:
 		vertices = options.control.get("gradient-vertices", (4, 3, 3))
-	elif specs == 4:
+	elif specs == 5:
 		vertices = options.control.get("spiral-vertices", [24, 1])
 	try:
 		glEnable(GL_SCISSOR_TEST)
 		glScissor(0, toolbar_height, screensize[0] - sidebar_width, screensize[1] - toolbar_height)
 		glClearColor(0, 0, 0, 1)
-		if specs == 1:
+		if specs == 2:
 			func = animate_bars
-		elif specs == 2:
-			func = animate_prism
 		elif specs == 3:
+			func = animate_prism
+		elif specs == 4:
 			func = animate_polytope
 		else:
 			func = animate_ripple

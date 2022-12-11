@@ -114,15 +114,15 @@ if installing:
 			proc.attempts = getattr(proc, "attempts", 0) + 1
 			installing.append(proc)
 
-try:
-	v = pkg_resources.get_distribution("yt_dlp").version
-	assert v >= "2022.10.4"
-except:
-	traceback.print_exc()
-	modified = True
-	resp = subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/yt-dlp/yt-dlp.git", "--upgrade", "--user"])
-	v = pkg_resources.get_distribution("yt_dlp").version
-	assert v
+# try:
+	# v = pkg_resources.get_distribution("yt_dlp").version
+	# assert v >= "2022.10.4"
+# except:
+	# traceback.print_exc()
+	# modified = True
+	# resp = subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/yt-dlp/yt-dlp.git", "--upgrade", "--user"])
+	# v = pkg_resources.get_distribution("yt_dlp").version
+	# assert v
 
 if modified:
 	subprocess.Popen([sys.executable] + sys.argv)

@@ -1087,10 +1087,10 @@ def _enqueue_search(query, index=None, allowshuffle=True):
 				name = entry["name"]
 				if len(entries) > 1:
 					name += f" +{len(entries) - 1}"
-				url = query if is_url(query) and len(entries) > 1 else entry.url
+				url = query if is_url(query) and len(entries) > 1 else entry["url"]
 				options.history.appendleft((name, (url,)))
 				options.history = options.history.uniq(sort=False)[:64]
-				entries = [cdict(**e, pos=start) for e in entries]
+				entries = [(cdict(**e, pos=start) if "pos" not in e else cdict(e)) for e in entries]
 				queue.extend(entries)
 			else:
 				sidebar.particles.append(cdict(eparticle))
@@ -1440,7 +1440,6 @@ def copy_entry(e):
 lyrics_cache = {}
 lyrics_renders = {}
 def render_lyrics(entry):
-	entry.lyrics_loading = True
 	lyrics_size = control.lyrics_size
 	try:
 		name = entry.name
@@ -1456,7 +1455,7 @@ def render_lyrics(entry):
 			else:
 				entry.lyrics = lyrics
 				return
-		if options.spectrogram != 0:
+		if options.spectrogram != 1:
 			return
 		rect = (player.rect[2] - 8, player.rect[3] - 92)
 		if entry.get("lyrics") and entry.lyrics[1].get_size() == rect:
@@ -1589,6 +1588,7 @@ def render_lyrics(entry):
 							y += z
 				if y:
 					y += z >> 1
+		print(entry)
 		entry.lyrics = render
 		entry.pop("lyrics_loading", None)
 	except:
@@ -1597,10 +1597,7 @@ def render_lyrics(entry):
 def reset_entry(entry):
 	entry.pop("lyrics", None)
 	entry.pop("surf", None)
-	if entry.get("url") == queue[0].get("url"):
-		submit(render_lyrics, queue[0])
-	else:
-		entry.pop("lyrics_loading", None)
+	entry.pop("lyrics_loading", None)
 	return entry
 
 def prepare(entry, force=False, download=False):
@@ -1619,7 +1616,7 @@ def prepare(entry, force=False, download=False):
 			entry.update(e)
 		else:
 			entry.icon = entry.video = entry.url
-		entry.pop("novid", None)
+		entry.novid = False
 		print(entry)
 	fn = "cache/~" + shash(entry.url) + ".webm"
 	if os.path.exists(fn) and os.path.getsize(fn):
@@ -1680,8 +1677,6 @@ def prepare(entry, force=False, download=False):
 		else:
 			if entry.name != data.get("name"):
 				reset_entry(entry)
-				if len(resp) == 1:
-					submit(render_lyrics, queue[0])
 			globals()["queue-length"] = -1
 			entry.update(data)
 			if len(resp) > 1:
@@ -1694,7 +1689,6 @@ def prepare(entry, force=False, download=False):
 				if control.shuffle and len(q2) > 1:
 					q2.shuffle()
 				queue.fill(np.concatenate((q1, q2, q3)))
-				submit(render_lyrics, queue[0])
 	elif (force > 1 or force and not stream) and is_url(entry.get("url")):
 		ytdl = downloader.result()
 		if force > 1:
@@ -1751,7 +1745,7 @@ def start_player(pos=None, force=False):
 	except IndexError:
 		return skip()
 	if control.loop < 2 and len(queue) > 1:
-		thresh = min(8, max(2, len(queue) / 8)) + 1
+		thresh = min(8, max(2, len(queue) // 8)) + 1
 		if control.shuffle > 1 or player.shuffler >= thresh:
 			ensure_next(queue[1])
 			thresh = 0
@@ -2212,8 +2206,8 @@ def ensure_next(e):
 	enext[i] = submit(prepare, e, force=True, download=True)
 	e.duration = e.get("duration") or False
 	e.pop("research", None)
-	if not e.get("lyrics_loading") and not e.get("lyrics"):
-		submit(render_lyrics, e)
+	# if not e.get("lyrics_loading") and not e.get("lyrics"):
+		# submit(render_lyrics, e)
 
 def enqueue(entry, start=True):
 	try:
@@ -2221,7 +2215,7 @@ def enqueue(entry, start=True):
 			return None, inf
 		while queue[0] is None:
 			time.sleep(0.5)
-		submit(render_lyrics, queue[0])
+		# submit(render_lyrics, queue[0])
 		stream, duration = start_player()
 		progress.num = 0
 		progress.alpha = 0
@@ -2617,10 +2611,10 @@ def update_menu():
 		[e.pop("lyrics", None) for e in queue]
 		# lyrics_cache.clear()
 		lyrics_renders.clear()
-		for i in range(2):
-			if i >= len(queue):
-				break
-			submit(render_lyrics, queue[i])
+		# for i in range(2):
+			# if i >= len(queue):
+				# break
+			# submit(render_lyrics, queue[i])
 	if toolbar.editor:
 		update_piano()
 
@@ -3399,7 +3393,7 @@ def draw_menu():
 				options.spectrogram = (options.get("spectrogram", 0) + 1) % 6
 				mixer.submit(f"~setting spectrogram {options.spectrogram - 1}")
 				if options.spectrogram == 1 and queue:
-					submit(render_lyrics, queue[0])
+					# submit(render_lyrics, queue[0])
 					if player.get("spec"):
 						player.spec.fill((0, 0, 0))
 	if sidebar.colour:
@@ -3686,7 +3680,7 @@ try:
 			player.editor.selection.cancel = cancel_selection
 		if data.get("pos") and not toolbar.editor:
 			player.fut = submit(start_player, data["pos"])
-			submit(render_lyrics, queue[0])
+			# submit(render_lyrics, queue[0])
 	else:
 		DISP.set_visible(True)
 	toolbar.editor = 0
@@ -3938,6 +3932,9 @@ try:
 									print("Loading", url)
 									player.video_loading = submit(load_video, url, pos=player.pos, bak=queue[0].get("icon"), sig=queue[0].url)
 								elif "novid" not in queue[0]:
+									print(queue[0])
+									if "novid" not in queue[0]:
+										submit(prepare, queue[0], force=3)
 									queue[0].novid = True
 							if not player.sprite:
 								# try:
@@ -3975,6 +3972,10 @@ try:
 				elif queue or lyrics_entry:
 					novid = queue and queue[0] and queue[0].get("novid") and options.get("spectrogram", 0) == 0
 					entry = lyrics_entry or queue[0]
+					rect = (player.rect[2] - 8, player.rect[3] - 92)
+					if not entry.get("lyrics_loading") and (not entry.get("lyrics") or rect != entry.lyrics[1].get_size()):
+						print(entry)
+						entry.lyrics_loading = submit(render_lyrics, entry)
 					if not novid and "lyrics" not in entry:
 						if pc() % 0.25 < 0.125:
 							col = (255,) * 3
@@ -3994,10 +3995,6 @@ try:
 							z=2,
 						)
 					elif not novid and entry.lyrics:
-						rect = (player.rect[2] - 8, player.rect[3] - 92)
-						if not entry.get("lyrics_loading") and rect != entry.lyrics[1].get_size():
-							entry.lyrics_loading = True
-							submit(render_lyrics, entry)
 						blit_complex(
 							DISP,
 							entry.lyrics[1],

@@ -5,7 +5,7 @@ Based on the audio features of the discord bot https://github.com/thomas-xin/Miz
 
 See https://mizabot.xyz/mpinsights for live insights charts on the current usage of the program!
 
-<img src="https://cdn.discordapp.com/attachments/706059022574551050/902553179881897984/unknown.png" alt="Lyrics" width="360"/><img src="https://cdn.discordapp.com/attachments/706059022574551050/902547250843099247/unknown.png" alt="Bar" width="360"/>
-<img src="https://cdn.discordapp.com/attachments/706059022574551050/902548077364277258/unknown.png" alt="Tesseract" width="360"/><img src="https://cdn.discordapp.com/attachments/706059022574551050/902548816325148793/unknown.png" alt="Star" width="360"/>
-<img src="https://cdn.discordapp.com/attachments/706059022574551050/902551533424619520/unknown.png" alt="Ripple" width="360"/><img src="https://cdn.discordapp.com/attachments/731709481863479436/902545943818293288/unknown.png" alt="Spiral" width="360"/>
-<img src="https://cdn.discordapp.com/attachments/731709481863479436/902544653860085780/unknown.png" alt="Hexacomb" width="720"/>
+<img src="https://cdn.discordapp.com/attachments/731709481863479436/1052128874932228146/image.png" alt="Lyrics" width="360"><img src="https://cdn.discordapp.com/attachments/731709481863479436/1052120256551858186/image.png" alt="Video" width="360">
+<img src="https://cdn.discordapp.com/attachments/731709481863479436/1052129325442412554/image.png" alt="Bar" width="360"><img src="https://cdn.discordapp.com/attachments/731709481863479436/1052129771275952129/image.png" alt="Tesseract" width="360">
+<img src="https://cdn.discordapp.com/attachments/731709481863479436/1052130246259916850/image.png" alt="Star" width="360"><img src="https://cdn.discordapp.com/attachments/731709481863479436/1052131278746570772/image.png" alt="Ripple" width="360">
+<img src="https://cdn.discordapp.com/attachments/731709481863479436/902545943818293288/unknown.png" alt="Spiral" width="360"><img src="https://cdn.discordapp.com/attachments/731709481863479436/902544653860085780/unknown.png" alt="Hexacomb" width="360">

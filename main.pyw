@@ -2274,7 +2274,12 @@ def download(entries, fn, settings=False):
 			if settings:
 				cmd += tuple(construct_options())
 			if settings and control.silenceremove:
-				cmd += ("-af", "silenceremove=start_periods=1:start_duration=1:start_threshold=-50dB:start_silence=0.5:stop_periods=-9000:stop_threshold=-50dB:window=0.015625")
+				srf = "silenceremove=start_periods=1:start_duration=1:start_threshold=-50dB:start_silence=0.5:stop_periods=-9000:stop_threshold=-50dB:window=0.015625"
+				if "-filter_complex" in cmd:
+					i = cmd.index("-filter_complex") + 1
+					cmd = cmd[:i] + (cmd[i] + "," + srf,) + cmd[i + 1:]
+				else:
+					cmd += ("-af", srf)
 			cmd += ("-f", "s16le", "-ar", "48k", "-ac", "2", fn3)
 			print(cmd)
 			p = psutil.Popen(cmd)

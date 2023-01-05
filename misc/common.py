@@ -1766,8 +1766,30 @@ def start_display():
 		key_map.update({K2.__dict__[f"K_{chr(i + 32)}"]: i for i in range(65, 91)})
 		key_map.update({K2.__dict__[f"K_F{i}"]: i + 0x70 - 1 for i in range(1, 16)})
 
+	def update_held():
+		if os.name != "nt" or not any(DISP.kheld):
+			return
+		changed = False
+		user32 = ctypes.windll.user32
+		for k, s in enumerate(DISP.kheld):
+			if not s:
+				continue
+			try:
+				v = k#DISP.key_map[k]
+			except KeyError:
+				continue
+			s = user32.GetAsyncKeyState(v)
+			if not s:
+				changed = True
+				if v > 4:
+					on_key_release(k)
+				else:
+					on_mouse_release(*DISP.mpos, k)
+		return changed
+	DISP.update_held = update_held
+
 	@DISP.event
-	def on_key_press(symbol, modifiers):
+	def on_key_press(symbol, modifiers=0):
 		t = pc()
 		try:
 			DISP.kheld[KEYMAP[symbol]] = DISP.kheld[KEYMAP[symbol]] or t
@@ -1775,7 +1797,7 @@ def start_display():
 		except LookupError:
 			pass
 	@DISP.event
-	def on_key_release(symbol, modifiers):
+	def on_key_release(symbol, modifiers=0):
 		try:
 			DISP.kheld[KEYMAP[symbol]] = 0
 			DISP.krelease[KEYMAP[symbol]] = pc()

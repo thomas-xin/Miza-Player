@@ -704,6 +704,145 @@ def animate_ripple(changed=False):
 	hi = np.tile(hi, (V * depth, 1)).T
 	maxlen = ceil(360 / V) - 1
 	vertarray = None
+	if "r_linearray" not in globals() or r_linearray.maxlen != maxlen + 1:
+		globals()["r_linearray"] = deque(maxlen=maxlen + 1)
+	elif is_active() and len(r_linearray) > maxlen:
+		vertarray = r_linearray.popleft()[1]
+	if is_active():
+		if vertarray is None:
+			vertarray = np.empty((depth * V, len(bars), 3), dtype=np.float32)
+		angle = spec.angle + tau - tau / V
+		zs = np.linspace(spec.angle, angle, V)
+		i = 0
+		for _ in range(depth):
+			directions = ([cos(z), sin(z), 1] for z in zs)
+			for d in directions:
+				vertarray[i][:] = radii * d
+				i += 1
+			x = tau / 360 / depth
+			spec.angle = (spec.angle + x) % tau
+			zs += x
+		rva = np.repeat(vertarray, 2, axis=1).swapaxes(0, 1)[1:-1].swapaxes(0, 1)
+		r_linearray.append([colours, vertarray, rva])
+	r = 1 if not r_linearray else 2 ** ((len(r_linearray) - 2) / len(r_linearray) - 1)
+
+	for cols, _, verts in r_linearray:
+		verts.T[-1][:] = hi
+		ci = np.require(cols.ravel(), requirements="CA")
+		vi = np.require(verts.ravel(), requirements="CA")
+		glColorPointer(4, GL_FLOAT, 0, ci.ctypes)
+		glVertexPointer(3, GL_FLOAT, 0, vi.ctypes)
+		glDrawArrays(GL_LINES, 0, len(ci) // 4)
+		if is_active():
+			cols.T[-1] *= r
+
+def animate_torus(changed=False):
+	if not vertices or not vertices[0]:
+		return
+	V, R = vertices
+	glClear(GL_COLOR_BUFFER_BIT)
+	glMatrixMode(GL_PROJECTION)
+	bars = globals()["bars"][::-1]
+	try:
+		if changed:
+			raise KeyError
+		spec = globals()["torus-s"]
+		if spec.R != R:
+			raise KeyError
+	except KeyError:
+		class Ripple_Spec:
+			angle = 0
+			rx = 0
+			ry = 0
+			rz = 0
+		spec = globals()["torus-s"] = Torus_Spec
+
+	glLoadIdentity()
+	ar = ssize[0] / ssize[1]
+	glViewport(0, toolbar_height, *ssize)
+	if R:
+		w = 1 if ar <= 1 else ar
+		h = 1 if ar >= 1 else 1 / ar
+		glOrtho(-w, w, -h, h, -1, 1)
+	else:
+		gluPerspective(30, ar, 1 / 16, 99999)
+		glTranslatef(0, 0, -4)
+	glDisable(GL_DEPTH_TEST)
+	glDisable(GL_CULL_FACE)
+	glEnable(GL_BLEND)
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+	glEnableClientState(GL_VERTEX_ARRAY)
+	glEnableClientState(GL_COLOR_ARRAY)
+	spec.R = R
+
+	w, h = ssize
+	depth = 3
+	glLineWidth(ssize[0] / 144 / depth)
+	if is_active():
+		if R:
+			rx = 0.5 * (0.8 - abs(spec.rx % 90 - 45) / 90)
+			ry = 1 / sqrt(2) * (0.8 - abs(spec.ry % 90 - 45) / 90)
+			rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+			spec.rx = (spec.rx + rx) % 360
+			spec.ry = (spec.ry + ry) % 360
+			spec.rz = (spec.rz + rz) % 360
+		else:
+			rz = 0.8 - abs(spec.rz % 90 - 45) / 90
+			spec.rz = (spec.rz + rz) % 360
+	glRotatef(spec.rx, 0, 1, 0)
+	glRotatef(spec.ry, 1, 0, 0)
+	glRotatef(spec.rz, 0, 0, 1)
+	try:
+		radii = globals()["torus-r"]
+	except KeyError:
+		r = np.array([bar.x / len(bars) for bar in bars], dtype=np.float32)
+		r.T[-1] = 1
+		radii = globals()["torus-r"] = np.repeat(r, 3).reshape((len(bars), 3))
+
+	try:
+		hsv = globals()["torus-hsv"]
+	except KeyError:
+		hsv = globals()["torus-hsv"] = np.empty((len(bars), 4), dtype=np.float32)
+	try:
+		rgba = globals()["torus-rgba"]
+	except KeyError:
+		rgba = globals()["torus-rgba"] = np.empty((len(bars), 4), dtype=np.float32)
+	try:
+		hue = globals()["torus-h"]
+	except KeyError:
+		hh = [1 - bar.x / len(bars) for bar in bars]
+		hue = globals()["torus-h"] = np.array(hh, dtype=np.float32)
+	if R:
+		H = hue + (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
+	else:
+		H = hue - (pc_ / 4 + sin(pc_ * tau / 8 / sqrt(2)) / 6) % 1
+	hsv.T[0][:] = H % 1
+	alpha = np.array([bar.height / barheight * 2 for bar in bars], dtype=np.float32)
+	sat = np.clip(alpha - 1, 0, 1)
+	np.subtract(1, sat, out=sat)
+	hsv.T[1][:] = sat
+	hsv.T[:2] *= 255
+	hsv2 = hsv.T[:3].T.astype(np.uint8)
+	hsv2.T[2][:] = 255
+	img = Image.frombuffer("HSV", (len(bars), 1), hsv2.tobytes()).convert("RGB")
+	rgba.T[:3].T[:] = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 3))
+	rgba.T[:3] *= 1 / 255
+	mult = np.linspace(1, 0, len(alpha))
+	if R:
+		mult **= 2
+	alpha *= mult
+	rgba.T[-1][:] = alpha
+	colours = np.repeat(rgba, 2, axis=0)[1:-1]
+	colours = np.tile(colours, (V * depth, 1))
+
+	hi = hue + pc_ / 3 % 1
+	hi *= -tau
+	np.sin(hi, out=hi)
+	hi *= 0.25
+	hi = np.repeat(np.asanyarray(hi, np.float32), 2, axis=0)[1:-1]
+	hi = np.tile(hi, (V * depth, 1)).T
+	maxlen = ceil(360 / V) - 1
+	vertarray = None
 	if "linearray" not in globals() or linearray.maxlen != maxlen + 1:
 		globals()["linearray"] = deque(maxlen=maxlen + 1)
 	elif is_active() and len(linearray) > maxlen:

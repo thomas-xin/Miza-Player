@@ -1924,6 +1924,8 @@ def restart_mixer(devicename=None):
 			p.kill()
 		mixer.kill()
 	mixer = start_mixer(devicename)
+	if not mixer:
+		return
 	mixer.state(player.paused)
 	submit(transfer_instrument, *project.instruments.values())
 	return seek_abs(player.pos)
@@ -2422,7 +2424,7 @@ def update_menu():
 		options.sidebar_width = sidebar_width = screensize[0] - 8
 		reset_menu()
 		sidebar.resizing = True
-	if queue and not toolbar.editor and isfinite(e_dur(queue[0].duration)):
+	if queue and not toolbar.editor and isfinite(e_dur(queue[0].duration)) and not kheld[K_LSUPER] and not kheld[K_RSUPER]:
 		if kspam[K_PAGEUP]:
 			if player.get("seeking"):
 				player.seeking.result()
@@ -3765,7 +3767,7 @@ try:
 			fut = player.pop("fut", None)
 			if fut and not queue:
 				fut.result()
-		condition = not minimised
+		condition = not minimised or any(DISP.krelease) or any(DISP.mrelease)
 		if toolbar.ripples or sidebar.ripples:
 			condition = True
 		if condition:
@@ -4283,10 +4285,13 @@ try:
 					player.rect,
 				)
 		elif minimised:
+			DISP.mrelease[:] = [not i for i in DISP.mheld]
+			DISP.krelease[:] = [not i for i in DISP.kheld]
 			DISP.mheld[:] = [0] * len(DISP.mheld)
 			DISP.kheld[:] = [0] * len(DISP.kheld)
 			sidebar.particles.clear()
 		DISP.dispatch_events()
+		# DISP.update_held()
 		if unfocused:
 			if options.control.unfocus:
 				fps = 7.5
@@ -4309,7 +4314,7 @@ try:
 		delay = t - last_tick
 		if delay >= 8 or delplay >= 3600 and common.OUTPUT_DEVICE:
 			restart_mixer()
-			last_tick = last_played = t
+			last_tick = last_played = t = pc()
 		DISP.fps = 1 / max(d / 4, last_ratio)
 		d2 = max(0.001, d - delay)
 		last_ratio = (last_ratio * 7 + t - last_precise) / 8
@@ -4324,6 +4329,9 @@ try:
 				if not is_minimised():
 					break
 				DISP.dispatch_events()
+				# if DISP.update_held():
+					# print(1)
+					# break
 		tick += 1
 except Exception as ex:
 	futs = set()

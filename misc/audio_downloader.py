@@ -1802,6 +1802,7 @@ class AudioDownloader:
 
 	# Gets the stream URL of a queue entry, `download` being a redundant variable kept for compatibility.
 	def get_stream(self, entry, force=False, download=True):
+		video = entry.get("video", None)
 		stream = entry.get("stream", None)
 		icon = entry.get("icon", None)
 		# Use SHA-256 hash of URL to avoid filename conflicts

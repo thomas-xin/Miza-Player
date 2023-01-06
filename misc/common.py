@@ -38,7 +38,7 @@ def _adjust_thread_count(self):
 
 concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
 
-exc = concurrent.futures.ThreadPoolExecutor(max_workers=48)
+exc = concurrent.futures.ThreadPoolExecutor(max_workers=96)
 submit = exc.submit
 def _settimeout(*args, timeout=0, **kwargs):
 	if timeout > 0:
@@ -1726,21 +1726,21 @@ def start_display():
 		K1.LINEFEED: K2.K_RETURN,
 	}
 	for k in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-		KEYMAP[getattr(K1, k)] = getattr(K2, "K_" + k.lower())
+		KEYMAP[getattr(K1, k)] = getattr(K2, "K_" + k.lower()) & -1073741825
 	for k in "0123456789":
-		KEYMAP[getattr(K1, "_" + k)] = getattr(K2, "K_" + k)
+		KEYMAP[getattr(K1, "_" + k)] = getattr(K2, "K_" + k) & -1073741825
 	for k in range(1, 16):
-		KEYMAP[getattr(K1, f"F{k}")] = getattr(K2, f"K_F{k}")
+		KEYMAP[getattr(K1, f"F{k}")] = getattr(K2, f"K_F{k}") & -1073741825
 	for k in (
 		"RETURN", "SPACE", "TAB", "BACKSPACE", "INSERT", "DELETE", "MINUS",
 		"SLASH", "BACKSLASH", "SEMICOLON", "COMMA", "PERIOD", "ESCAPE",
 		"LEFT", "RIGHT", "UP", "DOWN", "HOME", "END", "PAGEUP", "PAGEDOWN",
 		"LCTRL", "RCTRL", "LSHIFT", "RSHIFT", "LALT", "RALT", "LMETA", "RMETA",
 	):
-		KEYMAP[getattr(K1, k)] = getattr(K2, "K_" + k)
+		KEYMAP[getattr(K1, k)] = getattr(K2, "K_" + k) & -1073741825
 
 	if os.name == "nt":
-		DISP.key_map = key_map = {
+		DISP.key_map = key_map = {k & -1073741825: v for k, v in {
 			# mouse.LEFT: 0x1,
 			# mouse.RIGHT: 0x2,
 			# mouse.MIDDLE: 0x4,
@@ -1761,30 +1761,38 @@ def start_display():
 			K2.K_RCTRL: 0xA3,
 			K2.K_LALT: 0xA4,
 			K2.K_RALT: 0xA5,
-		}
-		key_map.update({K2.__dict__[f"K_{i}"]: i + 0x30 for i in range(10)})
-		key_map.update({K2.__dict__[f"K_{chr(i + 32)}"]: i for i in range(65, 91)})
-		key_map.update({K2.__dict__[f"K_F{i}"]: i + 0x70 - 1 for i in range(1, 16)})
+		}.items()}
+		# print(key_map)
+		key_map.update({K2.__dict__[f"K_{i}"] & -1073741825: i + 0x30 for i in range(10)})
+		key_map.update({K2.__dict__[f"K_{chr(i + 32)}"] & -1073741825: i for i in range(65, 91)})
+		key_map.update({K2.__dict__[f"K_F{i}"] & -1073741825: i + 0x70 - 1 for i in range(1, 16)})
+		DISP.key_unmap = key_unmap = {v: k for k, v in key_map.items()}
+		# print(key_map)
+	KEYUNMAP = {v: k for k, v in KEYMAP.items()}
 
 	def update_held():
 		if os.name != "nt" or not any(DISP.kheld):
 			return
 		changed = False
 		user32 = ctypes.windll.user32
-		for k, s in enumerate(DISP.kheld):
+		for v, s in enumerate(DISP.kheld):
 			if not s:
 				continue
 			try:
-				v = k#DISP.key_map[k]
+				k = KEYUNMAP[v]
 			except KeyError:
 				continue
-			s = user32.GetAsyncKeyState(v)
+			try:
+				s = user32.GetAsyncKeyState(key_map[v])
+			except KeyError:
+				s = True
 			if not s:
 				changed = True
 				if v > 4:
 					on_key_release(k)
 				else:
 					on_mouse_release(*DISP.mpos, k)
+				print(k, v, DISP.kheld[v])
 		return changed
 	DISP.update_held = update_held
 

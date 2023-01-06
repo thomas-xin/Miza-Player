@@ -113,13 +113,16 @@ def render_sidebar(dur=0):
 			if control.loop:
 				t = inf
 			else:
+				ts = pc()
 				try:
 					d = globals()["queue-duration"]
-					if len(queue) != globals()["queue-length"]:
-						raise KeyError
+					if ts - globals().get("qLtS", 0) > max(5, len(queue) / 4096):
+						if len(queue) != globals()["queue-length"]:
+							raise KeyError
 				except KeyError:
 					d = globals()["queue-duration"] = sum(e.get("duration") or 300 for e in queue if e)
 					globals()["queue-length"] = len(queue)
+					globals()["qLtS"] = ts
 				t = d - (player.pos or 0)
 			c = options.get("sidebar_colour", (64, 0, 96))
 			c = high_colour(c)

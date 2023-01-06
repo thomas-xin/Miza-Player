@@ -2387,6 +2387,8 @@ def update_menu():
 		else:
 			c = (0, 255, 0)
 		if control.ripples:
+			while len(toolbar.ripples) >= 64:
+				toolbar.ripples.pop(0)
 			toolbar.ripples.append(cdict(
 				pos=tuple(toolbar.pause.pos),
 				radius=0,
@@ -2430,44 +2432,29 @@ def update_menu():
 		reset_menu()
 		sidebar.resizing = True
 	if queue and not toolbar.editor and isfinite(e_dur(queue[0].duration)) and not kheld[K_LSUPER] and not kheld[K_RSUPER]:
-		if kspam[K_PAGEUP]:
-			if player.get("seeking"):
-				player.seeking.result()
-			player.seeking = submit(seek_rel, 300)
-		elif kspam[K_PAGEDOWN]:
-			if player.get("seeking"):
-				player.seeking.result()
-			player.seeking = submit(seek_rel, -300)
-		elif kspam[K_UP]:
-			if player.get("seeking"):
-				player.seeking.result()
-			player.seeking = submit(seek_rel, 30)
-		elif kspam[K_DOWN]:
-			if player.get("seeking"):
-				player.seeking.result()
-			player.seeking = submit(seek_rel, -30)
-		elif kspam[K_RIGHT]:
-			if player.get("seeking"):
-				player.seeking.result()
-			if CTRL[kheld]:
-				player.seeking = submit(seek_abs, inf)
-			else:
-				player.seeking = submit(seek_rel, 5)
-		elif kspam[K_LEFT]:
-			if player.get("seeking"):
-				player.seeking.result()
-			if CTRL[kheld]:
+		if not player.get("seeking") or player.seeking.done():
+			if kspam[K_PAGEUP]:
+				player.seeking = submit(seek_rel, 300)
+			elif kspam[K_PAGEDOWN]:
+				player.seeking = submit(seek_rel, -300)
+			elif kspam[K_UP]:
+				player.seeking = submit(seek_rel, 30)
+			elif kspam[K_DOWN]:
+				player.seeking = submit(seek_rel, -30)
+			elif kspam[K_RIGHT]:
+				if CTRL[kheld]:
+					player.seeking = submit(seek_abs, inf)
+				else:
+					player.seeking = submit(seek_rel, 5)
+			elif kspam[K_LEFT]:
+				if CTRL[kheld]:
+					player.seeking = submit(seek_abs, 0)
+				else:
+					player.seeking = submit(seek_rel, -5)
+			elif kspam[K_HOME]:
 				player.seeking = submit(seek_abs, 0)
-			else:
-				player.seeking = submit(seek_rel, -5)
-		elif kspam[K_HOME]:
-			if player.get("seeking"):
-				player.seeking.result()
-			player.seeking = submit(seek_abs, 0)
-		elif kspam[K_END]:
-			if player.get("seeking"):
-				player.seeking.result()
-			player.seeking = submit(seek_abs, inf)
+			elif kspam[K_END]:
+				player.seeking = submit(seek_abs, inf)
 	reset = False
 	menu = sidebar.menu
 	if menu and menu.get("scale", 0) >= 1:
@@ -3122,6 +3109,8 @@ def draw_menu():
 		sidebar.ripples.pops(pops)
 	if any(mclick) and in_rect(mpos, sidebar.rect):
 		if control.ripples:
+			while len(sidebar.ripples) >= 64:
+				sidebar.ripples.pop(0)
 			sidebar.ripples.append(cdict(
 				pos=tuple(mpos),
 				radius=0,
@@ -3217,6 +3206,8 @@ def draw_menu():
 			sidebar.particles.clear()
 	if any(mclick) and in_rect(mpos, toolbar.rect):
 		if control.ripples:
+			while len(toolbar.ripples) >= 64:
+				toolbar.ripples.pop(0)
 			toolbar.ripples.append(cdict(
 				pos=tuple(mpos),
 				radius=0,
@@ -3707,9 +3698,9 @@ try:
 				submit(update_repo)
 				update_collections2()
 			t = pc()
-			if t >= last_save + 10:
+			if t >= last_save + 20:
 				submit(save_settings)
-				globals()["last_save"] = t
+			globals()["last_save"] = max(last_save, t - 10)
 		if not (tick << 3) % (status_freq + (status_freq & 1)):
 			submit(send_status)
 		fut = common.__dict__.get("repo-update")
@@ -4290,14 +4281,15 @@ try:
 					(0,) * 3,
 					player.rect,
 				)
-		elif minimised:
-			DISP.mrelease[:] = [not i for i in DISP.mheld]
-			DISP.krelease[:] = [not i for i in DISP.kheld]
+		elif unfocused:
+			DISP.mrelease[:] = DISP.mheld
+			DISP.krelease[:] = DISP.kheld
 			DISP.mheld[:] = [0] * len(DISP.mheld)
 			DISP.kheld[:] = [0] * len(DISP.kheld)
 			sidebar.particles.clear()
 		DISP.dispatch_events()
-		# DISP.update_held()
+		if not tick & 3:
+			DISP.update_held()
 		if unfocused:
 			if options.control.unfocus:
 				fps = 7.5
@@ -4335,9 +4327,7 @@ try:
 				if not is_minimised():
 					break
 				DISP.dispatch_events()
-				# if DISP.update_held():
-					# print(1)
-					# break
+			DISP.update_held()
 		tick += 1
 except Exception as ex:
 	futs = set()

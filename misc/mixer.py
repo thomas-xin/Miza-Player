@@ -707,12 +707,14 @@ def proxy_download(url, fn=None, proxy=True, timeout=24):
 				if pos >= size:
 					break
 				print(f"Incomplete download ({pos} < {size}), resuming...")
+				pos = max(0, pos - 65536)
 				h = header()
 				h["Range"] = f"bytes={pos}-"
 				resp = reqs.get(url, headers=h, timeout=timeout, stream=True)
 				resp.raise_for_status()
 				it = resp.iter_content(65536)
 				with open(fn, "ab") as f:
+					f.truncate(pos)
 					try:
 						while True:
 							b = next(it)

@@ -1608,15 +1608,20 @@ def prepare(entry, force=False, download=False):
 		entry.novid = False
 		if is_url(entry.url):
 			ytdl = downloader.result()
-			e = ytdl.extract(entry.url)[0]
 			try:
-				ytdl.searched[e.url].data[0] = e
-			except KeyError:
-				pass
-			entry.update(e)
+				e = ytdl.extract(entry.url)[0]
+			except:
+				print_exc()
+				entry.novid = True
+			else:
+				try:
+					ytdl.searched[e.url].data[0] = e
+				except KeyError:
+					pass
+				entry.update(e)
+				entry.novid = False
 		else:
 			entry.icon = entry.video = entry.url
-		entry.novid = False
 		print(entry)
 	fn = "cache/~" + shash(entry.url) + ".webm"
 	if os.path.exists(fn) and os.path.getsize(fn):
@@ -3872,7 +3877,8 @@ try:
 							video_sourced = False
 						if not player.get("video_loading"):
 							if player.video.pos > player.pos + 1:
-								print("Video seeked backwards", player.video.pos, player.pos)
+								if isfinite(player.video.pos):
+									print("Video seeked backwards", player.video.pos, player.pos)
 								if player.video.is_running():
 									try:
 										player.video.terminate()

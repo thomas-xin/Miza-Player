@@ -1544,7 +1544,7 @@ def start_display():
 				mbs.image = mbi
 			ts = time.perf_counter()
 			dur = max(1 / 60, ts - getattr(mbs, "ts", ts))
-			mbs.opacity = round_random((1 / 360) ** dur * 255)
+			mbs.opacity = round_random((1 / 768) ** dur * 255)
 			# print(mbs.opacity)
 			mbs.ts = ts
 			if mbs.opacity > 0:

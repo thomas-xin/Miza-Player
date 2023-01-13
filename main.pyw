@@ -1698,6 +1698,7 @@ def prepare(entry, force=False, download=False):
 		ytdl = downloader.result()
 		if force > 1:
 			data = ytdl.extract(entry.url)
+			entry.name = data[0].name
 			stream = data[0].setdefault("stream", data[0].url)
 		else:
 			stream = ytdl.get_stream(entry, force=True, download=False)
@@ -3865,6 +3866,7 @@ try:
 					if player.video:
 						if player.video.url != queue[0].url:
 							print("Video changed", player.video.url, queue[0].url)
+							player.video.url = None
 							video_sourced = False
 						if not player.get("video_loading"):
 							if player.video.pos > player.pos + 1:
@@ -3876,6 +3878,7 @@ try:
 									except psutil.NoSuchProcess:
 										pass
 								player.video_loading = None
+								player.video.url = None
 								# video_sourced = False
 							elif player.video.pos < player.pos - 7:
 								print("Video seeked forwards", player.video.pos, player.pos)
@@ -3885,6 +3888,7 @@ try:
 									except psutil.NoSuchProcess:
 										pass
 								player.video_loading = None
+								player.video.url = None
 								# video_sourced = False
 					if video_sourced:
 						if player.video and (player.video.is_running() or abs(player.video.pos - player.pos) < 1) and player.video.im:

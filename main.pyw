@@ -3864,10 +3864,10 @@ try:
 				elif queue and queue[0] and not queue[0].get("novid") and options.get("spectrogram", 0) == 0:
 					video_sourced = True
 					if player.video:
-						if player.video.url != queue[0].url:
+						if player.video.url and player.video.url != queue[0].url:
 							print("Video changed", player.video.url, queue[0].url)
 							player.video.url = None
-							video_sourced = False
+							# video_sourced = False
 						if not player.get("video_loading"):
 							if player.video.pos > player.pos + 1:
 								if isfinite(player.video.pos):
@@ -3877,7 +3877,7 @@ try:
 										player.video.terminate()
 									except psutil.NoSuchProcess:
 										pass
-								player.video_loading = None
+								# player.video_loading = None
 								player.video.url = None
 								# video_sourced = False
 							elif player.video.pos < player.pos - 7:
@@ -3887,7 +3887,7 @@ try:
 										player.video.terminate()
 									except psutil.NoSuchProcess:
 										pass
-								player.video_loading = None
+								# player.video_loading = None
 								player.video.url = None
 								# video_sourced = False
 					if video_sourced:

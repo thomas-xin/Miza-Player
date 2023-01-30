@@ -98,6 +98,7 @@ player = cdict(
 		held_update=None,
 	),
 	shuffler=2147483647,
+	previous=None,
 	video=None,
 	sprite=None,
 )
@@ -793,8 +794,12 @@ def setup_buttons():
 		reset_menu(full=False)
 		back = button_images.back.result()
 		def rleft():
+			if player.previous:
+				queue.appendleft(player.previous)
+				player.previous = None
+			else:
+				queue.rotate(1)
 			mixer.clear()
-			queue.rotate(1)
 			player.fut = None
 		toolbar.buttons.append(cdict(
 			name="Previous",
@@ -803,8 +808,9 @@ def setup_buttons():
 		))
 		front = pygame.transform.flip(back, True, False)
 		def rright():
-			mixer.clear()
+			player.previous = None
 			queue.rotate(-1)
+			mixer.clear()
 			player.fut = None
 		toolbar.buttons.append(cdict(
 			name="Next",
@@ -814,8 +820,8 @@ def setup_buttons():
 		reset_menu(full=False)
 		flip = button_images.flip.result()
 		def flip_1():
-			mixer.clear()
 			queue.reverse()
+			mixer.clear()
 			player.fut = None
 		toolbar.buttons.append(cdict(
 			name="Flip",
@@ -825,8 +831,8 @@ def setup_buttons():
 		reset_menu(full=False)
 		scramble = button_images.scramble.result()
 		def scramble_1():
-			mixer.clear()
 			queue.shuffle()
+			mixer.clear()
 			player.fut = None
 		toolbar.buttons.append(cdict(
 			name="Scramble",
@@ -836,6 +842,9 @@ def setup_buttons():
 		reset_menu(full=False)
 		unique = button_images.unique.result()
 		def unique_1():
+			if not queue:
+				return
+			orig = queue[0]
 			pops = deque()
 			found = set()
 			for i, e in enumerate(queue):
@@ -844,6 +853,9 @@ def setup_buttons():
 				else:
 					found.add(e.url)
 			queue.pops(pops)
+			if orig != queue[0]:
+				mixer.clear()
+				player.fut = None
 		toolbar.buttons.append(cdict(
 			name="Remove Duplicates",
 			image=unique,
@@ -1865,10 +1877,13 @@ def skip():
 			else:
 				player.shuffler += 1
 		if control.loop == 2:
+			player.previous = None
 			queue.appendleft(e)
 		elif control.loop == 1:
+			player.previous = None
 			queue.append(e)
 		else:
+			player.previous = e
 			if len(queue) > sidebar.maxitems - 1:
 				queue[sidebar.maxitems - 1].pos = sidebar.maxitems - 1
 			sidebar.particles.append(e)

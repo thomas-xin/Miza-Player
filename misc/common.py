@@ -119,6 +119,7 @@ sys.setswitchinterval(0.008)
 utc = time.time
 
 
+hwaccel = "d3d11va" if os.name == "nt" else "auto"
 ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
 sox = "sox.exe" if os.name == "nt" else "sox"

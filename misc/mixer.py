@@ -866,6 +866,7 @@ def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
 			f.seek(pos)
 		opos = pos
 		while True:
+			# print(proc)
 			lpos = pos
 			while shuffling:
 				for i in range(1024):
@@ -1363,10 +1364,12 @@ def play(pos):
 			if fn:
 				if not file:
 					try:
-						if os.path.getsize(fn) < req:
+						# print(os.path.getsize(fn))
+						if os.path.getsize(fn) < req:# or os.path.getsize(fn) < req * 150 and proc and proc.is_running():
 							raise FileNotFoundError
 						file = open(fn, "rb") # *cough* "FM", Miza is secretly a radio host and Txin's house is a radio station - Smudge
 					except (OSError, FileNotFoundError, PermissionError):
+						# print(proc)
 						if proc and not proc.is_running():
 							point("~r")
 							proc = None
@@ -1388,6 +1391,9 @@ def play(pos):
 							break
 				except:
 					print_exc()
+				if not b and proc and proc.is_running():
+					continue
+				# print(len(b))
 			else:
 				while not getattr(proc, "readable", lambda: True)():
 					async_wait()
@@ -1397,6 +1403,7 @@ def play(pos):
 				except (AttributeError, concurrent.futures.TimeoutError):
 					pass
 			if not b:
+				# print(transfer, proc)
 				if transfer and proc and proc.is_running():
 					transfer = False
 					fut = submit(proc.stdout.read, req)
@@ -1908,7 +1915,8 @@ def render_notes(i, notes):
 
 # sys.stderr.write("~LOADED\n")
 seen_urls = set()
-ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-v", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+hwaccel = "d3d11va" if os.name == "nt" else "auto"
+ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-v", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", hwaccel, "-vn")
 ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
 settings = cdict()
 alphakeys = prevkeys = ()
@@ -2053,7 +2061,7 @@ while not sys.stdin.closed and failed < 8:
 					s, v = s.split(None, 1)
 					args = (
 						ffmpeg, "-y", "-hide_banner", "-v", "error",
-						"-hwaccel", "auto", "-an",
+						"-hwaccel", hwaccel, "-an",
 						"-f", "rawvideo", "-pix_fmt", "rgb24",
 						"-video_size", "x".join(map(str, ssize)),
 						"-i", "-", "-r", "30", "-b:v", "8M", "-c:v", "h264", v

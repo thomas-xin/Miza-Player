@@ -1239,7 +1239,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		cmd = ("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate,duration", "-of", "csv=s=x:p=0", url)
 		print(cmd)
 		p = psutil.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y"]
+		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y", "-hwaccel", hwaccel]
 		if not iterations:
 			cmd2 += ["-ss", str(pos)]
 		cmd2 += ["-i", url, "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0"]
@@ -1755,7 +1755,7 @@ def prepare(entry, force=False, download=False):
 	return stream
 
 def start_player(pos=None, force=False):
-	# print("start_player", queue[0], pos, force)
+	print("start_player", queue[0], pos, force)
 	if options.get("spectrogram", 0) == 0:
 		force = 2
 	try:
@@ -2136,6 +2136,7 @@ def mixer_stdout():
 			if mixer.new:
 				submit(reset_menu, reset=True)
 			player.last = pc()
+			# print(s)
 			s = s[1:]
 			if s == "s":
 				submit(skip)
@@ -2233,6 +2234,10 @@ def ensure_next(e):
 		# submit(render_lyrics, e)
 
 def enqueue(entry, start=True):
+	# import inspect
+	# curframe = inspect.currentframe()
+	# calframe = inspect.getouterframes(curframe, 2)
+	# print('caller name:', calframe[1][3])
 	try:
 		if not queue:
 			return None, inf
@@ -2247,7 +2252,7 @@ def enqueue(entry, start=True):
 		print_exc()
 	return None, inf
 
-ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", "auto", "-vn")
+ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", hwaccel, "-vn")
 concat_buff = b"\x00" * (48000 * 2 * 2)
 
 def download(entries, fn, settings=False):

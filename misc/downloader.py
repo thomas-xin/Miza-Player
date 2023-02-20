@@ -8,6 +8,39 @@ from traceback import print_exc
 from math import *
 from concurrent.futures import thread
 
+def _adjust_thread_count(self):
+	# if idle threads are available, don't spin new threads
+	try:
+		if self._idle_semaphore.acquire(timeout=0):
+			return
+	except AttributeError:
+		pass
+
+	# When the executor gets lost, the weakref callback will wake up
+	# the worker threads.
+	def weakref_cb(_, q=self._work_queue):
+		q.put(None)
+
+	num_threads = len(self._threads)
+	if num_threads < self._max_workers:
+		thread_name = '%s_%d' % (self._thread_name_prefix or self, num_threads)
+		t = thread.threading.Thread(
+			name=thread_name,
+			target=thread._worker,
+			args=(
+				thread.weakref.ref(self, weakref_cb),
+				self._work_queue,
+				self._initializer,
+				self._initargs,
+			),
+			daemon=True
+		)
+		t.start()
+		self._threads.add(t)
+		thread._threads_queues[t] = self._work_queue
+
+concurrent.futures.ThreadPoolExecutor._adjust_thread_count = lambda self: _adjust_thread_count(self)
+
 utc = time.time
 math.round = round
 
@@ -89,7 +122,7 @@ def time_disp(s, rounded=True):
 
 def header():
 	return {
-		"User-Agent": f"Mozilla/5.{random.randint(1, 9)}",
+		"User-Agent": f"Mozilla/5.{random.randint(1, 9)} (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36",
 		"DNT": "1",
 		"X-Forwarded-For": ".".join(str(random.randint(0, 255)) for _ in range(4)),
 	}
@@ -183,11 +216,11 @@ def upload(url, fn, resp=None, index=0, start=None, end=None):
 				# req = urllib.request.Request(url, data, headers=rheader, method="POST")
 				# resp = urllib.request.urlopen(req)
 				if index and resp.status_code >= 400:
-					if resp.code in (429, 500, 503):
+					if resp.status_code in (429, 500, 503):
 						time.sleep(7 + random.random() * 4 + index / 2)
 					else:
 						globals()["attempts"] += 1
-					raise ConnectionError(resp.code, resp.text.rstrip())
+					raise ConnectionError(resp.status_code, resp.text.rstrip())
 				size = end - start
 				progress[index] = size
 				if quiet:
@@ -255,6 +288,7 @@ else:
 		url = input("Please enter a URL to download from: ")
 	if len(args) >= 3:
 		fn = " ".join(args[2:])
+url = url.replace("\\", "/")
 
 
 t = utc()
@@ -280,7 +314,7 @@ if uploading:
 			end = None
 		else:
 			end = min(start + load, fsize)
-		workers[i] = submit(upload, "http://i.mizabot.xyz/upload_chunk", url, None, index=i, start=start, end=end)
+		workers[i] = submit(upload, "https://mizabot.xyz/upload_chunk", url, None, index=i, start=start, end=end)
 		try:
 			workers[i].result(timeout=delay)
 		except concurrent.futures.TimeoutError:
@@ -294,7 +328,7 @@ if uploading:
 	rheader = header()
 	rheader["x-file-name"] = url.rsplit("/", 1)[-1]
 	rheader["x-index"] = threads
-	url = "http://i.mizabot.xyz/merge"
+	url = "https://mizabot.xyz/merge"
 	req = urllib.request.Request(url, headers=rheader)
 	resp = urllib.request.urlopen(req)
 	print("\nhttps://mizabot.xyz/file" + resp.read()[2:].decode("utf-8", "replace"))
@@ -318,7 +352,7 @@ if uploading:
 			e = "k"
 			bps /= 1 << 10
 	bps = str(round(bps, 4)) + " " + e
-	print(f"{fs} bytes successfully uploaded in {time_disp(s)}, average download speed {bps}bps")
+	print(f"{fs} bytes successfully uploaded in {time_disp(s)}, average upload speed {bps}bps")
 	raise SystemExit
 
 PID = os.getpid()

@@ -153,10 +153,10 @@ def render_spinny_trails():
 				break
 			if not p:
 				continue
-			colour = colorsys.hsv_to_rgb(*p.hsv)
 			alpha = (p.life - 2.5) / 24
 			if alpha <= 0:
 				continue
+			colour = colorsys.hsv_to_rgb(*p.hsv)
 			li = p.life ** 1.2 * p.r ** 0.7 / 16 + 0.5
 			for j in range(3):
 				ao = j * tau / 3

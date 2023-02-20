@@ -107,7 +107,7 @@ class MultiAutoImporter:
 importer = MultiAutoImporter(
 	"PIL, numpy, traceback",
 	"cffi, fractions, random, itertools, collections, re, colorsys, ast, contextlib, pyperclip, zipfile",
-	"io, pickle, hashlib, base64, urllib, weakref, orjson, copy, json",
+	"socket, io, pickle, hashlib, base64, urllib, weakref, orjson, copy, json",
 	pool=exc,
 	_globals=globals(),
 )
@@ -161,6 +161,7 @@ if os.name == "nt":
 
 
 import pyglet
+import pyglet.media.mediathreads
 from pyglet.gl import *
 from pyglet.math import *
 pyglet.options["debug_gl"] = False
@@ -169,6 +170,7 @@ pyglet.options["debug_lib"] = False
 pyglet.options["debug_trace"] = False
 pyglet.options["debug_font"] = False
 pyglet.options["debug_graphics_batch"] = False
+# pyglet.media.mediathreads.PlayerWorkerThread._nap_time = 1
 import math
 from math import *
 
@@ -220,14 +222,14 @@ if update_collections:
 
 	print("Verifying FFmpeg, SoX, and Org2XM installations...")
 	try:
-		if not os.path.exists("sndlib/ffmpeg.exe") or os.path.getsize("sndlib/ffmpeg.exe") != 369152:
+		if not os.path.exists("sndlib/ffmpeg.exe") or os.path.getsize("sndlib/ffmpeg.exe") != 131364864:
 			raise FileNotFoundError
 		subprocess.Popen(ffmpeg, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 		subprocess.Popen(sox, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 		subprocess.Popen(org2xm, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 	except FileNotFoundError:
-		url = "https://mizabot.xyz/d/!683328402232573956"
-		subprocess.run((sys.executable, "-O", "downloader.py", "-threads", "8", url, "sndlib.zip"), cwd="misc")
+		url = "https://mizabot.xyz/d/BfUX0q45bA"
+		subprocess.run((sys.executable, "-O", "downloader.py", "-threads", "12", url, "sndlib.zip"), cwd="misc")
 		with zipfile.ZipFile("misc/sndlib.zip", "r") as z:
 			z.extractall("sndlib")
 		os.remove("misc/sndlib.zip")
@@ -515,11 +517,16 @@ control_default = cdict(
 	silenceremove=0,
 	blur=1,
 	unfocus=0,
+	subprocess=1,
 	presearch=0,
 	preserve=0,
 	ripples=1,
+	autobackup=0,
 	autoupdate=0,
 	lyrics_size=16,
+	playlist_sync="",
+	playlist_files=0,
+	playlist_size=0,
 )
 control_default["gradient-vertices"] = (4, 3, 3)
 control_default["spiral-vertices"] = [24, 1]
@@ -622,7 +629,8 @@ os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "TRUE"
 import pygame
 
 def start_mixer(devicename=None):
-	global mixer
+	global mixer, mixer_server
+	pid = os.getpid()
 	if "mixer" in globals() and mixer and mixer.is_running():
 		try:
 			mixer.kill()
@@ -634,9 +642,12 @@ def start_mixer(devicename=None):
 	if not restarting:
 		pygame.display.init()
 		start_display()
+		mixer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		mixer_server.bind(("127.0.0.1", pid & 32767 | 32768))
+		mixer_server.listen(0)
 	else:
 		print("Restarting mixer subprocess...")
-	pid = os.getpid()
+	# print(mixer_server)
 	if hasmisc and not restarting:
 		w, h = pygame.display.list_modes()[0]
 		import multiprocessing.shared_memory
@@ -669,6 +680,8 @@ def start_mixer(devicename=None):
 		stderr=subprocess.PIPE,
 		bufsize=65536,
 	)
+	mixer.client, mixer.addr = mixer_server.accept()
+	# mixer.client = mixer_server
 	mixer.lock = None
 	try:
 		mixer.state = lambda i=0: state(i)
@@ -1530,6 +1543,7 @@ def start_display():
 		# print(f"{round(DISP.fps, 2)} FPS, {batches} batches, {len(DISP.groups)} groups, {active} sprites, {len(pops)} swapped, {len(NEW_TEXTURES)} new, {len(NEW_SPRITES)} copies, {len(DISP.sprites) + len(DISP.shapes)} cached")
 		globals()["NEW_SPRITES"].clear()
 		globals()["NEW_TEXTURES"].clear()
+		async_wait()
 		if options.control.get("blur"):
 			mbi = globals().get("-MBI-")
 			mbs = globals().get("-MBS-")

@@ -241,6 +241,71 @@ def add_instrument(first=False):
 	project.instrument_layout.append(x)
 	sidebar.instruments.append(cdict())
 
+def playlist_sync():
+	print("Syncing playlists...")
+	try:
+		t1 = max(max(st.st_mtime, st.st_ctime) for f in os.scandir("playlists") for st in (f.stat(),))
+		if control.playlist_sync and is_url(control.playlist_sync):
+			url = control.playlist_sync.replace("/p/", "/fileinfo/")
+			try:
+				resp = requests.get(url)
+				resp.raise_for_status()
+			except:
+				print_exc()
+				control.playlist_sync = ""
+			else:
+				try:
+					info = cdict(resp.json())
+				except:
+					print_exc()
+					control.playlist_sync
+				else:
+					t2 = info.timestamp
+					print(control.playlist_sync, t1, t2)
+					if t2 >= t1 + 20 and info.size != control.playlist_size:
+						print(f"Downloading playlists from {url}...")
+						resp = requests.get(control.playlist_sync.replace("/p/", "/d/"))
+						b = io.BytesIO(resp.content)
+						with zipfile.ZipFile(b) as z:
+							z.extractall()
+						control.playlist_files = len(os.listdir("playlists"))
+						control.playlist_size = len(resp.content)
+						print("Extracted to playlists folder")
+						return
+					if control.playlist_files == len(os.listdir("playlists")):
+						print("Playlists match, skipping...")
+						return
+		if not os.listdir("playlists"):
+			return
+		print("Uploading playlists...")
+		b = io.BytesIO()
+		with zipfile.ZipFile(b, mode="w", compression=zipfile.ZIP_STORED) as z:
+			for fn in os.listdir("playlists"):
+				z.write("playlists/" + fn)
+		b.seek(0)
+		resp = requests.post(
+			"https://mizabot.xyz/upload_chunk",
+			headers={"X-File-Name": "playlists.zip", "X-File-Size": str(b.getbuffer().nbytes)},
+			data=b,
+		)
+		resp.raise_for_status()
+		url = "https://mizabot.xyz/merge"
+		if is_url(control.playlist_sync) and "?key=" in control.playlist_sync:
+			url = url.rsplit("/", 1)[0] + "/edit/" + control.playlist_sync.split("/p/", 1)[-1]
+		resp = requests.patch(
+			url,
+			data=dict(name="playlists.zip", index=0),
+		)
+		resp.raise_for_status()
+		url = "https://mizabot.xyz" + resp.text
+		control.playlist_sync = url
+		control.playlist_files = len(os.listdir("playlists"))
+		control.playlist_size = b.getbuffer().nbytes
+		print("Uploaded to", url)
+	except:
+		print_exc()
+
+
 def setup_buttons():
 	try:
 		gears = button_images.gears.result()
@@ -983,7 +1048,7 @@ def setup_buttons():
 				buttons=(
 					("Record audio", record_audio),
 					("Record video", record_video),
-					("Change device", output_device),
+					# ("Change device", output_device),
 				),
 			)
 		sidebar.buttons.append(cdict(
@@ -1861,7 +1926,8 @@ def delete_entry(e):
 	if e.get("lyrics_surf"):
 		del e["lyrics_surf"]
 
-last_save = 0
+last_save = -inf
+last_sync = -inf
 def skip():
 	if player.video:
 		player.video.url = None
@@ -1995,75 +2061,197 @@ def get_device(name=None):
 	DEVICE = sc.default_speaker()
 	return DEVICE
 
+audio_format = pyglet.media.codecs.AudioFormat(
+	channels=2,
+	sample_size=16,
+	sample_rate=48000,
+)
+
+class Source(pyglet.media.Source):
+
+	emptybuff = b"\x00" * 6400
+	audio_format = audio_format
+
+	def __init__(self):
+		self.buffer = deque()
+		self.position = 0
+
+	def get_audio_data(self, num_bytes, compensation_time=0):
+		if not self.buffer:
+			data = self.emptybuff[:num_bytes]
+		elif len(self.buffer) == 1:
+			data = bytes(self.buffer.popleft())
+		else:
+			data = b""
+			while len(self.buffer) > 1 and len(data) < num_bytes:
+				data += self.buffer.popleft()
+		if len(data) > num_bytes:
+			data, extra = data[:num_bytes], data[num_bytes:]
+			self.buffer.appendleft(extra)
+		# print(num_bytes, len(data))
+		pos = self.position
+		ts = max(0.004, len(data) / (audio_format.sample_rate * audio_format.sample_size * audio_format.channels / 8))
+		self.position += ts
+		return pyglet.media.codecs.AudioData(data, len(data), pos, inf, [])
+
+class Player(pyglet.media.Player):
+
+	type = "pyglet"
+	peak = 32767
+	dtype = np.int16
+	channels = 2
+	re_paused = 0
+
+	def __init__(self):
+		super().__init__()
+		self.paused = False
+		self.entry = Source()
+		self.wait()
+		# point(self.entry)
+
+	def write(self, data):
+		self.wait()
+		data = data.data
+		if len(self.entry.buffer) >= 3:
+			ts = max(0.004, len(data) / (audio_format.sample_rate * audio_format.sample_size * audio_format.channels / 8)) - 0.004
+			time.sleep(ts)
+		self.re_paused = 0
+		if not self.paused:
+			self.entry.buffer.append(data)
+
+	def wait(self):
+		while self.playing and not self.paused and self.source and len(self.entry.buffer) >= 4:
+			async_wait()
+		if not self.entry.buffer:
+			if not self.re_paused:
+				self.re_paused = 1
+			elif self.re_paused == 1:
+				for i in range(3):
+					self.entry.buffer.append(self.entry.emptybuff)
+				self.re_paused = 2
+			else:
+				super().pause()
+		if len(self.entry.buffer) >= 1:
+			if not self.source:
+				self.queue(self.entry)
+			if not self.paused and not self.playing:
+				self.play()
+
+	def pause(self):
+		self.paused = True
+		# self.entry.buffer.clear()
+		# super().pause()
+
+	def resume(self):
+		self.paused = False
+		self.play()
+
+	stop = pause
+	# def stop(self):
+		# self.pause()
+
 PG_USED = None
 SC_EMPTY = np.zeros(3200, dtype=np.float32)
-def sc_player(d):
-	cc = d.channels
-	try:
-		if not PG_USED:
-			raise RuntimeError
-		player = d.player(SR, cc, 2048)
-	except RuntimeError:
-		if PG_USED:
-			pygame.mixer.Channel(0).stop()
-		else:
-			pygame.mixer.init(SR, 32, cc, 512, devicename=d.name)
-		globals()["PG_USED"] = (d.name, cc)
-		player = pygame.mixer
-		player.type = "pygame"
-		player.dtype = np.float32
-		player.peak = 32767
+def sc_player(d=None):
+	if not d:
+		player = Player()
 	else:
-		player.__enter__()
-		player.type = "soundcard"
-		player.dtype = np.float32
-		player.peak = 1
+		cc = d.channels
+		t = (d.name, cc)
+		try:
+			if not PG_USED or PG_USED == t:
+				raise RuntimeError
+			player = d.player(SR, cc, 2048)
+		except RuntimeError:
+			if not PG_USED:
+				pygame.mixer.init(SR, -16, cc, 512, devicename=d.name)
+			globals()["PG_USED"] = t
+			player = pygame.mixer
+			player.type = "pygame"
+			player.dtype = np.int16
+			player.peak = 32767
+			player.resume = player.unpause
+			def stop():
+				player._data_ = ()
+			player.pause = stop
+			player.stop = stop
+			try:
+				player.resume()
+			except:
+				print_exc()
+		else:
+			player.__enter__()
+			player.type = "soundcard"
+			player.dtype = np.float32
+			player.peak = 1
+			player.resume = lambda: None
+			player.pause = player.stop = lambda: setattr(player, "_data_", ())
+		player.channels = cc
+	if not getattr(player, "_data_", None):
+		player._data_ = ()
 	player.closed = False
-	player.playing = None
+	player.is_playing = None
 	player.fut = None
-	player._data_ = ()
-	player.channels = cc
 	# a monkey-patched play function that has a better buffer
 	# (soundcard's normal one is insufficient for continuous playback)
 	def play(self):
 		while True:
-			if player.paused:
-				if len(self._data_) > 3200 * cc:
-					self._data_ = self._data_[-3200 * cc:]
+			if self.closed or paused and not paused.done() or not fut and not alphakeys or cleared:
+				if len(self._data_) > 6400 * cc:
+					self._data_ = self._data_[-6400 * cc:]
 				return
+			w2 = 1600 * cc
 			towrite = self._render_available_frames()
-			if towrite < 50 * cc:
+			t2 = towrite << 1
+			if towrite < w2:
 				async_wait()
 				continue
 			if self.fut:
 				self.fut.result()
 			self.fut = concurrent.futures.Future()
 			if not len(self._data_):
-				self._data_ = SC_EMPTY[:cc * 1600]
-			b = self._data_[:towrite << 1].data
+				self._data_ = SC_EMPTY[:w2]
+			if t2 > len(self._data_) + w2:
+				t2 = len(self._data_) + w2
+			b = self._data_[:t2].data
 			buffer = self._render_buffer(towrite)
 			CFFI.memmove(buffer[0], b, b.nbytes)
 			self._render_release(towrite)
-			self._data_ = self._data_[towrite << 1:]
+			self._data_ = self._data_[t2:]
 			if self.closed:
 				return
 			self.fut.set_result(None)
+	def play2(self):
+		channel = self.Channel(0)
+		while True:
+			if self._data_ and not channel.get_queue():
+				channel.queue(self._data_.popleft())
+			async_wait()
 	def write(data):
 		if player.closed:
 			return
+		cc = player.channels
 		if cc < 2:
 			if data.dtype == np.float32:
-				data = data[::2] + data[1::2]
+				data = np.add(data[::2], data[1::2], out=data[:len(data) >> 1])
 				data *= 0.5
 			else:
 				data >>= 1
-				data = data[::2] + data[1::2]
+				data = np.add(data[::2], data[1::2], out=data[:len(data) >> 1])
 		if player.type == "pygame":
 			if cc >= 2:
 				data = data.reshape((len(data) // cc, cc))
 			sound = pygame.sndarray.make_sound(data)
 			player.wait()
-			return player.Channel(0).queue(sound)
+			channel = player.Channel(0)
+			if channel.get_queue():
+				try:
+					player._data_.append(sound)
+				except AttributeError:
+					player._data_ = deque((sound,))
+				return verify()
+			channel.queue(sound)
+			return verify()
 		player.wait()
 		if not len(player._data_):
 			player._data_ = data
@@ -2072,35 +2260,64 @@ def sc_player(d):
 		player._data_ = np.concatenate((player._data_, data))
 		player.fut.set_result(None)
 		return verify()
-	player.write = write
+	if player.type != "pyglet":
+		player.write = write
 	def close():
-		player.closed = True
 		if player.type == "pygame":
-			return player.Channel(0).stop()
+			player._data_ = ()
+			return pygame.mixer.pause()
+		if player.type == "pyglet":
+			return player.delete()
+		player.closed = True
 		try:
 			player.__exit__(None, None, None)
 		except:
 			print_exc()
 	player.close = close
-	def wait():
-		if player.type == "pygame":
-			while player.Channel(0).get_queue():
+	if player.type != "pyglet":
+		def wait():
+			cc = player.channels
+			if player.type == "pygame":
+				verify()
+				while len(player._data_) >= 4:
+					async_wait()
+				return
+			if not len(player._data_):
+				return
+			verify()
+			while len(player._data_) > 6400 * cc:
 				async_wait()
-			return
-		if not len(player._data_):
-			return
-		verify()
-		while len(player._data_) > 3200 * cc:
-			async_wait()
-		while player.fut and not player.fut.done():
-			player.fut.result()
+			while player.fut and not player.fut.done():
+				player.fut.result()
+		player.wait = wait
 	def verify():
-		if not player.playing or player.playing.done():
-			player.playing = submit(play, player)
-	player.wait = wait
+		if not player.is_playing or player.is_playing.done():
+			func = play2 if player.type == "pygame" else play
+			player.is_playing = submit(func, player)
+	if player.type == "pygame":
+		verify()
 	return player
 
 get_channel = lambda: sc_player(get_device(common.OUTPUT_DEVICE))
+player.channel = get_channel()
+print(player.channel)
+
+def mixer_audio():
+	try:
+		while mixer and mixer.is_running():
+			mixer.client.sendall(b"\x7f")
+			player.channel.wait()
+			if not mixer:
+				break
+			try:
+				b = mixer.client.recv(262144)
+			except ConnectionResetError:
+				continue
+			a = np.frombuffer(b, dtype=np.int16)
+			player.channel.write(a)
+	except:
+		print_exc()
+threading.Thread(target=mixer_audio).start()
 
 def mixer_stdout():
 	try:
@@ -2340,6 +2557,10 @@ def pause_toggle(state=None):
 		player.paused ^= True
 	else:
 		player.paused = state
+	if player.paused:
+		player.channel.pause()
+	else:
+		player.channel.resume()
 	if toolbar.editor:
 		player.broken = player.paused
 	mixer.state(player.paused or toolbar.editor)
@@ -2820,9 +3041,9 @@ def render_settings(dur, ignore=False):
 		if len(srange) > 2:
 			v = round_min(math.round(v / srange[2]) * srange[2])
 		else:
-			rv = round_min(math.round(v * 32) / 32)
+			rv = round_min(math.round(v * 32) / 16)
 			if type(rv) is int and rv not in srange:
-				v = rv
+				v = rv / 2
 		if hovered and not hovertext or aediting[opt]:
 			hovertext = cdict(
 				text=str(round(v * 100, 2)) + "%",
@@ -2929,12 +3150,14 @@ def render_settings(dur, ignore=False):
 			("silenceremove", "Skip silence", "Skips over silent or extremely quiet frames of audio."),
 			("blur", "Motion blur", "Makes animations look smoother, but consume slightly more resources."),
 			("unfocus", "Reduce unfocus FPS", "Greatly reduces FPS of display when the window is left unfocused."),
+			("subprocess", "Subprocess", "Audio is transferred through subprocess. More stable and efficient, but difficult to record or stream using third party programs."),
 			("presearch", "Preemptive search", "Pre-emptively searches up and displays duration of songs in a playlist when applicable. Increases amount of requests being sent."),
 			("preserve", "Preserve sessions", "Preserves sessions and automatically reloads them when the program is restarted."),
 			("ripples", "Ripples", "Clicking anywhere on the sidebar or toolbar produces a visual ripple effect."),
-			("autoupdate", "Auto update", "Automatically and silently updates Miza Player in the background when an update is detected."),
+			("autobackup", "Auto backup", "Automatically backs up and/or restores your playlist folder on mizabot.xyz."),
+			("autoupdate", "Auto update", "Automatically updates Miza Player in the background when an update is detected."),
 		)
-		mrect = (offs2 + 8, 376, sidebar_width - 16, 224)
+		mrect = (offs2 + 8, 376, sidebar_width - 16, 32 * 9)
 		surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
 		surf.fill((0, 0, 0, 0))
 		for i, t in enumerate(more):
@@ -2952,7 +3175,7 @@ def render_settings(dur, ignore=False):
 				)
 				if mclick[0]:
 					options.control[s] ^= 1
-					if s in ("silenceremove", "unfocus"):
+					if s in ("silenceremove", "unfocus", "subprocess"):
 						mixer.submit(f"~setting {s} {options.control[s]}")
 			ripple_f = globals().get("s-ripple", concentric_circle)
 			if options.control.get(s):
@@ -2996,9 +3219,48 @@ def render_settings(dur, ignore=False):
 				cache=True,
 				z=129,
 			)
-		if sidebar_width >= 192:
-			r = (sidebar_width - 80, 192, 64, 32)
-			r2 = (screensize[0] - 68 + offs + sidebar_width, 621, 64, 32)
+		if sidebar_width >= 224:
+			r = (sidebar_width - 80, 224, 64, 32)
+			r2 = (screensize[0] - 68 + offs + sidebar_width, 653, 64, 32)
+			if in_rect(mpos, r2):
+				if mclick[0]:
+					def edit_sync_url_a(enter):
+						if enter is None:
+							return
+						enter = enter.strip()
+						try:
+							assert is_url(enter)
+						except:
+							print_exc()
+							enter = ""
+						else:
+							enter = enter.replace("/file/", "/p/").replace("/f/", "/p/").replace("/d/", "/p/").replace("/view/", "/p/")
+						control.playlist_sync = enter
+						globals()["last_sync"] = -inf
+					easygui2.enterbox(
+						edit_sync_url_a,
+						"Edit sync URL",
+						title="Miza Player",
+						default=control.playlist_sync,
+					)
+				c = (112, 127, 64, 223)
+			else:
+				c = (96, 112, 80, 127)
+			bevel_rectangle(surf, c, r, bevel=4, z=129)
+			message_display(
+				"Edit",
+				16,
+				rect_centre(r),
+				colour=(255,) * 3,
+				alpha=c[-1] + 32,
+				surface=surf,
+				font="Comic Sans MS",
+				cache=True,
+				z=130,
+			)
+		if sidebar_width >= 256:
+			r = (sidebar_width - 80, 256, 64, 32)
+			r2 = (screensize[0] - 68 + offs + sidebar_width, 685, 64, 32)
 			if in_rect(mpos, r2):
 				if mclick[0]:
 					submit(update_collections2)
@@ -3017,7 +3279,6 @@ def render_settings(dur, ignore=False):
 				c2 = verify_colour(round_random(x * (sin(pc() * tau / 4) + 0.5)) for x in c[:3])
 				c2.append(c[-1])
 				c = c2
-			# print(c)
 			bevel_rectangle(surf, c, r, bevel=4, z=129)
 			message_display(
 				"Update",
@@ -3562,7 +3823,7 @@ def draw_menu():
 
 pdata = None
 def save_settings():
-	print("autosaving...")
+	# print("autosaving...")
 	temp = options.screensize
 	options.screensize = screensize2
 	if options != orig_options:
@@ -3710,18 +3971,21 @@ try:
 	toolbar.editor = 0
 	tick = 0
 	while True:
-		if not tick + 2 & 8191:
+		if not tick + 1 & 31:
 			try:
 				if utc() - os.path.getmtime(collections2f) > 3600:
-					submit(update_collections2)
-					common.repo_fut = submit(update_repo)
+					raise FileNotFoundError
 			except FileNotFoundError:
-				submit(update_repo)
+				common.repo_fut = submit(update_repo)
 				update_collections2()
+			# print(t, last_save, last_sync)
 			t = pc()
-			if t >= last_save + 20:
+			if t >= last_save + 20 and is_active():
 				submit(save_settings)
-			globals()["last_save"] = max(last_save, t - 10)
+				globals()["last_save"] = max(last_save, t - 10)
+			if t >= last_sync + 730:
+				submit(playlist_sync)
+				globals()["last_sync"] = max(last_sync, t - 10)
 		if not (tick << 3) % (status_freq + (status_freq & 1)):
 			submit(send_status)
 		fut = common.__dict__.get("repo-update")
@@ -4334,11 +4598,11 @@ try:
 			last_played = t
 		delplay = t - last_played
 		delay = t - last_tick
-		if delay >= 8 or delplay >= 3600 and common.OUTPUT_DEVICE:
+		if delay >= 30 or delplay >= 3600 and common.OUTPUT_DEVICE:
 			restart_mixer()
 			last_tick = last_played = t = pc()
 		DISP.fps = 1 / max(d / 4, last_ratio)
-		d2 = max(0.001, d - delay)
+		d2 = max(0.004, d - delay)
 		last_ratio = (last_ratio * 7 + t - last_precise) / 8
 		last_precise = t
 		last_tick = max(last_tick + d, t - 0.125)

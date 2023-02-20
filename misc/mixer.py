@@ -1,6 +1,6 @@
 # ONE SMALL STEP FOR MAN, ONE GIANT LEAP FOR SMUDGE KIND! Invaded once again on the 6th March >:D
 
-import os, sys, traceback
+import os, sys, traceback, socket
 
 # c = sys.stdin.readline()
 # if c == "~init\n":
@@ -8,6 +8,8 @@ import os, sys, traceback
 # sys.stderr.write("~STARTED\n")
 
 pid = os.getppid()
+mixer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+mixer_server.connect(("127.0.0.1", pid & 32767 | 32768))
 
 sys.stdout.write = lambda *args, **kwargs: None
 import concurrent.futures
@@ -326,6 +328,7 @@ class Player(pyglet.media.Player):
 	peak = 32767
 	dtype = np.int16
 	channels = 2
+	re_paused = False
 
 	def __init__(self):
 		super().__init__()
@@ -337,9 +340,10 @@ class Player(pyglet.media.Player):
 	def write(self, data):
 		self.wait()
 		data = data.data
-		if len(self.entry.buffer) >= 1:
+		if len(self.entry.buffer) >= 3:
 			ts = max(0.004, len(data) / (audio_format.sample_rate * audio_format.sample_size * audio_format.channels / 8)) - 0.004
 			time.sleep(ts)
+		self.re_paused = False
 		if not self.paused:
 			self.entry.buffer.append(data)
 
@@ -347,9 +351,12 @@ class Player(pyglet.media.Player):
 		while self.playing and not self.paused and self.source and len(self.entry.buffer) >= 4:
 			async_wait()
 		if not self.entry.buffer:
-			# for i in range(3):
-				# self.entry.buffer.append(self.entry.emptybuff)
-			super().pause()
+			if not self.re_paused:
+				for i in range(3):
+					self.entry.buffer.append(self.entry.emptybuff)
+				self.re_paused = True
+			else:
+				super().pause()
 		if len(self.entry.buffer) >= 1:
 			if not self.source:
 				self.queue(self.entry)
@@ -1541,17 +1548,23 @@ def play(pos):
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						t = time.time()
-						if floor(t) > LT:
-							globals()["LT"] = t
-							if DEVICE:
-								cc = sc.get_speaker(DEVICE.id).channels
-								if cc != channel.channels:
-									raise
-						fut = submit(channel.wait)
-						fut.result(timeout=1.6)
-						fut = submit(channel.write, sample)
-						fut.result(timeout=1.2)
+						# t = time.time()
+						# if floor(t) > LT:
+							# globals()["LT"] = t
+							# if DEVICE:
+								# cc = sc.get_speaker(DEVICE.id).channels
+								# if cc != channel.channels:
+									# raise
+						if not settings.subprocess:
+							b = None
+							while not b:
+								b = mixer_server.recv(1)
+							submit(mixer_server.sendall, sample.data).result(timeout=3)
+						else:
+							fut = submit(channel.wait)
+							fut.result(timeout=1.6)
+							fut = submit(channel.write, sample)
+							fut.result(timeout=1.2)
 					except:
 						if paused:
 							break
@@ -1771,17 +1784,23 @@ def piano_player():
 					waiting.result()
 				for i in range(2147483648):
 					try:
-						t = time.time()
-						if floor(t) > LT:
-							globals()["LT"] = t
-							if DEVICE:
-								cc = sc.get_speaker(DEVICE.id).channels
-								if cc != channel.channels:
-									raise
-						fut = submit(channel.wait)
-						fut.result(timeout=1.6)
-						fut = submit(channel.write, sample)
-						fut.result(timeout=1.2)
+						# t = time.time()
+						# if floor(t) > LT:
+							# globals()["LT"] = t
+							# if DEVICE:
+								# cc = sc.get_speaker(DEVICE.id).channels
+								# if cc != channel.channels:
+									# raise
+						if not settings.subprocess:
+							b = None
+							while not b:
+								b = mixer_server.recv(1)
+							submit(mixer_server.sendall, sample.data).result(timeout=3)
+						else:
+							fut = submit(channel.wait)
+							fut.result(timeout=1.6)
+							fut = submit(channel.write, sample)
+							fut.result(timeout=1.2)
 					except:
 						print_exc()
 						print(f"{channel.type} timed out.")
@@ -1967,6 +1986,16 @@ while not sys.stdin.closed and failed < 8:
 		failed = 0
 		command = command.rstrip().rstrip("\x00")
 		pos = frame / 30
+		# if command.startswith("~l1"):
+			# if stream_locked:
+				# stream_locked.set_result(None)
+			# stream_locked = concurrent.futures.Future()
+			# continue
+		# if command.startswith("~u1"):
+			# if stream_locked:
+				# stream_locked.set_result(None)
+			# stream_locked = None
+			# continue
 		if command.startswith("~render"):
 			s = command[8:]
 			p, b, s = s.split(" ", 2)
@@ -2154,7 +2183,7 @@ while not sys.stdin.closed and failed < 8:
 				channel._data_ = ()
 				paused.set_result(None)
 			try:
-				fut.result(timeout=5)
+				fut.result(timeout=2)
 			except:
 				print_exc()
 				print("Previously playing song timed out, killing relevant subprocesses and skipping...")

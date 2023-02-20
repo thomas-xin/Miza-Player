@@ -3177,6 +3177,11 @@ def render_settings(dur, ignore=False):
 					options.control[s] ^= 1
 					if s in ("silenceremove", "unfocus", "subprocess"):
 						mixer.submit(f"~setting {s} {options.control[s]}")
+					elif options.control[s]:
+						if s == "autobackup":
+							globals()["last_sync"] = -inf
+						elif s == "autoupdate":
+							globals()["last_save"] = -inf
 			ripple_f = globals().get("s-ripple", concentric_circle)
 			if options.control.get(s):
 				col = (96, 255, 96)

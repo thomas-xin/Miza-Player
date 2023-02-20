@@ -3988,7 +3988,7 @@ try:
 			if t >= last_save + 20 and is_active():
 				submit(save_settings)
 				globals()["last_save"] = max(last_save, t - 10)
-			if t >= last_sync + 730:
+			if t >= last_sync + 730 and control.playlist_sync:
 				submit(playlist_sync)
 				globals()["last_sync"] = max(last_sync, t - 10)
 		if not (tick << 3) % (status_freq + (status_freq & 1)):

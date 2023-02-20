@@ -231,7 +231,7 @@ if update_collections:
 		url = "https://mizabot.xyz/d/BfUX0q45bA"
 		subprocess.run((sys.executable, "-O", "downloader.py", "-threads", "12", url, "sndlib.zip"), cwd="misc")
 		with zipfile.ZipFile("misc/sndlib.zip", "r") as z:
-			z.extractall("sndlib")
+			z.extractall()
 		os.remove("misc/sndlib.zip")
 		add_to_path()
 		print("Sound library extraction complete.")

@@ -242,7 +242,7 @@ def add_instrument(first=False):
 	sidebar.instruments.append(cdict())
 
 def playlist_sync():
-	print("Syncing playlists...")
+	# print("Syncing playlists...")
 	try:
 		t1 = max(max(st.st_mtime, st.st_ctime) for f in os.scandir("playlists") for st in (f.stat(),))
 		if control.playlist_sync and is_url(control.playlist_sync):
@@ -261,7 +261,7 @@ def playlist_sync():
 					control.playlist_sync
 				else:
 					t2 = info.timestamp
-					print(control.playlist_sync, t1, t2)
+					# print(control.playlist_sync, t1, t2)
 					if t2 >= t1 + 20 and info.size != control.playlist_size:
 						print(f"Downloading playlists from {url}...")
 						resp = requests.get(control.playlist_sync.replace("/p/", "/d/"))
@@ -273,7 +273,7 @@ def playlist_sync():
 						print("Extracted to playlists folder")
 						return
 					if control.playlist_files == len(os.listdir("playlists")):
-						print("Playlists match, skipping...")
+						# print("Playlists match, skipping...")
 						return
 		if not os.listdir("playlists"):
 			return

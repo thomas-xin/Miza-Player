@@ -266,6 +266,8 @@ def playlist_sync():
 						print(f"Downloading playlists from {url}...")
 						resp = requests.get(control.playlist_sync.replace("/p/", "/d/"))
 						b = io.BytesIO(resp.content)
+						for fn in os.listdir("playlists"):
+							os.remove("playlists/" + fn)
 						with zipfile.ZipFile(b) as z:
 							z.extractall()
 						control.playlist_files = len(os.listdir("playlists"))
@@ -3224,7 +3226,7 @@ def render_settings(dur, ignore=False):
 				cache=True,
 				z=129,
 			)
-		if sidebar_width >= 224:
+		if sidebar_width >= 192 and screensize[1] - toolbar_height - mrect[1] >= 32 * 9:
 			r = (sidebar_width - 80, 224, 64, 32)
 			r2 = (screensize[0] - 68 + offs + sidebar_width, 653, 64, 32)
 			if in_rect(mpos, r2):
@@ -3263,7 +3265,7 @@ def render_settings(dur, ignore=False):
 				cache=True,
 				z=130,
 			)
-		if sidebar_width >= 256:
+		if sidebar_width >= 192 and screensize[1] - toolbar_height - mrect[1] >= 32 * 10:
 			r = (sidebar_width - 80, 256, 64, 32)
 			r2 = (screensize[0] - 68 + offs + sidebar_width, 685, 64, 32)
 			if in_rect(mpos, r2):

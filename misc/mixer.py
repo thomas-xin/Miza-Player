@@ -1,6 +1,6 @@
 # ONE SMALL STEP FOR MAN, ONE GIANT LEAP FOR SMUDGE KIND! Invaded once again on the 6th March >:D
 
-import os, sys, traceback, socket
+import os, sys, traceback
 
 # c = sys.stdin.readline()
 # if c == "~init\n":
@@ -8,8 +8,6 @@ import os, sys, traceback, socket
 # sys.stderr.write("~STARTED\n")
 
 pid = os.getppid()
-mixer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-mixer_server.connect(("127.0.0.1", pid & 32767 | 32768))
 
 sys.stdout.write = lambda *args, **kwargs: None
 import concurrent.futures
@@ -61,7 +59,7 @@ class MultiAutoImporter:
 # )
 # sys.stderr.write("~IMPORTING\n")
 import numpy, pygame, pyglet, random, hashlib, orjson, traceback, base64
-import requests, ctypes, weakref, samplerate, itertools, io, zipfile
+import requests, ctypes, weakref, samplerate, itertools, io, zipfile, socket
 import psutil, subprocess, multiprocessing, re
 import soundcard as sc
 import math
@@ -81,6 +79,8 @@ is_minimised = lambda: globals()["stat-mem"].buf[0] & 1
 reqs = requests.Session()
 sys.stdin.readline()
 sys.stderr.write("~I\n")
+mixer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+mixer_server.connect(("127.0.0.1", pid & 32767 | 32768))
 
 pt = None
 pt2 = None

@@ -266,9 +266,9 @@ def playlist_sync():
 						print(f"Downloading playlists from {url}...")
 						resp = requests.get(control.playlist_sync.replace("/p/", "/d/"))
 						b = io.BytesIO(resp.content)
-						for fn in os.listdir("playlists"):
-							os.remove("playlists/" + fn)
 						with zipfile.ZipFile(b) as z:
+							for fn in os.listdir("playlists"):
+								os.remove("playlists/" + fn)
 							z.extractall()
 						control.playlist_files = len(os.listdir("playlists"))
 						control.playlist_size = len(resp.content)
@@ -2013,7 +2013,7 @@ def restart_mixer(devicename=None):
 			p.kill()
 		mixer.kill()
 	mixer = start_mixer(devicename)
-	if not mixer:
+	if not mixer or not mixer.is_running():
 		return
 	mixer.state(player.paused)
 	submit(transfer_instrument, *project.instruments.values())

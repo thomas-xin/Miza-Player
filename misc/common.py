@@ -680,14 +680,12 @@ def start_mixer(devicename=None):
 		stderr=subprocess.PIPE,
 		bufsize=65536,
 	)
-	mixer.client, mixer.addr = mixer_server.accept()
-	# mixer.client = mixer_server
+	mixer.state = lambda i=0: state(i)
+	mixer.clear = lambda: clear()
+	mixer.drop = lambda i=0: drop(i)
+	mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
 	mixer.lock = None
 	try:
-		mixer.state = lambda i=0: state(i)
-		mixer.clear = lambda: clear()
-		mixer.drop = lambda i=0: drop(i)
-		mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
 		mixer.stdin.write(b"~init\n")
 		mixer.stdin.flush()
 		while True:
@@ -703,7 +701,8 @@ def start_mixer(devicename=None):
 			print(temp)
 			mixer.kill()
 			raise RuntimeError(f"Unexpected response from mixer {mixer.stderr.read()}")
-		# print(temp)
+		mixer.client, mixer.addr = mixer_server.accept()
+		# mixer.client = mixer_server
 		if hasmisc:
 			s = []
 			d = options.audio.copy()

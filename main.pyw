@@ -4194,7 +4194,10 @@ try:
 							if player.video.im2 != player.video.im:
 								# tex = im.get_texture()
 								# player.video.tex = tex = tex.get_transform(flip_y=True)
-								tex.blit_into(player.video.im, 0, 0, 0)
+								try:
+									tex.blit_into(player.video.im, 0, 0, 0)
+								except:
+									print_exc()
 								# print(tex)
 								player.video.im2 = player.video.im
 							size = limit_size(im.width, im.height, *player.rect[2:])

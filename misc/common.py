@@ -2230,7 +2230,12 @@ def update_repo(force=False):
 		print_exc()
 
 def update_collections2():
-	resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py")
+	try:
+		resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py")
+		resp.raise_for_status()
+	except:
+		print_exc()
+		return
 	b = resp.content
 	with open(collections2f, "wb") as f:
 		f.write(b)

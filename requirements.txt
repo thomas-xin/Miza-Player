@@ -4,7 +4,7 @@ numpy>=1.24.2
 orjson>=3.8.6
 pillow>=9.4.0
 psutil>=5.9.4
-pygame>=2.1.3
+pygame>=2.2.0
 pyglet==1.5.27
 pyperclip>=1.8.2
 python-magic-bin>=0.4.14

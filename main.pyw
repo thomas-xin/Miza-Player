@@ -2325,28 +2325,31 @@ def mixer_stdout():
 	try:
 		while mixer:
 			s = None
-			while not s and mixer and mixer.is_running():
-				s = as_str(mixer.stdout.readline())
-				if s:
-					if s[0] != "~":
-						if s[0] in "'\"":
-							s = ast.literal_eval(s)
-						sys.stdout.write(s)
-						s = ""
-					else:
-						s = s.rstrip()
-						break
-				elif mixer and not mixer.is_running():
-					time.sleep(2)
-					if mixer and not mixer.is_running():
-						print("Mixer has crashed.")
-						restart_mixer()
-			else:
-				if not mixer or not mixer.is_running():
-					time.sleep(2)
-					if mixer and not mixer.is_running():
-						print("Mixer has crashed.")
-						restart_mixer()
+			try:
+				while not s and mixer and mixer.is_running():
+					s = as_str(mixer.stdout.readline())
+					if s:
+						if s[0] != "~":
+							if s[0] in "'\"":
+								s = ast.literal_eval(s)
+							sys.stdout.write(s)
+							s = ""
+						else:
+							s = s.rstrip()
+							break
+					elif mixer and not mixer.is_running():
+						time.sleep(2)
+						if mixer and not mixer.is_running():
+							print("Mixer has crashed.")
+							restart_mixer()
+				else:
+					if not mixer or not mixer.is_running():
+						time.sleep(2)
+						if mixer and not mixer.is_running():
+							print("Mixer has crashed.")
+							restart_mixer()
+			except:
+				print_exc()
 			if not s:
 				time.sleep(0.05)
 				continue

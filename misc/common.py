@@ -1704,7 +1704,7 @@ def start_display():
 		DISP.mheld[i] = False
 		DISP.mrelease[i] = True
 
-	DISP.kheld = KeyList(pygame.key.get_pressed())
+	DISP.kheld = KeyList([0] * len(pygame.key.get_pressed()))
 	DISP.kclick = KeyList(DISP.kheld)
 	DISP.krelease = KeyList(DISP.kheld)
 	pygame.key.get_pressed = lambda: [bool(x) for x in DISP.kheld]

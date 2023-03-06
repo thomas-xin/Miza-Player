@@ -2209,6 +2209,7 @@ def update_repo(force=False):
 						updating.progress = 1
 					else:
 						raise ConnectionError(resp.status_code, resp.headers)
+					update_collections2()
 					globals().pop("updating", None)
 					globals()["repo-update"] = True
 				if r is not None:

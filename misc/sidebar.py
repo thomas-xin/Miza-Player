@@ -315,6 +315,7 @@ def render_sidebar(dur=0):
 							("Paste here (CTRL+V)", paste_queue),
 							("Play now", play_now),
 							("Play next", play_next),
+							("Jump to", jump_to),
 							("Add to playlist", add_to_playlist),
 							("Save as (CTRL+S)", save_as),
 							("Delete (DEL)", delete),
@@ -587,8 +588,7 @@ def play_now():
 	selected = [i for i, e in enumerate(queue) if e.get("selected")]
 	if not selected:
 		selected = [sidebar.get("lastsel") or 0]
-	temp = queue[selected]
-	queue.pops(selected)
+	temp = queue.pops(selected)
 	queue.extendleft(temp[::-1])
 	mixer.clear()
 	submit(start)
@@ -599,10 +599,22 @@ def play_next():
 	selected = [i for i, e in enumerate(queue) if e.get("selected")]
 	if not selected:
 		selected = [sidebar.get("lastsel") or 0]
-	temp = queue[selected]
-	queue.pops(selected)
+	temp = queue.pops(selected)
 	queue.extendleft(temp[::-1])
 	queue.appendleft(s)
+def jump_to():
+	if len(queue) <= 1:
+		return
+	selected = [i for i, e in enumerate(queue) if e.get("selected")]
+	if not selected:
+		selected = [sidebar.get("lastsel") or 0]
+	temp = queue.pops(selected)
+	i = selected[0]
+	queue.rotate(-i)
+	queue.extendleft(temp[::-1])
+	player.previous = None
+	mixer.clear()
+	submit(start)
 def add_to_playlist():
 	entries = list(copy_entry(e) for e in queue if e.get("selected"))
 	if not entries:

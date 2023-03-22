@@ -4155,7 +4155,7 @@ try:
 				if options.get("spectrogram", 0) > 1:
 					rect = player.rect
 					render_spectrogram(rect)
-				elif queue and queue[0] and not queue[0].get("novid") and options.get("spectrogram", 0) == 0:
+				elif queue and queue[0] and not queue[0].get("novid") and options.get("spectrogram", 0) == 0 and (not player.video or player.video.url):
 					video_sourced = True
 					if player.video:
 						if player.video.url and player.video.url != queue[0].url:

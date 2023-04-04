@@ -21,7 +21,8 @@ def _worker(executor_reference, work_queue, initializer, initargs):
 	try:
 		i = thread.threading.get_ident()
 		last_used[i] = time.time()
-		while (t := time.time()) - last_used[i] < 60:
+		while True:
+			t = time.time()
 			work_item = work_queue.get(block=True)
 			if work_item is not None:
 				last_work[i] = work_item
@@ -82,7 +83,7 @@ def _adjust_thread_count(self):
 				self._initializer,
 				self._initargs,
 			),
-			daemon=True
+			daemon=True,
 		)
 		t.start()
 		self._threads.add(t)

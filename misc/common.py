@@ -25,9 +25,9 @@ def _worker(executor_reference, work_queue, initializer, initargs):
 			t = time.time()
 			work_item = work_queue.get(block=True)
 			if work_item is not None:
-				last_work[i] = work_item
-				last_used[i] = t
 				tup = (i, work_item.fn, work_item.args)
+				last_work[i] = tup
+				last_used[i] = t
 				print(tup)
 				work_item.run()
 				# Delete references to object. See issue16284

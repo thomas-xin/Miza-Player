@@ -1407,6 +1407,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			i += 1
 			if not proc.is_running():
 				break
+			async_wait()
 		if pos >= dur - 1:
 			while pos < player.pos + 1 and queue and proc.url == queue[0].url:
 				pos = player.pos

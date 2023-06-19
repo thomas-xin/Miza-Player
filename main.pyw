@@ -296,7 +296,7 @@ def playlist_sync():
 			url = url.rsplit("/", 1)[0] + "/edit/" + control.playlist_sync.split("/p/", 1)[-1]
 		resp = requests.patch(
 			url,
-			data={"name": "playlists.zip", "index": "0"},
+			data={"x-file-name": "playlists.zip", "index": "0"},
 		)
 		resp.raise_for_status()
 		url = "https://mizabot.xyz" + resp.text

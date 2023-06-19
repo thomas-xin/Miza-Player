@@ -250,9 +250,16 @@ def playlist_sync():
 			try:
 				resp = requests.get(url)
 				resp.raise_for_status()
+			except requests.exceptions.HTTPError as ex:
+				print_exc()
+				if ex.args:
+					err = ex.args[0]
+					if isinstance(err, str):
+						err = int(err.split(None, 1)[0])
+					if err in (401, 403, 404):
+						control.playlist_sync = ""
 			except:
 				print_exc()
-				control.playlist_sync = ""
 			else:
 				try:
 					info = cdict(resp.json())

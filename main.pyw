@@ -296,7 +296,7 @@ def playlist_sync():
 			url = url.rsplit("/", 1)[0] + "/edit/" + control.playlist_sync.split("/p/", 1)[-1]
 		resp = requests.patch(
 			url,
-			data=dict(name="playlists.zip", index=0),
+			data={"name": "playlists.zip", "index": "0"},
 		)
 		resp.raise_for_status()
 		url = "https://mizabot.xyz" + resp.text
@@ -2309,6 +2309,7 @@ def mixer_audio():
 	try:
 		while mixer and mixer.is_running():
 			mixer.client.sendall(b"\x7f")
+			async_wait()
 			player.channel.wait()
 			if not mixer:
 				break
@@ -2343,6 +2344,7 @@ def mixer_stdout():
 						if mixer and not mixer.is_running():
 							print("Mixer has crashed.")
 							restart_mixer()
+					async_wait()
 				else:
 					if not mixer or not mixer.is_running():
 						time.sleep(2)
@@ -3994,7 +3996,7 @@ try:
 			if t >= last_save + 20 and is_active():
 				submit(save_settings)
 				globals()["last_save"] = max(last_save, t - 10)
-			if t >= last_sync + 730 and control.playlist_sync:
+			if t >= last_sync + 730 and control.autobackup:
 				submit(playlist_sync)
 				globals()["last_sync"] = max(last_sync, t - 10)
 		if not (tick << 3) % (status_freq + (status_freq & 1)):

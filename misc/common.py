@@ -45,7 +45,7 @@ def _worker(executor_reference, work_queue, initializer, initargs):
 			#   - The interpreter is shutting down OR
 			#   - The executor that owns the worker has been collected OR
 			#   - The executor that owns the worker has been shutdown.
-			if _base._shutdown or executor is None or executor._shutdown:
+			if getattr(_base, "_shutdown", None) or executor is None or executor._shutdown:
 				# Flag the executor as shutting down as early as possible if it
 				# is not gc-ed yet.
 				if executor is not None:

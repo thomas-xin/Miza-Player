@@ -1,6 +1,6 @@
 # Better than Curl 🥌
 
-import os, sys, subprocess, time, math, random, concurrent.futures, urllib.request
+import os, sys, subprocess, time, math, hashlib, base64, random, concurrent.futures, urllib.request
 if os.name == "nt":
 	os.system("color")
 
@@ -132,15 +132,30 @@ COLOURS = ["\x1b[38;5;16m█"]
 COLOURS.extend(f"\x1b[38;5;{i}m█" for i in range(232, 256))
 COLOURS.append("\x1b[38;5;15m█")
 
-def download(url, fn, resp=None, index=0, start=None, end=None):
+def download(url, fn, resp=None, index=0, start=None, end=None, tn=None):
 	size = 0
+	_i = index
+	_s = start
+	_e = end
+	_tn = tn
+	osize = end - start if end else 0
 	packet = 131072
 	try:
-		f = open(fn, "wb")
-	except:
 		f = open(fn, "rb+")
+	except:
+		f = open(fn, "wb")
+	else:
+		estart = os.path.getsize(fn)
+		if end and estart > end - start:
+			estart = 0
+		elif end and estart == end - start:
+			progress[index] = end - start
+			return fn
+		else:
+			start += estart
+			f.seek(estart)
 	with f:
-		while True:
+		while tn is None or threaders[tn]:
 			try:
 				if not resp:
 					rheader = header()
@@ -161,7 +176,7 @@ def download(url, fn, resp=None, index=0, start=None, end=None):
 							globals()["attempts"] += 1
 						err = prio.submit(resp.read)
 						raise ConnectionError(resp.code, err.result(timeout=4).decode("utf-8").rstrip())
-					while True:
+					while tn is None or threaders[tn]:
 						try:
 							fut = submit(resp.read, packet)
 						except RuntimeError:
@@ -199,15 +214,19 @@ def download(url, fn, resp=None, index=0, start=None, end=None):
 				print(f"\nThread {index} errored, retrying...")
 				packet = max(8192, packet >> 1)
 			resp = None
+	if os.path.getsize(fn) < osize and threaders[tn]:
+		print(f"\nThread {index} returned invalid or incomplete response, retrying...")
+		os.remove(fn)
+		return download(url, fn, index=_i, start=_s, end=_e, tn=_tn)
 	return fn
 
-def upload(url, fn, resp=None, index=0, start=None, end=None):
+def upload(url, fn, resp=None, index=0, start=None, end=None, tn=None):
 	start = start or 0
 	end = end or os.path.getsize(fn)
 	with open(fn, "rb") as f:
 		f.seek(start)
 		data = f.read(end - start)
-		while True:
+		while tn is None or threaders[tn]:
 			try:
 				rheader = header()
 				rheader["x-file-name"] = fn.rsplit("/", 1)[-1]
@@ -257,6 +276,7 @@ fn = None
 if len(sys.argv) < 2:
 	url = input("Please enter a URL to download from: ")
 	threads = 1
+	chunked = False
 else:
 	args = list(sys.argv)
 	if "-v" in args:
@@ -276,18 +296,29 @@ else:
 		threads = int(args[i + 1])
 		args = args[:i] + args[i + 2:]
 	else:
-		threads = 1
+		threads = 0
 	if "-attempts" in args:
 		i = args.index("-attempts")
 		max_attempts = int(args[i + 1])
 		args = args[:i] + args[i + 2:]
 	else:
 		max_attempts = 1
-	url = args[1] if len(args) > 1 else None
-	if not url:
-		url = input("Please enter a URL to download from: ")
-	if len(args) >= 3:
-		fn = " ".join(args[2:])
+	if "-c" in args:
+		args.remove("-c")
+		if args[-1].startswith("http") and "://" in args[-1]:
+			urls = args[1:]
+		else:
+			urls = args[1:-1]
+			fn = args[-1]
+		url = urls[0]
+		chunked = True
+	else:
+		url = args[1] if len(args) > 1 else None
+		if not url:
+			url = input("Please enter a URL to download from: ")
+		if len(args) >= 3:
+			fn = " ".join(args[2:])
+		chunked = False
 url = url.replace("\\", "/")
 
 
@@ -355,7 +386,8 @@ if uploading:
 	print(f"{fs} bytes successfully uploaded in {time_disp(s)}, average upload speed {bps}bps")
 	raise SystemExit
 
-PID = os.getpid()
+# PID = os.getpid()
+md5 = lambda s: base64.urlsafe_b64encode(hashlib.md5(s.encode("utf-8")).digest()).rstrip(b"=").decode("ascii")
 if not os.path.exists("cache"):
 	os.mkdir("cache")
 if not os.path.exists("files"):
@@ -366,12 +398,20 @@ req = urllib.request.Request(url, headers=rheader)
 resp = urllib.request.urlopen(req)
 url = resp.url
 head = {k.casefold(): v for k, v in resp.headers.items()}
+print(head)
 if verbose:
 	last_progress = ""
-fsize = int(head.get("content-length", 1073741824))
-if "bytes" in head.get("accept-ranges", ""):
+if chunked:
+	r2 = urllib.request.Request(urls[-1], headers=rheader)
+	re2 = urllib.request.urlopen(r2)
+	fsize = int(head.get("content-length", 1073741824)) * (len(urls) - 1) + int(re2.headers.get("content-length", 1073741824))
+else:
+	fsize = int(head.get("content-length", 1073741824))
+if chunked:
+	threads = len(urls)
+elif "bytes" in head.get("accept-ranges", ""):
 	print("Accept-Ranges header found.")
-	if threads == 1:
+	if threads < 1:
 		try:
 			with open("training.txt", "r", encoding="utf-8") as f:
 				s = f.read()
@@ -411,7 +451,7 @@ if "bytes" in head.get("accept-ranges", ""):
 			n = round(fsize / 4194304)
 			print(f"Decision tree empty: {n}")
 			threads = n
-		threads = max(1, min(64, threads))
+		threads = max(3, min(64, threads))
 else:
 	threads = 1
 if not fn:
@@ -420,6 +460,7 @@ if not fn:
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=threads + 1 << 1)
 prio = concurrent.futures.ThreadPoolExecutor(max_workers=8)
 submit = exc.submit
+threaders = {}
 if threads > 1:
 	print(f"Splitting into {threads} threads...")
 	workers = [None] * threads
@@ -430,22 +471,36 @@ if threads > 1:
 		time.sleep(1 - tt)
 	tt = None
 	for i in range(threads):
-		start = i * load
-		if i == threads - 1:
-			end = None
+		if chunked:
+			url = urls[i]
+			tn = len(threaders)
+			threaders[tn] = True
+			workers[i] = submit(download, url, f"cache/${md5(url + str(i))}", resp, index=i, start=0, end=None, tn=tn)
+			workers[i].tn = tn
 		else:
-			end = min(start + load, fsize)
-		workers[i] = submit(download, url, f"cache/${PID}-{i}", resp, index=i, start=start, end=end)
+			start = i * load
+			if i == threads - 1:
+				end = None
+			else:
+				end = min(start + load, fsize)
+			tn = len(threaders)
+			threaders[tn] = True
+			workers[i] = submit(download, url, f"cache/${md5(url + str(i))}", resp, index=i, start=start, end=end, tn=tn)
+			workers[i].tn = tn
 		resp = None
 		try:
 			j = max(0, i - 2)
 			workers[j].result(timeout=delay)
 		except concurrent.futures.TimeoutError:
 			pass
-		if workers[i].done() or i >= 1 and workers[i - 1].done() or i >= 2 and workers[i - 2].done():
-			delay /= 2
+		for j in range(math.ceil(threads / 4) + 8):
+			if j > i:
+				continue
+			if workers[i - j].done():
+				delay = max(0.0625, delay / 2)
+				break
 		else:
-			delay *= math.sqrt(2)
+			delay += min(delay / 4, 2)
 		time.sleep(0.5)
 		fut = workers[0]
 		if tt is None and fut.done():
@@ -478,13 +533,24 @@ if threads > 1:
 				except concurrent.futures.TimeoutError:
 					if i + 2 >= len(workers) or workers[i + 2].done() or x > 2:
 						print(f"Thread {i + 1} timed out, restarting...")
+						threaders[workers[i + 1].tn] = False
+						print("Failed:", workers[i + 1].result())
 						tt += 5
-						start = (i + 1) * load
-						if i + 1 == threads - 1:
-							end = None
+						if chunked:
+							tn = len(threaders)
+							threaders[tn] = True
+							fut = workers[i + 1] = prio.submit(download, urls[i + 1], f"cache/${md5(url + str(i + 1))}", None, index=i + 1, start=0, end=None, tn=tn)
+							fut.tn = tn
 						else:
-							end = min(start + load, fsize)
-						fut = workers[i + 1] = prio.submit(download, url, f"cache/${PID}-{i + 1}", resp, index=i + 1, start=start, end=end)
+							start = (i + 1) * load
+							if i + 1 == threads - 1:
+								end = None
+							else:
+								end = min(start + load, fsize)
+							tn = len(threaders)
+							threaders[tn] = True
+							fut = workers[i + 1] = prio.submit(download, url, f"cache/${md5(url + str(i + 1))}", None, index=i + 1, start=start, end=end, tn=tn)
+							fut.tn = tn
 					continue
 				else:
 					if x:
@@ -527,6 +593,12 @@ if bps >= 1 << 10:
 		bps /= 1 << 10
 bps = str(round(bps, 4)) + " " + e
 print(f"\n{fs} bytes successfully downloaded in {time_disp(s)}, average download speed {bps}bps")
+
+for path in os.listdir("cache"):
+	try:
+		os.remove("cache/" + path)
+	except (PermissionError, FileNotFoundError):
+		pass
 
 try:
 	os.rmdir("cache")

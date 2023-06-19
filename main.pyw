@@ -258,6 +258,10 @@ def playlist_sync():
 						err = int(err.split(None, 1)[0])
 					if err in (401, 403, 404):
 						control.playlist_sync = ""
+					else:
+						return
+				else:
+					return
 			except:
 				print_exc()
 			else:

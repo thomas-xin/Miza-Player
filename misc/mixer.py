@@ -746,28 +746,28 @@ def download(url, fn):
 			return
 		downloading.add(fn)
 		cmd = ffmpeg_start
-		if is_youtube_stream(url) and (len(downloading) >= 3 or getattr(proc, "downloading", False)):
-			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
-			try:
-				proxy_download(url, fi)
-			except ConnectionError as ex:
-				print(f"[DEBUG] Pre-emptive download errored out with status {ex.errno}.")
-			except:
-				print_exc()
-			else:
-				if os.path.getsize(fi):
-					with open(fi, "rb") as f:
-						if f.read(15) != b"<!DOCTYPE html>":
-							url = fi
-						else:
-							print("[DEBUG] Pre-emptive download returned invalid HTML.")
-				else:
-					print("[DEBUG] Pre-emptive download returned empty.")
-				if url != fi:
-					try:
-						os.remove(fi)
-					except:
-						pass
+		# if is_youtube_stream(url) and (len(downloading) >= 3 or getattr(proc, "downloading", False)):
+			# fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
+			# try:
+				# proxy_download(url, fi)
+			# except ConnectionError as ex:
+				# print(f"[DEBUG] Pre-emptive download errored out with status {ex.errno}.")
+			# except:
+				# print_exc()
+			# else:
+				# if os.path.getsize(fi):
+					# with open(fi, "rb") as f:
+						# if f.read(15) != b"<!DOCTYPE html>":
+							# url = fi
+						# else:
+							# print("[DEBUG] Pre-emptive download returned invalid HTML.")
+				# else:
+					# print("[DEBUG] Pre-emptive download returned empty.")
+				# if url != fi:
+					# try:
+						# os.remove(fi)
+					# except:
+						# pass
 		if (fn.endswith(".webm") or url.endswith(".pcm") and fn.endswith(".pcm")) and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
 			if url != fn:
 				os.rename(url, fn)

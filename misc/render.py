@@ -310,7 +310,9 @@ def animate_prism(changed=False):
 	img = Image.frombuffer("HSV", (len(bars), 1), hsv2.tobytes()).convert("RGB")
 	rgba.T[:3].T[:] = np.frombuffer(img.tobytes(), dtype=np.uint8).reshape((len(bars), 3))
 	rgba.T[:3] *= 1 / 255
-	rgba.T[-1][:] = 2 / 3
+	rgba.T[:3] **= 4 / 3
+	rgba.T[:3] *= 2
+	# rgba.T[-1][:] = 2 / 3
 	colours = rgba
 
 	maxlen = len(bars)

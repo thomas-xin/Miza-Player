@@ -79,6 +79,14 @@ modified = False
 installing = []
 install = lambda m: installing.append(subprocess.Popen([sys.executable, "-m", "pip", "install", "--upgrade", "--user", m]))
 
+def try_int(i):
+    if type(i) is str and not i.isnumeric():
+        return i
+    try:
+        return int(i)
+    except:
+        return i
+
 # Parse requirements.txt
 for mod in modlist:
 	if mod:
@@ -91,7 +99,12 @@ for mod in modlist:
 					break
 			v = pkg_resources.get_distribution(name).version
 			if version is not None:
-				assert eval(repr(v.split(".")) + op + repr(version.split(".")), {}, {})
+				try:
+					s = repr([try_int(i) for i in v.split(".")]) + op + repr([try_int(i) for i in version.split(".")])
+					assert eval(s, {}, {})
+				except TypeError:
+					s = repr(v.split(".")) + op + repr(version.split("."))
+					assert eval(s, {}, {})
 		except:
 			# Modules may require an older version, replace current version if necessary
 			traceback.print_exc()

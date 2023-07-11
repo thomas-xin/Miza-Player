@@ -259,10 +259,13 @@ def playlist_sync():
 					if err in (401, 403, 404):
 						control.playlist_sync = ""
 					else:
+						globals()["last_sync"] = time.time() + 1800
 						return
 				else:
+					globals()["last_sync"] = time.time() + 1800
 					return
 			except:
+				globals()["last_sync"] = time.time() + 1800
 				print_exc()
 			else:
 				try:
@@ -316,6 +319,7 @@ def playlist_sync():
 		control.playlist_size = b.getbuffer().nbytes
 		print("Uploaded to", url)
 	except:
+		globals()["last_sync"] = time.time() + 1800
 		print_exc()
 
 

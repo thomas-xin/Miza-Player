@@ -4317,14 +4317,14 @@ try:
 							font="Rockwell",
 							z=2,
 						)
-					elif not novid and entry.lyrics:
+					elif not novid and entry.get("lyrics"):
+						s = entry.lyrics[0]
 						blit_complex(
 							DISP,
 							entry.lyrics[1],
 							(8, 92),
 							z=1,
 						)
-						s = entry.lyrics[0]
 						size = max(20, min(40, (screensize[0] - sidebar_width) // len(s)))
 						message_display(
 							s,

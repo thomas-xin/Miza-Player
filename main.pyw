@@ -1952,6 +1952,8 @@ def start_player(pos=None, force=False):
 			player.needs_shuffle = not is_url(stream)
 		if is_url(entry.url) and not is_url(stream) and os.path.exists(stream) and not stream.endswith(".ecdc") and time.time() - os.path.getmtime(stream) > 30:
 			submit(ecdc_compress, entry, stream)
+		else:
+			submit(ecdc_compress, entry, stream, force=True)
 		es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
 		s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
 		# print(s)
@@ -1963,7 +1965,7 @@ def start_player(pos=None, force=False):
 		return stream, duration
 
 ECDC_RUNNING = set()
-def ecdc_compress(entry, stream):
+def ecdc_compress(entry, stream, force=False):
 	ofn = "persistent/~" + shash(entry.url) + ".ecdc"
 	if os.path.exists(ofn) and os.path.getsize(ofn):
 		return ofn
@@ -1980,7 +1982,7 @@ def ecdc_compress(entry, stream):
 		else:
 			br = 24
 		cc = psutil.cpu_count()
-		if cc >= 8 and (cc >= len(ECDC_RUNNING) * 6):
+		if not force and cc >= 8 and (cc >= len(ECDC_RUNNING) * 6):
 			i = None
 		else:
 			i = False
@@ -1997,6 +1999,8 @@ def ecdc_compress(entry, stream):
 				f.write(b)
 			return
 		except Exception as ex:
+			if force:
+				raise
 			print_exc()
 			tfn = "cache/~" + shash(entry.url) + ".wav"
 			if not os.path.exists(tfn):

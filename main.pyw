@@ -2029,6 +2029,7 @@ def ecdc_compress(entry, stream, force=False):
 			br = 12
 		else:
 			br = 24
+			print("BPS:", bps)
 		cc = psutil.cpu_count()
 		if not force and cc >= 8 and (cc >= len(ECDC_RUNNING) * 6):
 			i = None

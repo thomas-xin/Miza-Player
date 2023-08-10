@@ -1450,7 +1450,7 @@ class AudioDownloader:
 					output.clear()
 					print_exc()
 				try:
-					entries = list(map(cdict, reqs.get("http://i.mizabot.xyz/ytdl?q=" + item).json()))
+					entries = list(map(cdict, reqs.get("https://api.mizabot.xyz/ytdl?q=" + item).json()))
 					if not entries:
 						raise IndexError
 				except:
@@ -1577,12 +1577,20 @@ class AudioDownloader:
 			elif mode in (None, "yt"):
 				with suppress(NotImplementedError):
 					return self.search_yt(item)[:count]
-			# Otherwise call automatic extract_info function
-			resp = self.extract_info(item, count, search=search, mode=mode)
-			if resp.get("_type") == "url":
-				resp = self.extract_from(resp["url"])
-			if resp is None or not len(resp):
-				raise LookupError(f"No results for {item}")
+			try:
+				# Otherwise call automatic extract_info function
+				resp = self.extract_info(item, count, search=search, mode=mode)
+				if resp.get("_type") == "url":
+					resp = self.extract_from(resp["url"])
+				if resp is None or not len(resp):
+					raise LookupError(f"No results for {item}")
+			except:
+				print_exc()
+				out = reqs.get("https://api.mizabot.xyz/ytdl?q=" + item).json()
+				for e in out:
+					e.setdefault("stream", f"https://api.mizabot.xyz/ytdl?d={e.url}")
+					output.append(cdict(e))
+				resp = {}
 			# Check if result is a playlist
 			if resp.get("_type") == "playlist":
 				entries = resp["entries"]
@@ -1634,7 +1642,7 @@ class AudioDownloader:
 							except:
 								print_exc()
 						output.append(cdict(temp))
-			else:
+			elif resp:
 				# Single item results must contain full data, we take advantage of that here
 				found = "duration" in resp
 				if found:

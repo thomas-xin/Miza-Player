@@ -246,7 +246,10 @@ def add_instrument(first=False):
 def playlist_sync():
 	# print("Syncing playlists...")
 	try:
-		t1 = max(max(st.st_mtime, st.st_ctime) for f in os.scandir("playlists") for st in (f.stat(),))
+		try:
+			t1 = max(max(st.st_mtime, st.st_ctime) for f in os.scandir("playlists") for st in (f.stat(),))
+		except ValueError:
+			t1 = 0
 		if control.playlist_sync and is_url(control.playlist_sync):
 			url = control.playlist_sync.replace("/p/", "/fileinfo/")
 			try:
@@ -1706,6 +1709,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	if delay:
 		time.sleep(delay)
 	try:
+		# raise
 		if force > 2 and not entry.get("icon"):
 			entry.novid = False
 			if is_url(entry.url):
@@ -1798,6 +1802,21 @@ def prepare(entry, force=False, download=False, delay=0):
 					if control.shuffle and len(q2) > 1:
 						q2.shuffle()
 					queue.fill(np.concatenate((q1, q2, q3)))
+		elif stream.startswith("https://api.mizabot.xyz"):
+			if download:
+				with reqs.get(stream, stream=True) as resp:
+					it = resp.iter_content(65536)
+					with open(ofn, "wb") as f:
+						try:
+							while True:
+								b = next(it)
+								if not b:
+									break
+								f.write(b)
+						except StopIteration:
+							pass
+				print(steam)
+				return ofn
 		elif (force > 1 or force and not stream) and is_url(entry.get("url")):
 			ytdl = downloader.result()
 			if force > 1:
@@ -1822,10 +1841,27 @@ def prepare(entry, force=False, download=False, delay=0):
 				globals()["queue-length"] = -1
 			entry.duration = duration or entry.duration
 			return entry.stream
-		else:
-			stream = entry.stream
 	except:
 		print_exc()
+		if download and is_url(entry.url):
+			stream = f"https://api.mizabot.xyz/ytdl?d={entry.url}&fmt=webm"
+			try:
+				with reqs.get(stream, stream=True) as resp:
+					resp.raise_for_status()
+					it = resp.iter_content(65536)
+					with open(ofn, "wb") as f:
+						try:
+							while True:
+								b = next(it)
+								if not b:
+									break
+								f.write(b)
+						except StopIteration:
+							pass
+				print(stream)
+				return ofn
+			except:
+				print_exc()
 		print("Trying ECDC...")
 		cfn = "persistent/~" + shash(entry.url) + ".ecdc"
 		out = "cache/~" + shash(entry.url) + ".wav"
@@ -2150,12 +2186,16 @@ def reevaluate():
 		if not queue:
 			break
 		url = queue[0]["url"]
+		force = True
 		if is_url(url):
 			if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz"):
 				queue[0].pop("stream", None)
 			else:
-				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}"
-		start_player(0, True)
+				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm"
+				force = False
+			ytdl = downloader.result()
+			ytdl.cache.pop(url, None)
+		start_player(0, force=force)
 		time.sleep(2)
 
 device_waiting = None

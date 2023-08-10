@@ -16,6 +16,8 @@ with open("assoc.bat", "w", encoding="utf-8") as f:
 	f.write(f"cd {os.path.abspath('')}\nstart /MIN py -3.{pyv} {sys.argv[0]} %*")
 if not os.path.exists("cache"):
 	os.mkdir("cache")
+if not os.path.exists("persistent"):
+	os.mkdir("persistent")
 if not os.path.exists("playlists"):
 	os.mkdir("playlists")
 
@@ -1695,126 +1697,154 @@ def reset_entry(entry):
 	entry.pop("lyrics_loading", None)
 	return entry
 
-def prepare(entry, force=False, download=False):
+ecdc_wait = {}
+def prepare(entry, force=False, download=False, delay=0):
 	reset_entry(entry)
 	if not entry.url:
 		return
-	if force > 2 and not entry.get("icon"):
-		entry.novid = False
-		if is_url(entry.url):
+	fn = ofn = "cache/~" + shash(entry.url) + ".webm"
+	if delay:
+		time.sleep(delay)
+	try:
+		if force > 2 and not entry.get("icon"):
+			entry.novid = False
+			if is_url(entry.url):
+				ytdl = downloader.result()
+				try:
+					e = ytdl.extract(entry.url)[0]
+				except:
+					print_exc()
+					entry.novid = True
+				else:
+					try:
+						ytdl.searched[e.url].data[0] = e
+					except KeyError:
+						pass
+					entry.update(e)
+					entry.novid = False
+			else:
+				entry.icon = entry.video = entry.url
+			print(entry)
+		if os.path.exists(fn) and os.path.getsize(fn):
+			if time.time() - os.path.getmtime(fn) > 60 and is_url(entry.url) and not fn.endswith(".ecdc"):
+				submit(ecdc_compress, entry, fn)
+			dur = entry.get("duration")
+			if dur and not isinstance(dur, str) and isfinite(dur):
+				entry.stream = fn
+				ytdl = downloader.result()
+				if entry.url in ytdl.searched:
+					resp = ytdl.searched[entry.url].data
+					if len(resp) == 1:
+						entry.name = resp[0].get("name")
+						entry.video = resp[0].get("video")
+						entry.icon = resp[0].get("icon")
+				return fn
+			elif force:
+				ytdl = downloader.result()
+				stream = ytdl.get_stream(entry, force=True, download=False)
+				return stream
+		stream = entry.get("stream", "")
+		if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
+			entry.pop("stream", None)
+			stream = ""
+		if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
+			if not is_url(entry.url):
+				duration = entry.duration
+				if os.path.exists(entry.url):
+					stream = entry.stream = entry.url
+					if not duration:
+						info = get_duration_2(stream)
+						duration = info[0]
+						if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
+							fi = stream
+							if not os.path.exists(fn):
+								fn = select_and_convert(fi)
+							duration = get_duration_2(fn)[0]
+							stream = entry.stream = fn
+						globals()["queue-length"] = -1
+					entry.duration = duration or entry.duration
+					return entry.stream
 			ytdl = downloader.result()
 			try:
-				e = ytdl.extract(entry.url)[0]
+				resp = ytdl.search(entry.url)
+				data = resp[0]
+				if force:
+					stream = ytdl.get_stream(entry, force=True, download=False)
+			except requests.ConnectionError:
+				raise
 			except:
-				print_exc()
-				entry.novid = True
-			else:
-				try:
-					ytdl.searched[e.url].data[0] = e
-				except KeyError:
-					pass
-				entry.update(e)
-				entry.novid = False
-		else:
-			entry.icon = entry.video = entry.url
-		print(entry)
-	fn = "cache/~" + shash(entry.url) + ".webm"
-	if os.path.exists(fn) and os.path.getsize(fn):
-		dur = entry.get("duration")
-		if dur and not isinstance(dur, str) and isfinite(dur):
-			entry.stream = fn
-			ytdl = downloader.result()
-			if entry.url in ytdl.searched:
-				resp = ytdl.searched[entry.url].data
-				if len(resp) == 1:
-					entry.name = resp[0].get("name")
-					entry.video = resp[0].get("video")
-					entry.icon = resp[0].get("icon")
-			return fn
-		elif force:
-			ytdl = downloader.result()
-			stream = ytdl.get_stream(entry, force=True, download=False)
-			return stream
-	stream = entry.get("stream", "")
-	if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
-		entry.pop("stream", None)
-		stream = ""
-	if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
-		if not is_url(entry.url):
-			duration = entry.duration
-			if os.path.exists(entry.url):
-				stream = entry.stream = entry.url
-				if not duration:
-					info = get_duration_2(stream)
-					duration = info[0]
-					if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
-						fi = stream
-						if not os.path.exists(fn):
-							fn = select_and_convert(fi)
-						duration = get_duration_2(fn)[0]
-						stream = entry.stream = fn
+				if os.path.exists(fn):
+					duration = get_duration_2(fn)[0]
+					stream = entry.stream = fn
+					entry.duration = duration or entry.duration
 					globals()["queue-length"] = -1
-				entry.duration = duration or entry.duration
-				return entry.stream
-		ytdl = downloader.result()
-		try:
-			resp = ytdl.search(entry.url)
-			data = resp[0]
-			if force:
-				stream = ytdl.get_stream(entry, force=True, download=False)
-		except requests.ConnectionError:
-			return time.sleep(2)
-		except:
-			if os.path.exists(fn):
-				duration = get_duration_2(fn)[0]
-				stream = entry.stream = fn
-				entry.duration = duration or entry.duration
+					return stream
+				raise
+				# entry.url = ""
+				# print_exc()
+				# return
+			else:
+				if entry.name != data.get("name"):
+					reset_entry(entry)
 				globals()["queue-length"] = -1
-				return stream
-			entry.url = ""
-			print_exc()
-			return
-		else:
-			if entry.name != data.get("name"):
-				reset_entry(entry)
+				entry.update(data)
+				if len(resp) > 1:
+					try:
+						i = queue.index(entry) + 1
+					except:
+						i = len(queue)
+					q1, q3 = queue.view[:i - 1], queue.view[i:]
+					q2 = alist(cdict(**e, pos=i) for e in resp)
+					if control.shuffle and len(q2) > 1:
+						q2.shuffle()
+					queue.fill(np.concatenate((q1, q2, q3)))
+		elif (force > 1 or force and not stream) and is_url(entry.get("url")):
+			ytdl = downloader.result()
+			if force > 1:
+				data = ytdl.extract(entry.url)
+				entry.name = data[0].name
+				stream = data[0].setdefault("stream", data[0].url)
+			else:
+				stream = ytdl.get_stream(entry, force=True, download=False)
 			globals()["queue-length"] = -1
-			entry.update(data)
-			if len(resp) > 1:
-				try:
-					i = queue.index(entry) + 1
-				except:
-					i = len(queue)
-				q1, q3 = queue.view[:i - 1], queue.view[i:]
-				q2 = alist(cdict(**e, pos=i) for e in resp)
-				if control.shuffle and len(q2) > 1:
-					q2.shuffle()
-				queue.fill(np.concatenate((q1, q2, q3)))
-	elif (force > 1 or force and not stream) and is_url(entry.get("url")):
-		ytdl = downloader.result()
-		if force > 1:
-			data = ytdl.extract(entry.url)
-			entry.name = data[0].name
-			stream = data[0].setdefault("stream", data[0].url)
+		elif not is_url(stream) and not os.path.exists(stream):
+			entry.stream = entry.url
+			duration = entry.duration
+			if not duration:
+				info = get_duration_2(stream)
+				duration = info[0]
+				if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
+					fi = stream
+					if not os.path.exists(fn):
+						fn = select_and_convert(fi)
+					duration = get_duration_2(fn)[0]
+					stream = entry.stream = fn
+				globals()["queue-length"] = -1
+			entry.duration = duration or entry.duration
+			return entry.stream
 		else:
-			stream = ytdl.get_stream(entry, force=True, download=False)
-		globals()["queue-length"] = -1
-	elif not is_url(stream) and not os.path.exists(stream):
-		entry.stream = entry.url
-		duration = entry.duration
-		if not duration:
-			info = get_duration_2(stream)
-			duration = info[0]
-			if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
-				fi = stream
-				if not os.path.exists(fn):
-					fn = select_and_convert(fi)
-				duration = get_duration_2(fn)[0]
-				stream = entry.stream = fn
-			globals()["queue-length"] = -1
-		entry.duration = duration or entry.duration
-		return entry.stream
-	else:
-		stream = entry.stream
+			stream = entry.stream
+	except:
+		print_exc()
+		print("Trying ECDC...")
+		cfn = "persistent/~" + shash(entry.url) + ".ecdc"
+		out = "cache/~" + shash(entry.url) + ".wav"
+		if os.path.exists(out):
+			return out
+		while ecdc_wait.get(cfn):
+			time.sleep(1)
+		if os.path.exists(out):
+			return out
+		if os.path.exists(cfn) and os.path.getsize(cfn):
+			ecdc_wait[cfn] = True
+			args = [sys.executable, "-m", "encodec", "-r", cfn, out]
+			print(args)
+			subprocess.run(args)
+			ecdc_wait[cfn] = False
+			return out
+		entry.url = ""
+		print_exc()
+		return
 	stream = stream.strip()
 	duration = entry.duration
 	if not duration:
@@ -1847,14 +1877,14 @@ def start_player(pos=None, force=False):
 		return skip()
 	if control.loop < 2 and len(queue) > 1:
 		thresh = min(8, max(2, len(queue) // 8)) + 1
-		if control.shuffle > 1 or player.shuffler >= thresh:
-			ensure_next(queue[1])
-			thresh = 0
-		elif control.shuffle:
-			thresh -= player.shuffler
+		# if control.shuffle > 1 or player.shuffler >= thresh:
+			# ensure_next(queue[1])
+			# thresh = 0
+		# elif control.shuffle:
+			# thresh -= player.shuffler
 		# print(thresh)
-		for e in queue[1:min(len(queue), thresh) + 1]:
-			ensure_next(e)
+		for i, e in enumerate(queue[1:min(len(queue), thresh + 1)]):
+			ensure_next(e, delay=i + 1)
 	duration = entry.duration or 300
 	if pos is None:
 		if audio.speed >= 0:
@@ -1920,6 +1950,8 @@ def start_player(pos=None, force=False):
 			player.needs_shuffle = False
 		else:
 			player.needs_shuffle = not is_url(stream)
+		if is_url(entry.url) and not is_url(stream) and os.path.exists(stream) and not stream.endswith(".ecdc") and time.time() - os.path.getmtime(stream) > 30:
+			submit(ecdc_compress, entry, stream)
 		es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
 		s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
 		# print(s)
@@ -1929,6 +1961,66 @@ def start_player(pos=None, force=False):
 		player.end = duration or inf
 		player.stream = stream
 		return stream, duration
+
+ECDC_RUNNING = set()
+def ecdc_compress(entry, stream):
+	ofn = "persistent/~" + shash(entry.url) + ".ecdc"
+	if os.path.exists(ofn) and os.path.getsize(ofn):
+		return ofn
+	try:
+		try:
+			dur, bps, cdc = _get_duration_2(stream)
+		except:
+			print_exc()
+			bps = 196608
+		if bps < 48000:
+			br = 6
+		elif bps < 96000:
+			br = 12
+		else:
+			br = 24
+		cc = psutil.cpu_count()
+		if cc >= 8 and (cc >= len(ECDC_RUNNING) * 6):
+			i = None
+		else:
+			i = False
+		url = f"https://mizabot.xyz/encodec?bitrate={br}&inference={i}&url=https://mizabot.xyz/ytdl?d={entry.url}"
+		if i is not None:
+			print(url)
+		try:
+			with requests.get(url, stream=True) as resp:
+				resp.raise_for_status()
+				b = resp.content
+			if not b:
+				raise EOFError
+			with open(ofn, "wb") as f:
+				f.write(b)
+			return
+		except Exception as ex:
+			print_exc()
+			tfn = "cache/~" + shash(entry.url) + ".wav"
+			if not os.path.exists(tfn):
+				args = [ffmpeg, "-hide_banner", "-v", "error", "-i", stream, tfn]
+				print(args)
+				subprocess.run(args)
+			assert os.path.exists(tfn)
+			args = [sys.executable, "-m", "encodec", "-b", str(br), "--hq", tfn, ofn]
+			print(args)
+			if tfn in ECDC_RUNNING:
+				raise
+			ECDC_RUNNING.add(tfn)
+			try:
+				subprocess.run(args)
+			finally:
+				ECDC_RUNNING.discard(tfn)
+			if isinstance(ex, EOFError) and i is None:
+				with open(ofn, "rb") as f:
+					b = f.read()
+				with requests.post(url, data=b, stream=True) as resp:
+					print(resp)
+			return ofn
+	except:
+		print_exc()
 
 def start():
 	if queue:
@@ -1956,7 +2048,7 @@ def skip():
 		elif control.shuffle:
 			thresh = min(8, max(2, len(queue) / 8))
 			if player.shuffler >= thresh:
-				queue[1:].shuffle()
+				queue[thresh:].shuffle()
 				player.shuffler = 0
 			else:
 				player.shuffler += 1
@@ -2461,13 +2553,13 @@ def garbage_collector():
 		print_exc()
 
 enext = {}
-def ensure_next(e):
+def ensure_next(e, delay=0):
 	i = e.get("url")
 	if not i:
 		return
 	if i in enext:
 		return
-	enext[i] = submit(prepare, e, force=True, download=True)
+	enext[i] = submit(prepare, e, force=True, download=True, delay=delay)
 	e.duration = e.get("duration") or False
 	e.pop("research", None)
 	# if not e.get("lyrics_loading") and not e.get("lyrics"):
@@ -3850,7 +3942,7 @@ def draw_menu():
 		)
 
 pdata = None
-def save_settings():
+def save_settings(closing=False):
 	# print("autosaving...")
 	temp = options.screensize
 	options.screensize = screensize2
@@ -3904,12 +3996,12 @@ def save_settings():
 	for e in os.scandir("cache"):
 		fn = e.name
 		if e.is_file(follow_symlinks=False):
-			if fn.endswith(".webm"):
+			if fn.endswith(".webm") or fn.endswith(".wav"):
 				if fn[0] in "\x7f&":
 					submit(os.remove, e.path)
 				elif fn[0] == "~":
 					s = e.stat()
-					if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 3 or utc() - s.st_mtime > 86400 * 14 or utc() - s.st_mtime < 5:
+					if s.st_size <= 1024 or s.st_size > 268435456 or utc() - s.st_atime > 86400 * 3 or utc() - s.st_mtime > 86400 * 14 or closing and utc() - s.st_mtime < 5:
 						submit(os.remove, e.path)
 			else:
 				try:
@@ -4192,7 +4284,7 @@ try:
 								# player.video_loading = None
 								player.video.url = None
 								# video_sourced = False
-							elif player.video.pos < player.pos - 7:
+							elif player.video.pos < player.pos - 15:
 								print("Video seeked forwards", player.video.pos, player.pos)
 								if player.video.is_running():
 									try:
@@ -4655,7 +4747,7 @@ except Exception as ex:
 	DISP.close()
 	if globals().get("last_save_fut"):
 		last_save_fut.result()
-	save_settings()
+	save_settings(closing=True)
 	if restarting:
 		futs.add(submit(os.system, f"start /MIN cmd /k {sys.executable} main.pyw"))
 	pygame.closed = True

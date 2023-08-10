@@ -127,15 +127,12 @@ if installing:
 			proc.attempts = getattr(proc, "attempts", 0) + 1
 			installing.append(proc)
 
-# try:
-	# v = pkg_resources.get_distribution("yt_dlp").version
-	# assert v >= "2022.10.4"
-# except:
-	# traceback.print_exc()
-	# modified = True
-	# resp = subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/yt-dlp/yt-dlp.git", "--upgrade", "--user"])
-	# v = pkg_resources.get_distribution("yt_dlp").version
-	# assert v
+try:
+	assert pkg_resources.get_distribution("encodec").version >= "0.1.2a3"
+except (pkg_resources.DistributionNotFound, AssertionError):
+	subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/facebookresearch/encodec", "--user"])
+if not os.path.exists("cache/~sample.wav"):
+	subprocess.Popen([sys.executable, "-m", "encodec", "-r", "misc/sample.ecdc", "cache/~sample.wav"])
 
 if modified:
 	subprocess.Popen([sys.executable] + sys.argv)

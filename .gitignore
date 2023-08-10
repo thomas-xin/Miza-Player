@@ -2,6 +2,7 @@ __pycache__
 .DS_Store
 .vscode
 cache
+persistent
 playlists
 assoc.bat
 Rockwell.ttf

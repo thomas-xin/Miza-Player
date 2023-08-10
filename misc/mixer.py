@@ -773,33 +773,26 @@ def download(url, fn):
 				os.rename(url, fn)
 			downloading.discard(fn)
 			return
-		if fn.endswith(".webm") and is_url(url) and url.rsplit(".", 1)[-1] not in ("mp4", "mov", "avi", "mkv"):
-			resp = reqs.get(
-				url,
-				headers=header(),
-			)
-			b = resp.content
-			with open(fn, "wb") as f:
-				f.write(b)
-			downloading.discard(fn)
-			return
 		if not is_url(url):
 			fi = fn
 		else:
 			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 		cmd += ("-nostdin", "-i", url)
-		if fn.endswith(".pcm"):
-			cmd += ("-f", "s16le")
+		if fn.endswith(".webm") and is_url(url) and url.rsplit(".", 1)[-1] not in ("mp4", "mov", "avi", "mkv"):
+			cmd += ("-f", "webm", "-vn", "-c:a", "copy", fi)
 		else:
-			cmd += ("-b:a", "224k")
-		cmd += ("-ar", "48k", "-ac", "2", fi)
+			if fn.endswith(".pcm"):
+				cmd += ("-f", "s16le")
+			else:
+				cmd += ("-b:a", "224k")
+			cmd += ("-ar", "48k", "-ac", "2", fi)
 		print(cmd)
 		code = subprocess.Popen(cmd).wait()
 		if code:
 			raise RuntimeError(code)
 		if not is_url(url) and os.path.exists(url):
 			os.remove(url)
-		if fi != fn and os.path.exists(fi):
+		if fi != fn and os.path.exists(fi) and (os.path.getsize(fi) or not os.path.exists(fn)):
 			if os.path.exists(fn):
 				os.remove(fn)
 			os.rename(fi, fn)

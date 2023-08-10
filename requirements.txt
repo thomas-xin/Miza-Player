@@ -13,4 +13,5 @@ requests>=2.28.2
 samplerate>=0.1.0
 scipy>=1.10.1
 soundcard>=0.4.2
+soundfile>=0.12.1
 yt-dlp>=2023.3.4

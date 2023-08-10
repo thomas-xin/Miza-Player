@@ -2147,6 +2147,14 @@ def reevaluate():
 	time.sleep(2)
 	while not player.pos and not pygame.closed:
 		print("Re-evaluating file stream...")
+		if not queue:
+			break
+		url = queue[0]["url"]
+		if is_url(url):
+			if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz"):
+				queue[0].pop("stream", None)
+			else:
+				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}"
 		start_player(0, True)
 		time.sleep(2)
 

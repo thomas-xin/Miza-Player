@@ -302,12 +302,12 @@ def playlist_sync():
 				z.write("playlists/" + fn)
 		b.seek(0)
 		resp = requests.post(
-			"https://mizabot.xyz/upload_chunk",
+			"https://api.mizabot.xyz/upload_chunk",
 			headers={"X-File-Name": "playlists.zip", "X-File-Size": str(b.getbuffer().nbytes)},
 			data=b,
 		)
 		resp.raise_for_status()
-		url = "https://mizabot.xyz/merge"
+		url = "https://api.mizabot.xyz/merge"
 		if is_url(control.playlist_sync) and "?key=" in control.playlist_sync:
 			url = url.rsplit("/", 1)[0] + "/edit/" + control.playlist_sync.split("/p/", 1)[-1]
 		resp = requests.patch(
@@ -315,7 +315,7 @@ def playlist_sync():
 			data={"x-file-name": "playlists.zip", "index": "0"},
 		)
 		resp.raise_for_status()
-		url = "https://mizabot.xyz" + resp.text
+		url = "https://api.mizabot.xyz" + resp.text
 		control.playlist_sync = url
 		control.playlist_files = len(os.listdir("playlists"))
 		control.playlist_size = b.getbuffer().nbytes
@@ -1986,7 +1986,7 @@ def ecdc_compress(entry, stream, force=False):
 			i = None
 		else:
 			i = False
-		url = f"https://mizabot.xyz/encodec?bitrate={br}&inference={i}&url=https://mizabot.xyz/ytdl?d={entry.url}"
+		url = f"https://api.mizabot.xyz/encodec?bitrate={br}&inference={i}&url=https://api.mizabot.xyz/ytdl?d={entry.url}"
 		if i is not None:
 			print(url)
 		try:

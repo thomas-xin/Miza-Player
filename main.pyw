@@ -2004,7 +2004,7 @@ def ecdc_compress(entry, stream, force=False):
 			print_exc()
 			tfn = "cache/~" + shash(entry.url) + ".wav"
 			if not os.path.exists(tfn):
-				args = [ffmpeg, "-hide_banner", "-v", "error", "-i", stream, tfn]
+				args = [ffmpeg, "-hide_banner", "-v", "error", "-n", "-i", stream, tfn]
 				print(args)
 				subprocess.run(args)
 			assert os.path.exists(tfn)

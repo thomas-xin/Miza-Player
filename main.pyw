@@ -1950,6 +1950,11 @@ def start_player(pos=None, force=False):
 			player.needs_shuffle = False
 		else:
 			player.needs_shuffle = not is_url(stream)
+		if is_url(stream) and expired(stream):
+			ytdl = downloader.result()
+			data = ytdl.extract(entry.url)
+			entry.name = data[0].name
+			stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
 		if is_url(entry.url) and not is_url(stream) and os.path.exists(stream) and not stream.endswith(".ecdc") and time.time() - os.path.getmtime(stream) > 30:
 			submit(ecdc_compress, entry, stream)
 		else:
@@ -1970,12 +1975,19 @@ def ecdc_compress(entry, stream, force=False):
 	if os.path.exists(ofn) and os.path.getsize(ofn):
 		return ofn
 	try:
+		if is_url(stream) and expired(stream):
+			ytdl = downloader.result()
+			data = ytdl.extract(entry.url)
+			entry.name = data[0].name
+			stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
 		try:
 			dur, bps, cdc = _get_duration_2(stream)
 		except:
 			print_exc()
 			bps = 196608
-		if bps < 48000:
+		if not bps:
+			br = 24
+		elif bps < 48000:
 			br = 6
 		elif bps < 96000:
 			br = 12

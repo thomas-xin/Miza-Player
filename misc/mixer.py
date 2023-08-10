@@ -779,12 +779,15 @@ def download(url, fn):
 			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".webm") and is_url(url) and url.rsplit(".", 1)[-1] not in ("mp4", "mov", "avi", "mkv"):
-			cmd += ("-f", "webm", "-vn", "-c:a", "copy", fi)
+			if url.rsplit(".", 1)[-1] in ("webm", "opus"):
+				cmd += ("-f", "webm", "-vn", "-c:a", "copy", fi)
+			else:
+				cmd += ("-f", "webm", "-vn", "-ar", "48k", "-ac", "2", "-b:a", "192k", fi)
 		else:
 			if fn.endswith(".pcm"):
 				cmd += ("-f", "s16le")
 			else:
-				cmd += ("-b:a", "224k")
+				cmd += ("-b:a", "192k")
 			cmd += ("-ar", "48k", "-ac", "2", fi)
 		print(cmd)
 		code = subprocess.Popen(cmd).wait()

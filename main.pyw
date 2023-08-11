@@ -1709,8 +1709,9 @@ def prepare(entry, force=False, download=False, delay=0):
 	if delay:
 		time.sleep(delay)
 	try:
-		# raise
-		if force > 2 and not entry.get("icon"):
+		if force > 2:
+			raise StopIteration("Downloads blocked, attempting backup...")
+		if force > 1 and not entry.get("icon"):
 			entry.novid = False
 			if is_url(entry.url):
 				ytdl = downloader.result()
@@ -1904,6 +1905,9 @@ def prepare(entry, force=False, download=False, delay=0):
 	return stream
 
 def start_player(pos=None, force=False):
+	if reevaluating:
+		reevaluating.cancel()
+	globals()["reevaluating"] = submit(reevaluate_in, 10)
 	print("start_player", queue[0], pos, force)
 	if options.get("spectrogram", 0) == 0:
 		force = 2
@@ -2180,6 +2184,7 @@ def restart_mixer(devicename=None):
 	submit(transfer_instrument, *project.instruments.values())
 	return seek_abs(player.pos)
 
+reevaluating = False
 def reevaluate():
 	time.sleep(2)
 	while not player.pos and not pygame.closed:
@@ -2195,9 +2200,30 @@ def reevaluate():
 				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm"
 				force = False
 			ytdl = downloader.result()
-			ytdl.cache.pop(url, None)
+			if ytdl.cache.get(url):
+				ytdl.cache[url][0]["stream"] = queue[0]["stream"]
 		start_player(0, force=force)
 		time.sleep(2)
+
+def reevaluate_in(delay=0):
+	if delay:
+		time.sleep(delay)
+	a = is_active()
+	print("WATCHDOG:", a)
+	if not queue or a or player.paused:
+		return
+	url = queue[0]["url"]
+	force = True
+	if is_url(url):
+		if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz"):
+			queue[0].pop("stream", None)
+		else:
+			queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm"
+			force = False
+		ytdl = downloader.result()
+		if ytdl.cache.get(url):
+			ytdl.cache[url][0]["stream"] = queue[0]["stream"]
+	return start_player(0, force=force)
 
 device_waiting = None
 def wait_on():
@@ -2558,7 +2584,9 @@ def mixer_stdout():
 			if s == "r":
 				submit(start_player, 0, True)
 				print("Re-evaluating file stream...")
-				submit(reevaluate)
+				if reevaluating:
+					reevaluating.cancel()
+				globals()["reevaluating"] = submit(reevaluate)
 				continue
 			if s[0] == "R":
 				url = s[2:]

@@ -4140,7 +4140,7 @@ eval_const = {
 	"nan": nan,
 	"Infinity": inf,
 }
-safe_eval = lambda s: eval(s, {}, eval_const)
+safe_eval = lambda s: eval(s, {}, eval_const) if not isnumeric(s) else int(s)
 
 def time_disp(s, rounded=True):
 	if not isfinite(s):

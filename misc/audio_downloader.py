@@ -1586,7 +1586,7 @@ class AudioDownloader:
 					raise LookupError(f"No results for {item}")
 			except:
 				print_exc()
-				out = reqs.get("https://api.mizabot.xyz/ytdl?q=" + item).json()
+				out = reqs.get(f"https://api.mizabot.xyz/ytdl?q={item}&count=1", timeout=12).json()
 				for e in out:
 					e.setdefault("stream", f"https://api.mizabot.xyz/ytdl?d={e.url}")
 					output.append(cdict(e))

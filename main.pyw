@@ -1711,7 +1711,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	if delay:
 		time.sleep(delay)
 	try:
-		if force > 2:
+		if force > 2 and is_url(entry.get("url")):
 			raise StopIteration("Downloads blocked, attempting backup...")
 		if force > 1 and not entry.get("icon"):
 			entry.novid = False

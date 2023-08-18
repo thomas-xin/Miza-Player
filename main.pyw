@@ -1705,7 +1705,9 @@ def prepare(entry, force=False, download=False, delay=0):
 	reset_entry(entry)
 	if not entry.url:
 		return
-	fn = ofn = "cache/~" + shash(entry.url) + ".webm"
+	url = entry.url
+	url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+	fn = ofn = "cache/~" + shash(url) + ".webm"
 	if delay:
 		time.sleep(delay)
 	try:
@@ -1864,8 +1866,10 @@ def prepare(entry, force=False, download=False, delay=0):
 			except:
 				print_exc()
 		print("Trying ECDC...")
-		cfn = "persistent/~" + shash(entry.url) + ".ecdc"
-		out = "cache/~" + shash(entry.url) + ".wav"
+		url = entry.url
+		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+		cfn = "persistent/~" + shash(url) + ".ecdc"
+		out = "cache/~" + shash(url) + ".wav"
 		if os.path.exists(out):
 			return out
 		while ecdc_wait.get(cfn):
@@ -1900,7 +1904,9 @@ def prepare(entry, force=False, download=False, delay=0):
 		globals()["queue-length"] = -1
 	elif stream and is_url(stream) and download:
 		es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
-		mixer.submit(f"~download {es} cache/~{shash(entry.url)}.webm")
+		url = entry.url
+		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+		mixer.submit(f"~download {es} cache/~{shash(url)}.webm")
 	entry.duration = duration or entry.duration
 	return stream
 
@@ -1997,10 +2003,12 @@ def start_player(pos=None, force=False):
 			stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
 		if is_url(entry.url) and not is_url(stream) and os.path.exists(stream) and not stream.endswith(".ecdc") and time.time() - os.path.getmtime(stream) > 30:
 			submit(ecdc_compress, entry, stream)
-		else:
+		elif is_url(entry.url):
 			submit(ecdc_compress, entry, stream, force=True)
 		es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
-		s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(entry.url)}\n"
+		url = entry.url
+		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+		s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(url)}\n"
 		# print(s)
 		mixer.submit(s, force=False)
 		player.pos = pos
@@ -2011,7 +2019,9 @@ def start_player(pos=None, force=False):
 
 ECDC_RUNNING = set()
 def ecdc_compress(entry, stream, force=False):
-	ofn = "persistent/~" + shash(entry.url) + ".ecdc"
+	url = entry.url
+	url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+	ofn = "persistent/~" + shash(url) + ".ecdc"
 	if os.path.exists(ofn) and os.path.getsize(ofn):
 		return ofn
 	try:
@@ -2039,11 +2049,11 @@ def ecdc_compress(entry, stream, force=False):
 			i = None
 		else:
 			i = False
-		url = f"https://api.mizabot.xyz/encodec?bitrate={br}&inference={i}&url=https://api.mizabot.xyz/ytdl?d={entry.url}"
+		api = f"https://api.mizabot.xyz/encodec?bitrate={br}&inference={i}&url=https://api.mizabot.xyz/ytdl?d={entry.url}"
 		if i is not None:
-			print(url)
+			print(api)
 		try:
-			with requests.get(url, stream=True) as resp:
+			with requests.get(api, stream=True) as resp:
 				resp.raise_for_status()
 				b = resp.content
 			if not b:
@@ -2055,7 +2065,9 @@ def ecdc_compress(entry, stream, force=False):
 			if force:
 				raise
 			print_exc()
-			tfn = "cache/~" + shash(entry.url) + ".wav"
+			url = entry.url
+			url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+			tfn = "cache/~" + shash(url) + ".wav"
 			if not os.path.exists(tfn):
 				args = [ffmpeg, "-hide_banner", "-v", "error", "-n", "-i", stream, tfn]
 				print(args)
@@ -2073,8 +2085,10 @@ def ecdc_compress(entry, stream, force=False):
 			if isinstance(ex, EOFError) and i is None:
 				with open(ofn, "rb") as f:
 					b = f.read()
-				with requests.post(url, data=b, stream=True) as resp:
+				with requests.post(api, data=b, stream=True) as resp:
 					print(resp)
+					if resp.status_code not in range(200, 400):
+						print(resp.content)
 			return ofn
 	except:
 		print_exc()
@@ -2713,7 +2727,9 @@ def download(entries, fn, settings=False):
 									saving.stdin.write(b)
 						os.remove(p.fn)
 			st = prepare(entry, force=True)
-			sh = "cache/~" + shash(entry.url) + ".pcm"
+			url = entry.url
+			url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+			sh = "cache/~" + shash(url) + ".pcm"
 			if os.path.exists(sh) and os.path.getsize(sh) >= (entry.duration - 1) * 48000 * 2 * 2:
 				st = sh
 			downloading.target = sum(e.duration or 300 for e in entries)
@@ -4136,6 +4152,10 @@ lp = None
 addp.result()
 
 try:
+	if os.name == "nt" and os.path.exists("x-distribute.py") and len(sys.argv) > 1 and sys.argv[-1] == "-d":
+		args = [sys.executable, "x-distribute.py"]
+		print(args)
+		psutil.Popen(args)
 	if options.control.preserve and os.path.exists("dump.json"):
 		ytdl = downloader.result()
 		with open("dump.json", "rb") as f:
@@ -4147,6 +4167,7 @@ try:
 				url = e["url"]
 				if url not in ytdl.searched:
 					ytdl.searched[url] = cdict(t=time.time(), data=[astype(cdict, e)])
+			e.pop("novid", None)
 		entries = [cdict(e, duration=e.get("duration")) for e in data.get("queue", ())]
 		queue.extend(entries)
 		if data.get("editor"):
@@ -4441,8 +4462,7 @@ try:
 									player.video_loading = submit(load_video, url, pos=player.pos, bak=queue[0].get("icon"), sig=queue[0].url)
 								elif "novid" not in queue[0]:
 									print(queue[0])
-									if "novid" not in queue[0]:
-										submit(prepare, queue[0], force=3)
+									submit(prepare, queue[0], force=2)
 									queue[0].novid = True
 							if not player.sprite:
 								# try:
@@ -4774,17 +4794,8 @@ try:
 							colour=col,
 							z=658,
 						)
-			Finish()
+			# Finish()
 			DISP.update()
-			if tick < 2 or not tick % 15:
-				DISP.switch_to()
-				DISP.clear()
-				DISP.update_keys()
-			elif options.spectrogram in (0, 1):
-				DISP.fill(
-					(0,) * 3,
-					player.rect,
-				)
 		elif unfocused:
 			DISP.mrelease[:] = DISP.mheld
 			DISP.krelease[:] = DISP.kheld
@@ -4832,6 +4843,17 @@ try:
 					break
 				DISP.dispatch_events()
 			DISP.update_held()
+		else:
+			DISP.flip()
+			if tick < 2 or not tick % 15:
+				DISP.switch_to()
+				DISP.clear()
+				DISP.update_keys()
+			elif options.spectrogram in (0, 1):
+				DISP.fill(
+					(0,) * 3,
+					player.rect,
+				)
 		tick += 1
 except Exception as ex:
 	futs = set()

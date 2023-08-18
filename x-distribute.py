@@ -48,12 +48,12 @@ req = [
 	"requests",
 	"sympy",
 	"yt-dlp",
+	"sentence_transformers",
 ]
 if any(caps):
 	req.extend((
 		"clip_interrogator",
 		"pytesseract",
-		"sentence_transformers",
 		"tiktoken",
 	))
 import pkg_resources, subprocess

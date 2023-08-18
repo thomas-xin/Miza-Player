@@ -2599,7 +2599,7 @@ if len(sys.argv) <= 1 or int(sys.argv[1]) in (0, 2):
 	device = f"cuda:{device}" if device >= 0 else "cpu"
 	from sentence_transformers import SentenceTransformer
 	Embedder = SentenceTransformer("LLukas22/all-mpnet-base-v2-embedding-all", device=device)
-	if dtype == torch.float16:
+	if torch and dtype == torch.float16:
 		try:
 			Embedder = Embedder.half()
 		except (RuntimeError, NotImplementedError):

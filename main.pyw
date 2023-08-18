@@ -1825,7 +1825,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			if force > 1:
 				data = ytdl.extract(entry.url)
 				entry.name = data[0].name
-				stream = data[0].setdefault("stream", data[0].url)
+				stream = entry.stream = data[0].setdefault("stream", data[0].url)
 			else:
 				stream = ytdl.get_stream(entry, force=True, download=False)
 			globals()["queue-length"] = -1
@@ -1908,6 +1908,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
 		mixer.submit(f"~download {es} cache/~{shash(url)}.webm")
 	entry.duration = duration or entry.duration
+	entry.stream = stream
 	return stream
 
 def start_player(pos=None, force=False):
@@ -1915,8 +1916,8 @@ def start_player(pos=None, force=False):
 		reevaluating.cancel()
 	globals()["reevaluating"] = submit(reevaluate_in, 10)
 	print("start_player", queue[0], pos, force)
-	if options.get("spectrogram", 0) == 0:
-		force = 2
+	if options.get("spectrogram", 0) == 0 and not queue[0].get("video"):
+		submit(prepare, queue[0], force=force + 1)
 	try:
 		entry = queue[0]
 	except IndexError:
@@ -2788,6 +2789,10 @@ def pause_toggle(state=None):
 	if toolbar.editor:
 		player.broken = player.paused
 	mixer.state(player.paused or toolbar.editor)
+	if not player.paused:
+		if reevaluating:
+			reevaluating.cancel()
+		globals()["reevaluating"] = submit(reevaluate_in, 1)
 	toolbar.pause.speed = toolbar.pause.maxspeed
 	sidebar.menu = 0
 	player.editor.played.clear()

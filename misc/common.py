@@ -1632,6 +1632,7 @@ def start_display():
 				0,
 			)
 			glDisable(mbi.target)
+		DISP.flip()
 		# glFinish()
 	DISP.update = display_update
 

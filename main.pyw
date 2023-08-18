@@ -4104,8 +4104,11 @@ def save_settings(closing=False):
 			fut.result()
 			globals()["pdata"] = base64.b85encode(b.getbuffer()).decode("ascii")
 		data["project"] = pdata
-		with open("dump.json", "w", encoding="utf-8") as f:
+		with open("dump2.json", "w", encoding="utf-8") as f:
 			json.dump(data, f, separators=(",", ":"), default=json_default)
+		if os.path.exists("dump.json"):
+			os.remove("dump.json")
+			os.rename("dump2.json", "dump.json")
 	options.screensize = temp
 	for e in os.scandir("cache"):
 		fn = e.name
@@ -4801,6 +4804,15 @@ try:
 						)
 			# Finish()
 			DISP.update()
+			if tick < 2 or not tick % 15:
+				DISP.switch_to()
+				DISP.clear()
+				DISP.update_keys()
+			elif options.spectrogram in (0, 1):
+				DISP.fill(
+					(0,) * 3,
+					player.rect,
+				)
 		elif unfocused:
 			DISP.mrelease[:] = DISP.mheld
 			DISP.krelease[:] = DISP.kheld
@@ -4848,17 +4860,6 @@ try:
 					break
 				DISP.dispatch_events()
 			DISP.update_held()
-		else:
-			DISP.flip()
-			if tick < 2 or not tick % 15:
-				DISP.switch_to()
-				DISP.clear()
-				DISP.update_keys()
-			elif options.spectrogram in (0, 1):
-				DISP.fill(
-					(0,) * 3,
-					player.rect,
-				)
 		tick += 1
 except Exception as ex:
 	futs = set()

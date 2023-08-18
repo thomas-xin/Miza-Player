@@ -2564,8 +2564,8 @@ if len(sys.argv) <= 1 or int(sys.argv[1]) in (0, 2):
 	def determine_cuda(mem=1, priority=None, multi=False, major=0):
 		if not torch or not torch.cuda.is_available():
 			if multi:
-				return [-1], torch.float32
-			return -1, torch.float32
+				return [-1], "float32"
+			return -1, "float32"
 		n = torch.cuda.device_count()
 		if not n:
 			if multi:
@@ -2595,7 +2595,7 @@ if len(sys.argv) <= 1 or int(sys.argv[1]) in (0, 2):
 	if len(sys.argv) > 1 and int(sys.argv[1]) == 2:
 		device, dtype = determine_cuda(1073741824, priority=None)
 	else:
-		device, dtype = -1, torch.float32
+		device, dtype = -1, "float32"
 	device = f"cuda:{device}" if device >= 0 else "cpu"
 	from sentence_transformers import SentenceTransformer
 	Embedder = SentenceTransformer("LLukas22/all-mpnet-base-v2-embedding-all", device=device)

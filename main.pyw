@@ -1700,6 +1700,7 @@ def reset_entry(entry):
 	entry.pop("lyrics_loading", None)
 	return entry
 
+api_wait = set()
 ecdc_wait = {}
 def prepare(entry, force=False, download=False, delay=0):
 	reset_entry(entry)
@@ -1711,6 +1712,9 @@ def prepare(entry, force=False, download=False, delay=0):
 	if delay:
 		time.sleep(delay)
 	try:
+		# raise
+		if (entry.get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
+			raise StopIteration("API Passthrough...")
 		if force > 2 and is_url(entry.get("url")):
 			raise StopIteration("Downloads blocked, attempting backup...")
 		if force > 1 and not entry.get("icon"):
@@ -1846,10 +1850,18 @@ def prepare(entry, force=False, download=False, delay=0):
 			return entry.stream
 	except:
 		print_exc()
-		if download and is_url(entry.url):
+		if is_url(entry.url):
 			stream = f"https://api.mizabot.xyz/ytdl?d={entry.url}&fmt=webm"
+			if not download:
+				return stream
+			if os.path.exists(ofn) and os.path.getsize(ofn):
+				entry.stream = ofn
+				return ofn
+			if stream in api_wait:
+				return stream
 			if force:
 				stream += "&asap=1"
+			api_wait.add(stream)
 			try:
 				with reqs.get(stream, stream=True) as resp:
 					resp.raise_for_status()
@@ -1863,11 +1875,13 @@ def prepare(entry, force=False, download=False, delay=0):
 								f.write(b)
 						except StopIteration:
 							pass
-				print(stream)
+				print(stream, ofn)
+				entry.stream = ofn
 				return ofn
 			except:
 				print_exc()
-		print("Trying ECDC...")
+			finally:
+				api_wait.discard(stream)
 		url = entry.url
 		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
 		cfn = "persistent/~" + shash(url) + ".ecdc"
@@ -1879,6 +1893,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		if os.path.exists(out):
 			return out
 		if os.path.exists(cfn) and os.path.getsize(cfn):
+			print("Trying ECDC...")
 			ecdc_wait[cfn] = True
 			args = [sys.executable, "-m", "encodec", "-r", cfn, out]
 			print(args)
@@ -1891,6 +1906,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	stream = stream.strip()
 	duration = entry.duration
 	if not duration:
+		info = (None, None)
 		try:
 			info = get_duration_2(stream)
 			duration = info[0]
@@ -1967,8 +1983,13 @@ def start_player(pos=None, force=False):
 			player.fut = None
 			return None, inf
 		duration = entry.duration
+		print("ENTRY:", stream)
 		if not duration:
-			info = get_duration_2(stream)
+			try:
+				info = get_duration_2(stream)
+			except:
+				print_exc()
+				info = (None, None)
 			duration = info[0]
 			if info[0] in (None, nan) and info[1] in ("N/A", "auto"):
 				fi = stream
@@ -2667,7 +2688,7 @@ def ensure_next(e, delay=0):
 		return
 	if i in enext:
 		return
-	enext[i] = submit(prepare, e, force=True, download=True, delay=delay)
+	enext[i] = submit(prepare, e, force=delay <= 3, download=True, delay=delay)
 	e.duration = e.get("duration") or False
 	e.pop("research", None)
 	# if not e.get("lyrics_loading") and not e.get("lyrics"):

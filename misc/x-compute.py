@@ -1658,7 +1658,7 @@ resizers = dict(
 	sdxl=Resampling.LANCZOS,
 )
 
-def resize_mult(image, x, y, operation):
+def resize_mult(image, x, y, operation="auto"):
 	if x == y == 1:
 		return image
 	w = image.width * x
@@ -2616,64 +2616,80 @@ if len(sys.argv) <= 1 or int(sys.argv[1]) in (0, 2):
 		except ImportError:
 			pytesseract = None
 
+		class CustomInterrogator(Interrogator):
+			def __init__(self, config, dtype=torch.float32):
+				self.config = config
+				self.device = config.device
+				self.dtype = dtype
+				self.caption_offloaded = True
+				self.clip_offloaded = True
+
 		VIT = VIT2 = True
 		def download_model():
-			device = "cpu"
-			if torch:
-				if torch.cuda.device_count() > 1:
-					device = f"cuda:{determine_cuda(priority='full', major=7)[0]}"
-				elif torch.cuda.device_count():
-					device = "cuda"
+			if torch and torch.cuda.device_count():
+				device, dtype = determine_cuda(priority=None, major=7)
+			else:
+				device, dtype = "cpu", "float32"
 			config = Config(
 				clip_model_name="ViT-H-14/laion2b_s32b_b79k",
 				clip_model_path="misc/Clip",
 				cache_path="misc/Clip",
 				device=device,
+				caption_model_name="blip-base",
 			)
-			if device != "cpu":
-				config.apply_low_vram_defaults()
-			globals()["VIT"] = globals()["VIT2"] = Interrogator(config)
-			im = Image.new("RGB", (4, 4))
-			VIT.interrogate_fast(im)
+			globals()["VIT"] = CustomInterrogator(config, dtype=dtype)
+			VIT.load_caption_model()
+			config.device = "cpu"
+			globals()["VIT2"] = CustomInterrogator(config, dtype="float32")
+			VIT2.load_clip_model()
+			im = Image.new("RGB", (4, 4), (0, 0, 255))
+			caption = VIT.generate_caption(im)
+			description = VIT2.interrogate_fast(im, caption=caption, max_flavors=12)
+			print("VIT:", description)
+			with torch.no_grad():
+				torch.cuda.empty_cache()
 			return pytesseract.image_to_string(im, config="--psm 1")
 		dfut = exc.submit(download_model)
 		def caption(im, best=False):
 			im = resize_max(im, 1536, "auto")
-			if im.mode != "RGB":
-				image = im.convert("RGB")
+			if "RGB" not in im.mode:
+				image = im.convert("RGBA")
 			else:
 				image = im
 			if pytesseract:
 				fut = exc.submit(pytesseract.image_to_string, image, config="--psm 1", timeout=8)
 			else:
 				fut = None
-			if best:
+			if not best:
 				dfut.result()
-				p1 = VIT2.interrogate(image)
+				cfut = exc.submit(VIT.generate_caption, image)
+				desc = VIT2.interrogate_fast(image, caption=" ", max_flavors=24)
+				p1 = cfut.result() + desc.lstrip()
+				enc = tiktoken.get_encoding("cl100k_base")
+				out = []
+				otok = list(enc.encode(p1.strip()))
+				if len(otok) >= 8:
+					last = None
+					count = 0
+					while otok:
+						c = otok.pop(0)
+						if c == last:
+							if count > 3:
+								continue
+							count += 1
+						else:
+							last = c
+							count = 0
+						out.append(c)
+					p1 = enc.decode(out) if len(out) >= 8 else p1
 			else:
-				dfut.result()
-				p1 = VIT.interrogate_fast(image)
-			enc = tiktoken.get_encoding("cl100k_base")
-			out = []
-			otok = list(enc.encode(p1.strip()))
-			if len(otok) >= 8:
-				last = None
-				count = 0
-				while otok:
-					c = otok.pop(0)
-					if c == last:
-						if count > 3:
-							continue
-						count += 1
-					else:
-						last = c
-						count = 0
-					out.append(c)
-				p1 = enc.decode(out) if len(out) >= 8 else p1
+				p1 = None
 			if fut:
 				p2 = fut.result().strip()
 			else:
 				p2 = None
+			with torch.no_grad():
+				torch.cuda.empty_cache()
 			return (p1, p2)
 
 discord_emoji = re.compile("^https?:\\/\\/(?:[a-z]+\\.)?discord(?:app)?\\.com\\/assets\\/[0-9A-Fa-f]+\\.svg")
@@ -3036,14 +3052,14 @@ elif len(sys.argv) > 1 and int(sys.argv[1]) >= 3:
 			ib = CBOTS[None] = imagebot.Bot()
 		return ib.art_stablediffusion_local(prompt, kwargs, nsfw=nsfw, fail_unless_gpu=not force, count=count, sdxl=sdxl)
 
-	def IBASR(prompt, image):
+	def IBASR(prompt, image, steps=64):
 		print(prompt)
 		try:
 			ib = CBOTS[None]
 		except KeyError:
 			ib = CBOTS[None] = imagebot.Bot()
 		for i in range(3):
-			il = ib.art_stablediffusion_refine(prompt, image, steps=64)
+			il = ib.art_stablediffusion_refine(prompt, image, steps=steps, upscale=False)
 			if il:
 				break
 		else:

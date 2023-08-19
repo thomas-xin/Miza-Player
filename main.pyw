@@ -4171,11 +4171,13 @@ try:
 		if queue:
 			data.pop("pos", None)
 		for e in data.get("queue", ()):
+			e.pop("novid", None)
+			if "mizabot.xyz" in (e.get("stream") or ""):
+				e.pop("stream", None)
 			if e.get("url"):
 				url = e["url"]
 				if url not in ytdl.searched:
 					ytdl.searched[url] = cdict(t=time.time(), data=[astype(cdict, e)])
-			e.pop("novid", None)
 		entries = [cdict(e, duration=e.get("duration")) for e in data.get("queue", ())]
 		queue.extend(entries)
 		if data.get("editor"):

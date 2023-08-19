@@ -1357,11 +1357,9 @@ def play(pos):
 	skipzeros = False
 	try:
 		frame = pos * 30
-		while True:
+		while not stopped:
 			if paused and drop <= 0:
 				paused.result()
-			if stopped:
-				break
 			p = proc
 			b = b""
 			if fn:
@@ -2183,6 +2181,7 @@ while not sys.stdin.closed and failed < 8:
 			except:
 				print_exc()
 				print("Previously playing song timed out, killing relevant subprocesses and skipping...")
+				PROC.terminate()
 				drop = 0
 				fut = None
 			if paused:

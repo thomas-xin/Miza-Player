@@ -1805,7 +1805,7 @@ def prepare(entry, force=False, download=False, delay=0):
 					if control.shuffle and len(q2) > 1:
 						q2.shuffle()
 					queue.fill(np.concatenate((q1, q2, q3)))
-		elif stream.startswith("https://api.mizabot.xyz"):
+		elif stream.startswith("https://api.mizabot.xyz/ytdl"):
 			if download:
 				with reqs.get(stream, stream=True) as resp:
 					it = resp.iter_content(65536)
@@ -1848,6 +1848,8 @@ def prepare(entry, force=False, download=False, delay=0):
 		print_exc()
 		if download and is_url(entry.url):
 			stream = f"https://api.mizabot.xyz/ytdl?d={entry.url}&fmt=webm"
+			if force:
+				stream += "&asap=1"
 			try:
 				with reqs.get(stream, stream=True) as resp:
 					resp.raise_for_status()
@@ -2209,14 +2211,13 @@ def reevaluate():
 		url = queue[0]["url"]
 		force = True
 		if is_url(url):
-			if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz"):
+			if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
 				queue[0].pop("stream", None)
+				ytdl = downloader.result()
+				ytdl.cache.pop(url, None)
 			else:
-				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm"
+				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm&asap=1"
 				force = False
-			ytdl = downloader.result()
-			if ytdl.cache.get(url):
-				ytdl.cache[url][0]["stream"] = queue[0]["stream"]
 		start_player(0, force=force)
 		time.sleep(2)
 
@@ -2230,14 +2231,13 @@ def reevaluate_in(delay=0):
 	url = queue[0]["url"]
 	force = True
 	if is_url(url):
-		if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz"):
+		if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
 			queue[0].pop("stream", None)
+			ytdl = downloader.result()
+			ytdl.cache.pop(url, None)
 		else:
-			queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm"
+			queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm&asap=1"
 			force = False
-		ytdl = downloader.result()
-		if ytdl.cache.get(url):
-			ytdl.cache[url][0]["stream"] = queue[0]["stream"]
 	return start_player(0, force=force)
 
 device_waiting = None
@@ -4160,7 +4160,7 @@ lp = None
 addp.result()
 
 try:
-	if os.name == "nt" and os.path.exists("x-distribute.py") and len(sys.argv) > 1 and sys.argv[-1] == "-d":
+	if os.name == "nt" and os.path.exists("x-distribute.py"):# and len(sys.argv) > 1 and sys.argv[-1] == "-d":
 		args = [sys.executable, "x-distribute.py"]
 		print(args)
 		psutil.Popen(args)
@@ -4172,8 +4172,9 @@ try:
 			data.pop("pos", None)
 		for e in data.get("queue", ()):
 			e.pop("novid", None)
-			if "mizabot.xyz" in (e.get("stream") or ""):
+			if "mizabot.xyz/ytdl" in (e.get("stream") or ""):
 				e.pop("stream", None)
+				e.pop("video", None)
 			if e.get("url"):
 				url = e["url"]
 				if url not in ytdl.searched:

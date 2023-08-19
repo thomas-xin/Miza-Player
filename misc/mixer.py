@@ -1396,7 +1396,7 @@ def play(pos):
 					continue
 				# print(len(b))
 			else:
-				while not getattr(proc, "readable", lambda: True)():
+				while not stopped and not getattr(proc, "readable", lambda: True)():
 					async_wait()
 				try:
 					fut = submit(proc.stdout.read, req)

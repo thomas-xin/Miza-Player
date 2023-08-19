@@ -1861,8 +1861,11 @@ def prepare(entry, force=False, download=False, delay=0):
 				return stream
 			if force:
 				stream += "&asap=1"
+			if stream in api_wait:
+				return stream
 			api_wait.add(stream)
 			try:
+				print("API:", stream)
 				with reqs.get(stream, stream=True) as resp:
 					resp.raise_for_status()
 					it = resp.iter_content(65536)

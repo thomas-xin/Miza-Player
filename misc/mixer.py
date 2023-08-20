@@ -1531,7 +1531,7 @@ def play(pos):
 						s *= 1 / 32767
 					submit(OUTPUT_FILE.write, s.data)
 				if not point_fut or point_fut.done():
-					point_fut = submit(point, f"~{frame} {duration}")
+					point_fut = submit(point, f"~{frame} {duration or inf}")
 				if settings.get("insights") != 0 or settings.spectrogram > 0:
 					if ssize[0] and ssize[1] and not is_minimised():
 						if spec_fut:
@@ -1768,7 +1768,7 @@ def piano_player():
 				if OUTPUT_FILE:
 					submit(OUTPUT_FILE.write, packet)
 				if not point_fut or point_fut.done():
-					point_fut = submit(point, f"~{frame} {duration}")
+					point_fut = submit(point, f"~{frame} {duration or inf}")
 				if settings.get("insights") != 0 or settings.spectrogram > 0:
 					if ssize[0] and ssize[1] and not is_minimised():
 						if spec_fut:

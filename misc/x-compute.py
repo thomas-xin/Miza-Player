@@ -219,8 +219,6 @@ def to_qr(s, rainbow=False):
 	fn = f"cache/{time.time_ns() // 1000}.png"
 	if not os.path.exists(fn):
 		img.png(fn, scale=1, module_color=(255,) * 3, background=(0,) * 4)
-	import pillow_heif
-	pillow_heif.register_heif_opener()
 	imo = Image.open(fn)
 	im = imo.convert("1")
 	imo.close()
@@ -1666,6 +1664,12 @@ def resize_mult(image, x, y, operation="auto"):
 	return resize_to(image, round(w), round(h), operation)
 
 def resize_to(image, w, h, operation="auto"):
+	if w == "-":
+		if h == "-":
+			return image
+		w = image.width / image.height * h
+	elif h == "-":
+		h = image.height / image.width * w
 	if abs(w * h) > 1073741824:
 		raise OverflowError("Resulting image size too large.")
 	if w == image.width and h == image.height:
@@ -2653,9 +2657,9 @@ if len(sys.argv) <= 1 or int(sys.argv[1]) in (0, 2):
 			return pytesseract.image_to_string(im, config="--psm 1")
 		dfut = exc.submit(download_model)
 		def caption(im, best=False):
-			im = resize_max(im, 1536, "auto")
-			if "RGB" not in im.mode:
-				image = im.convert("RGBA")
+			im = resize_max(im, 1024, "auto")
+			if im.mode != "RGB":
+				image = im.convert("RGB")
 			else:
 				image = im
 			if pytesseract:
@@ -3031,6 +3035,33 @@ if len(sys.argv) > 1 and sys.argv[1] == "1":
 		cb.premium = premium
 		return cb.au(prompt)
 
+	def CBAA(inputs):
+		user_id = inputs["user_id"]
+		channel_id = inputs["channel_id"]
+		system = inputs["system"]
+		prompt = inputs["prompt"]
+		key = inputs["key"]
+		ht = inputs["huggingface_token"]
+		oai = inputs.get("oai")
+		bals = inputs.get("bals")
+		nsfw = inputs.get("nsfw")
+		premium = inputs.get("premium")
+		try:
+			cb = CBOTS["AU"]
+		except KeyError:
+			cb = CBOTS["AU"] = convobot.Bot( 
+				key=key,
+				huggingface_token=ht,
+				premium=premium,
+			)
+		cb.user_id = user_id
+		cb.channel_id = channel_id
+		cb.oai = oai
+		cb.bals = bals
+		cb.nsfw = nsfw
+		cb.premium = premium
+		return cb.aa(system, prompt)
+
 	try:
 		from chatgpt_wrapper import AsyncChatGPT
 	except ImportError:
@@ -3055,7 +3086,7 @@ elif len(sys.argv) > 1 and int(sys.argv[1]) >= 3:
 		return ib.art_stablediffusion_local(prompt, kwargs, nsfw=nsfw, fail_unless_gpu=not force, count=count, sdxl=sdxl)
 
 	def IBASR(prompt, image, steps=64):
-		print(prompt)
+		# print(prompt)
 		try:
 			ib = CBOTS[None]
 		except KeyError:
@@ -3135,14 +3166,22 @@ def from_bytes(b, save=None, nogif=False):
 	else:
 		data = b
 		out = io.BytesIO(b) if type(b) is bytes else b
-	import pillow_heif
-	pillow_heif.register_heif_opener()
+	try:
+		import pillow_heif
+	except ImportError:
+		pass
+	else:
+		pillow_heif.register_heif_opener()
 	mime = magic.from_buffer(data)
 	if mime == "application/zip":
 		z = zipfile.ZipFile(io.BytesIO(data), compression=zipfile.ZIP_DEFLATED, strict_timestamps=False)
 		return ImageSequence(*(Image.open(z.open(f.filename)) for f in z.filelist if not f.is_dir()))
 	try:
-		if mime.split("/", 1)[0] == "image" and mime.split("/", 1)[-1] in "blp bmp cur dcx dds dib emf eps fits flc fli fpx ftex gbr gd heif heic icns ico im imt iptc jpeg jpg mcidas mic mpo msp naa pcd pcx pixar png ppm psd sgi sun spider tga tiff wal wmf xbm".split():
+		import wand, wand.image
+	except ImportError:
+		wand = None
+	try:
+		if not wand or mime.split("/", 1)[0] == "image" and mime.split("/", 1)[-1] in "blp bmp cur dcx dds dib emf eps fits flc fli fpx ftex gbr gd heif heic icns ico im imt iptc jpeg jpg mcidas mic mpo msp naa pcd pcx pixar png ppm psd sgi sun spider tga tiff wal wmf xbm".split():
 			try:
 				return Image.open(out)
 			except PIL.UnidentifiedImageError:
@@ -3203,7 +3242,6 @@ def from_bytes(b, save=None, nogif=False):
 		exc = ex
 	else:
 		exc = TypeError(f'Filetype "{mime}" is not supported.')
-	import wand, wand.image
 	with wand.image.Image() as im:
 		with wand.color.Color("transparent") as background_color:
 			wand.api.library.MagickSetBackgroundColor(

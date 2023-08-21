@@ -2242,6 +2242,14 @@ def reevaluate():
 			else:
 				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm&asap=1"
 				force = False
+				try:
+					url = f"https://api.mizabot.xyz/ytdl?q={url}&count=1"
+					resp = reqs.get(url)
+					resp.raise_for_status()
+					queue[0].update(resp.json()[0])
+				except:
+					print_exc()
+					queue[0].url = ""
 		start_player(0, force=force)
 		time.sleep(2)
 
@@ -2262,6 +2270,14 @@ def reevaluate_in(delay=0):
 		else:
 			queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm&asap=1"
 			force = False
+			try:
+				url = f"https://api.mizabot.xyz/ytdl?q={url}&count=1"
+				resp = reqs.get(url)
+				resp.raise_for_status()
+				queue[0].update(resp.json()[0])
+			except:
+				print_exc()
+				queue[0].url = ""
 	return start_player(0, force=force)
 
 device_waiting = None

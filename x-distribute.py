@@ -222,6 +222,7 @@ def start_proc(i):
 
 for cap in caps:
 	start_proc(cap)
+time.sleep(10)
 try:
 	import time, requests, orjson, base64, cpuinfo
 	class Self:

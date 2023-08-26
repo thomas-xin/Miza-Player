@@ -1343,6 +1343,11 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			res = as_str(p.stdout.read()).strip()
 			if not res:
 				print("Iteration", iterations, url)
+				if iterations < 1 and is_url(url) and queue and sig == queue[0].get("url"):
+					e = queue[0]
+					prepare(e, force=2)
+					url = e.get("video") or bak
+					return load_video(bak, pos=pos, sig=proc.url, iterations=iterations + 1)
 				if iterations < 2 and is_url(url):
 					if bak and bak != url:
 						try:
@@ -1703,6 +1708,7 @@ def reset_entry(entry):
 api_wait = set()
 ecdc_wait = {}
 def prepare(entry, force=False, download=False, delay=0):
+	# print("PREPARE", entry, force, delay)
 	reset_entry(entry)
 	if not entry.url:
 		return
@@ -1755,6 +1761,7 @@ def prepare(entry, force=False, download=False, delay=0):
 				stream = ytdl.get_stream(entry, force=True, download=False)
 				return stream
 		stream = entry.get("stream", "")
+		# print("STREAM:", stream)
 		if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
 			entry.pop("stream", None)
 			stream = ""
@@ -1809,6 +1816,8 @@ def prepare(entry, force=False, download=False, delay=0):
 					if control.shuffle and len(q2) > 1:
 						q2.shuffle()
 					queue.fill(np.concatenate((q1, q2, q3)))
+			stream = entry.get("stream") or ""
+			# print("STREAM2:", stream, entry, resp)
 		elif stream.startswith("https://api.mizabot.xyz/ytdl"):
 			if download:
 				with reqs.get(stream, stream=True) as resp:
@@ -1929,7 +1938,8 @@ def prepare(entry, force=False, download=False, delay=0):
 		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
 		mixer.submit(f"~download {es} cache/~{shash(url)}.webm")
 	entry.duration = duration or entry.duration
-	entry.stream = stream
+	if stream:
+		entry.stream = stream
 	return stream
 
 def start_player(pos=None, force=False):
@@ -1952,6 +1962,7 @@ def start_player(pos=None, force=False):
 			# thresh -= player.shuffler
 		# print(thresh)
 		for i, e in enumerate(queue[1:min(len(queue), thresh + 1)]):
+			# print("EN", e, i)
 			ensure_next(e, delay=i + 1)
 	duration = entry.duration or 300
 	if pos is None:
@@ -2049,8 +2060,7 @@ def ecdc_compress(entry, stream, force=False):
 	url = entry.url
 	url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
 	ofn = "persistent/~" + shash(url) + ".ecdc"
-	if os.path.exists(ofn) and os.path.getsize(ofn):
-		return ofn
+	exists = os.path.exists(ofn) and os.path.getsize(ofn)
 	try:
 		if is_url(stream) and expired(stream):
 			ytdl = downloader.result()
@@ -2072,15 +2082,24 @@ def ecdc_compress(entry, stream, force=False):
 			br = 24
 			print("BPS:", bps)
 		cc = psutil.cpu_count()
-		if not force and cc >= 8 and (cc >= len(ECDC_RUNNING) * 6):
+		if exists or not force and cc >= 8 and (cc >= len(ECDC_RUNNING) * 6):
 			i = None
 		else:
 			i = False
-		api = f"https://api.mizabot.xyz/encodec?bitrate={br}&inference={i}&url=https://api.mizabot.xyz/ytdl?d={entry.url}"
+		api = f"https://api.mizabot.xyz/encodec?bitrate={br}&inference={i}&url=https://api.mizabot.xyz/ytdl?d={url}"
 		if i is not None:
 			print(api)
+		ifn = "cache/~" + shash(url) + ".webm"
+		if exists:
+			with open(ofn, "rb") as f:
+				b = f.read()
+		elif os.path.exists(ifn):
+			with open(ifn, "rb") as f:
+				b = f.read()
+		else:
+			b = b""
 		try:
-			with requests.get(api, stream=True) as resp:
+			with requests.post(api, data=b, stream=True) as resp:
 				resp.raise_for_status()
 				b = resp.content
 			if not b:
@@ -2092,26 +2111,26 @@ def ecdc_compress(entry, stream, force=False):
 			if force:
 				raise
 			print_exc()
-			url = entry.url
-			url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
-			tfn = "cache/~" + shash(url) + ".wav"
-			if not os.path.exists(tfn):
-				args = [ffmpeg, "-hide_banner", "-v", "error", "-n", "-i", stream, tfn]
+			if not os.path.exists(ofn) or not os.path.getsize(ofn):
+				tfn = "cache/~" + shash(url) + ".wav"
+				if not os.path.exists(tfn):
+					args = [ffmpeg, "-hide_banner", "-v", "error", "-n", "-i", stream, tfn]
+					print(args)
+					subprocess.run(args)
+				assert os.path.exists(tfn)
+				args = [sys.executable, "-m", "encodec", "-b", str(br), "--hq", tfn, ofn]
 				print(args)
-				subprocess.run(args)
-			assert os.path.exists(tfn)
-			args = [sys.executable, "-m", "encodec", "-b", str(br), "--hq", tfn, ofn]
-			print(args)
-			if tfn in ECDC_RUNNING:
-				raise
-			ECDC_RUNNING.add(tfn)
-			try:
-				subprocess.run(args)
-			finally:
-				ECDC_RUNNING.discard(tfn)
+				if tfn in ECDC_RUNNING:
+					raise
+				ECDC_RUNNING.add(tfn)
+				try:
+					subprocess.run(args)
+				finally:
+					ECDC_RUNNING.discard(tfn)
 			if isinstance(ex, EOFError) and i is None:
 				with open(ofn, "rb") as f:
 					b = f.read()
+				api = f"https://api.mizabot.xyz/encodec?bitrate={br}&inference=None&url=https://api.mizabot.xyz/ytdl?d={url}"
 				with requests.post(api, data=b, stream=True) as resp:
 					print(resp)
 					if resp.status_code not in range(200, 400):
@@ -2707,7 +2726,7 @@ def ensure_next(e, delay=0):
 		return
 	if i in enext:
 		return
-	enext[i] = submit(prepare, e, force=delay <= 3, download=True, delay=delay)
+	enext[i] = submit(prepare, e, force=delay <= 4, download=True, delay=delay)
 	e.duration = e.get("duration") or False
 	e.pop("research", None)
 	# if not e.get("lyrics_loading") and not e.get("lyrics"):

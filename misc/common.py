@@ -1315,7 +1315,7 @@ def start_display():
 			else:
 				raise NotImplementedError(flags)
 			if not sp:
-				sp = pyglet.sprite.Sprite(im, blend_src=blend_src, blend_dest=blend_dest, batch=batch, group=group)
+				sp = pyglet.sprite.Sprite(im, blend_src=blend_src, blend_dest=blend_dest, batch=batch, group=group, subpixel=True)
 				globals()["NEW_SPRITES"].append(sp)
 			sp.flags = flags
 			if not redraw and not permanent and not (area and different):

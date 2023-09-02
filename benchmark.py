@@ -229,7 +229,7 @@ if keep:
 			outs.append(b)
 		outs.extend(procs[half * 2:])
 		compute_load = [0] * DC
-		olines = [""] * len(outs)
+		olines = [""] * (DC + 1)
 		# print(outs)
 		for n, proc in enumerate(outs):
 			s = proc.stdout.readlines()
@@ -239,7 +239,7 @@ if keep:
 			if proc.i > -1:# or DC >= 3:
 				compute_load[proc.i] = avg
 			olines[proc.i + 1] = b"".join(s).decode("utf-8")
-		print("\n" + "\n".join(olines))
+		print("\n" + "\n".join(olines).strip())
 		print(srgb(0, 255, 0, f"Benchmark complete. Total score: {round(total, 2)}"))
 
 	if not os.path.exists("auth.json"):

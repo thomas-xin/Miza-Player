@@ -2289,6 +2289,8 @@ def update_collections2():
 		resp.raise_for_status()
 	except:
 		print_exc()
+		with open(collections2f, "rb+") as f:
+			pass
 		return
 	b = resp.content
 	with open(collections2f, "wb") as f:

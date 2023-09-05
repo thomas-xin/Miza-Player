@@ -4277,11 +4277,11 @@ try:
 	while True:
 		if not tick + 1 & 31:
 			try:
-				if utc() - os.path.getmtime(collections2f) > 3600:
+				if utc() - max(os.path.getmtime(collections2f), os.path.getatime(collections2f)) > 3600:
 					raise FileNotFoundError
 			except FileNotFoundError:
 				common.repo_fut = submit(update_repo)
-				update_collections2()
+				submit(update_collections2)
 			# print(t, last_save, last_sync)
 			t = pc()
 			if t >= last_save + 20 and is_active():

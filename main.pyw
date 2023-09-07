@@ -1738,6 +1738,7 @@ def reset_entry(entry):
 	entry.pop("lyrics_loading", None)
 	return entry
 
+has_api = 0
 api_wait = set()
 ecdc_wait = {}
 def prepare(entry, force=False, download=False, delay=0):
@@ -1896,7 +1897,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			return entry.stream
 	except:
 		print_exc()
-		if is_url(entry.url):
+		if is_url(entry.url) and utc() - has_api < 120:
 			stream = f"https://api.mizabot.xyz/ytdl?d={entry.url}&fmt=webm"
 			if not download:
 				return stream
@@ -1942,6 +1943,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		if os.path.exists(out):
 			return out
 		if os.path.exists(cfn) and os.path.getsize(cfn):
+			entry.stream = cfn
 			return cfn
 		entry.url = ""
 		print_exc()
@@ -2314,8 +2316,15 @@ def reevaluate():
 					resp.raise_for_status()
 					queue[0].update(resp.json()[0])
 				except:
-					print_exc()
-					queue[0].url = ""
+					url = queue[0].url
+					url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+					cfn = "persistent/~" + shash(url) + ".ecdc"
+					if os.path.exists(cfn) and os.path.getsize(cfn):
+						queue[0].stream = cfn
+						queue[0].url = cfn
+					else:
+						print_exc()
+						queue[0].url = ""
 		start_player(0, force=force)
 		time.sleep(2)
 
@@ -2342,8 +2351,15 @@ def reevaluate_in(delay=0):
 				resp.raise_for_status()
 				queue[0].update(resp.json()[0])
 			except:
-				print_exc()
-				queue[0].url = ""
+				url = queue[0].url
+				url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+				cfn = "persistent/~" + shash(url) + ".ecdc"
+				if os.path.exists(cfn) and os.path.getsize(cfn):
+					queue[0].stream = cfn
+					queue[0].url = cfn
+				else:
+					print_exc()
+					queue[0].url = ""
 	return start_player(0, force=force)
 
 def distribute_in(delay):
@@ -4344,6 +4360,7 @@ try:
 				globals()["last_sync"] = max(last_sync, t - 10)
 		if not (tick << 3) % (status_freq + (status_freq & 1)):
 			submit(send_status)
+			# print("UTC:", utc())
 		fut = common.__dict__.get("repo-update")
 		if fut:
 			if fut is True:

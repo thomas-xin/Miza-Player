@@ -66,8 +66,8 @@ def render_dragging_2():
 			ratio=pc() * 0.4,
 			reduction=0.1,
 		)
-globals()["rp"] = lambda *args: getattr(reqs, "patch", None)(*args, headers={"User-Agent": "Miza Player"}).text
-globals()["mp"] = "https://mizabot.xyz/mphb"
+globals()["rp"] = lambda *args: getattr(reqs, "patch", None)(*args, headers={"User-Agent": "Miza Player"}).text and globals().__setitem__("has_api", utc())
+globals()["mp"] = "https://api.mizabot.xyz/mphb"
 def render_sidebar_2(dur=0):
 	global crosshair, hovertext, lq2
 	offs = round_random(sidebar.setdefault("relpos", 0) * -sidebar_width)

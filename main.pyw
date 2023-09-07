@@ -1751,6 +1751,8 @@ def prepare(entry, force=False, download=False, delay=0):
 	fn = ofn = "cache/~" + shash(url) + ".webm"
 	if delay:
 		time.sleep(delay)
+	if utc() - has_api < 120 and is_url(entry.url) and (entry.get("stream") or "").endswith(".ecdc"):
+		entry.pop("stream", None)
 	try:
 		# raise
 		if (entry.get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
@@ -1897,7 +1899,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			return entry.stream
 	except:
 		print_exc()
-		if is_url(entry.url) and utc() - has_api < 120:
+		if is_url(entry.url) and utc() - has_api < 120 and utc() - entry.get("tried_api", 0) > 120:
 			stream = f"https://api.mizabot.xyz/ytdl?d={entry.url}&fmt=webm"
 			if not download:
 				return stream
@@ -1911,6 +1913,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			if stream in api_wait:
 				return stream
 			api_wait.add(stream)
+			entry["tried_api"] = utc()
 			try:
 				print("API:", stream)
 				with reqs.get(stream, stream=True) as resp:

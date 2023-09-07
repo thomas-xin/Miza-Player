@@ -95,7 +95,7 @@ if __name__ != "__main__" and os.path.exists("auth.json"):
 			data = {}
 	compute_load = data.get("compute_load")
 	compute_order = data.get("compute_order")
-	if compute_load is not None and compute_order is not None and len(compute_load) == len(compute_order) == DC:
+	if not DC or compute_load is not None and compute_order is not None and len(compute_load) == len(compute_order) == DC:
 		print(srgb(0, 255, 0, "No benchmark required, skipping..."))
 		keep = False
 

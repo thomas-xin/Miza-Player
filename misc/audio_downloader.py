@@ -77,7 +77,7 @@ class MultiAutoImporter:
 
 importer = MultiAutoImporter(
 	"contextlib, urllib, collections, math, traceback, requests, orjson",
-	"os, yt_dlp, random, time, base64, hashlib, re, psutil, subprocess, itertools, zipfile",
+	"os, sys, yt_dlp, random, time, base64, hashlib, re, psutil, subprocess, itertools, zipfile",
 	pool=exc,
 	_globals=globals(),
 )
@@ -1644,20 +1644,44 @@ class AudioDownloader:
 						output.append(cdict(temp))
 			elif resp:
 				# Single item results must contain full data, we take advantage of that here
+				name = resp.get("title") or resp["webpage_url"].rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+				url = resp.get("webpage_url") or resp["url"]
 				found = "duration" in resp
+				ecdc = False
 				if found:
 					dur = resp["duration"]
 				else:
 					dur = None
-				temp = {
-					"name": resp.get("title") or resp["webpage_url"].rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0],
-					"url": resp.get("webpage_url") or resp["url"],
+					if resp.get("direct") and os.path.exists("misc/ecdc_stream.py") and url.endswith(".ecdc"):
+						args = [sys.executable, "misc/ecdc_stream.py", "-i", url]
+						with suppress():
+							info = subprocess.check_output(args).decode("utf-8", "replace").splitlines()
+							assert info
+							info = cdict(line.split(": ", 1) for line in info if line)
+							if info.get("Name"):
+								name = orjson.loads(info["Name"]) or name
+							if info.get("Duration"):
+								dur = orjson.loads(info["Duration"]) or dur
+							if info.get("Source"):
+								url = orjson.loads(info["Source"]) or url
+								resp["url"] = url
+							ecdc = True
+				temp = cdict({
+					"name": name,
+					"url": url,
 					"duration": dur,
 					"stream": get_best_audio(resp),
 					"icon": get_best_icon(resp),
 					"video": get_best_video(resp),
-				}
-				output.append(cdict(temp))
+				})
+				if ecdc:
+					temp.fmt = "ecdc"
+				stream = temp.stream
+				if "googlevideo" in stream[:64]:
+					durstr = regexp("[&?]dur=([0-9\\.]+)").findall(stream)
+					if durstr:
+						temp.duration = round_min(durstr[0])
+				output.append(temp)
 		return output
 
 	def item_yt(self, item):

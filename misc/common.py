@@ -3770,6 +3770,77 @@ def char_display(char, size, font="OpenSansEmoji"):
 	return f
 
 
+class PipedProcess:
+
+	procs = ()
+	stdin = stdout = stderr = None
+
+	def __init__(self, *args, stdin=None, stdout=None, stderr=None, cwd=".", bufsize=4096):
+		if not args:
+			return
+		self.exc = concurrent.futures.ThreadPoolExecutor(max_workers=len(args) - 1) if len(args) > 1 else None
+		self.procs = []
+		for i, arg in enumerate(args):
+			first = not i
+			last = i >= len(args) - 1
+			si = stdin if first else subprocess.PIPE
+			so = stdout if last else subprocess.PIPE
+			se = stderr if last else None
+			proc = psutil.Popen(arg, stdin=si, stdout=so, stderr=se, cwd=cwd, bufsize=bufsize * 256)
+			if first:
+				self.stdin = proc.stdin
+			if last:
+				self.stdout = proc.stdout
+				self.stderr = proc.stderr
+			self.procs.append(proc)
+		for i in range(len(args) - 1):
+			self.exc.submit(self.pipe, i, bufsize=bufsize)
+		self.pid = self.procs[0].pid
+
+	def pipe(self, i, bufsize=4096):
+		try:
+			proc = self.procs[i]
+			proc2 = self.procs[i + 1]
+			si = 0
+			while proc.is_running() and proc2.is_running():
+				b = proc.stdout.read(si * (si + 1) * bufsize // 8 + bufsize)
+				if not b:
+					break
+				proc2.stdin.write(b)
+				proc2.stdin.flush()
+				si += 1
+			if proc2.is_running():
+				proc2.stdin.close()
+		except:
+			import traceback
+			traceback.print_exc()
+			if not proc.is_running() or not proc2.is_running():
+				self.terminate()
+		if self.exc:
+			self.exc.shutdown(wait=False)
+
+	def is_running(self):
+		for proc in self.procs:
+			if proc.is_running():
+				return True
+		return False
+
+	def terminate(self):
+		for proc in self.procs:
+			proc.terminate()
+
+	def kill(self):
+		for proc in self.procs:
+			proc.kill()
+
+	def wait(self):
+		for proc in self.procs:
+			proc.wait()
+
+	def status(self):
+		return self.procs[-1].status()
+
+
 # Runs ffprobe on a file or url, returning the duration if possible.
 def _get_duration_2(filename, _timeout=12):
 	command = (
@@ -4071,34 +4142,80 @@ def png2wav(png):
 	subprocess.run(args, cwd="misc", stderr=subprocess.PIPE)
 	return r_wav
 
+def ecdc_encode(ecdc, bitrate="24k", name=None, source=None):
+	ts = ts_us()
+	out = f"cache/{ts}.ecdc"
+	if not isinstance(ecdc, str):
+		fi = f"cache/{ts}"
+		with open(fi, "wb") as f:
+			f.write(ecdc)
+		ecdc = fi
+	args1 = [ffmpeg, "-v", "error", "-hide_banner", "-vn", "-nostdin", "-i", ecdc, "-f", "s16le", "-ac", "2", "-ar", "48k", "-"]
+	args2 = [sys.executable, "misc/ecdc_stream.py", "-n", name or "", "-s", source or "", "-b", str(bitrate), "-e", out]
+	print(args1)
+	print(args2)
+	PipedProcess(args1, args2).wait()
+	return out
+
+def ecdc_decode(ecdc, out=None):
+	fmt = out.rsplit(".", 1)[-1] if out else "opus"
+	ts = ts_us()
+	out = out or f"cache/{ts}.{fmt}"
+	if os.path.exists(out) and os.path.getsize(out):
+		return out
+	if not isinstance(ecdc, str):
+		fi = f"cache/{ts}.ecdc"
+		with open(fi, "wb") as f:
+			f.write(ecdc)
+		ecdc = fi
+	args1 = [sys.executable, "misc/ecdc_stream.py", "-d", ecdc]
+	args2 = [ffmpeg, "-v", "error", "-hide_banner", "-f", "s16le", "-ac", "2", "-ar", "48k", "-i", "-", "-b:a", "96k", out]
+	print(args1)
+	print(args2)
+	PipedProcess(args1, args2).wait()
+	return out
+
 
 CONVERTERS = {
 	b"MThd": mid2mp3,
 	b"Org-": org2xm,
+	b"ECDC": ecdc_decode,
 }
+CONVERTING = {}
 
 def select_and_convert(stream):
-	if is_url(stream):
-		with reqs.get(stream, timeout=8, stream=True) as resp:
-			it = resp.iter_content(65536)
-			b = bytes()
-			while len(b) < 4:
-				b += next(it)
-			try:
-				convert = CONVERTERS[b[:4]]
-			except KeyError:
-				convert = png2wav
-			b += resp.content
-	else:
-		with open(stream, "rb") as file:
-			b = file.read(65536)
-			try:
-				convert = CONVERTERS[b[:4]]
-			except KeyError:
-				convert = png2wav
-			b += file.read()
-	print(convert, stream)
-	return convert(b)
+	if stream in CONVERTING:
+		resp = CONVERTING[stream].result()
+		if resp:
+			return resp
+	CONVERTING[stream] = concurrent.futures.Future()
+	try:
+		if is_url(stream):
+			with reqs.get(stream, timeout=8, stream=True) as resp:
+				it = resp.iter_content(65536)
+				b = bytes()
+				while len(b) < 4:
+					b += next(it)
+				try:
+					convert = CONVERTERS[b[:4]]
+				except KeyError:
+					convert = png2wav
+				b += resp.content
+		else:
+			with open(stream, "rb") as file:
+				b = file.read(65536)
+				try:
+					convert = CONVERTERS[b[:4]]
+				except KeyError:
+					convert = png2wav
+				b += file.read()
+		print(convert, stream)
+		resp = convert(b)
+		CONVERTING[stream].set_result(resp)
+		return resp
+	finally:
+		if not CONVERTING[stream].done():
+			CONVERTING[stream].set_result(None)
 
 
 def supersample(a, size, hq=False, in_place=False):

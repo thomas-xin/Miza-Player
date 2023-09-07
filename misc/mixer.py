@@ -612,6 +612,78 @@ def probe(stream):
 	probe_cache[stream] = out
 	return out
 
+
+class PipedProcess:
+
+	procs = ()
+	stdin = stdout = stderr = None
+
+	def __init__(self, *args, stdin=None, stdout=None, stderr=None, cwd=".", bufsize=4096):
+		if not args:
+			return
+		self.exc = concurrent.futures.ThreadPoolExecutor(max_workers=len(args) - 1) if len(args) > 1 else None
+		self.procs = []
+		for i, arg in enumerate(args):
+			first = not i
+			last = i >= len(args) - 1
+			si = stdin if first else subprocess.PIPE
+			so = stdout if last else subprocess.PIPE
+			se = stderr if last else None
+			proc = psutil.Popen(arg, stdin=si, stdout=so, stderr=se, cwd=cwd, bufsize=bufsize * 256)
+			if first:
+				self.stdin = proc.stdin
+			if last:
+				self.stdout = proc.stdout
+				self.stderr = proc.stderr
+			self.procs.append(proc)
+		for i in range(len(args) - 1):
+			self.exc.submit(self.pipe, i, bufsize=bufsize)
+		self.pid = self.procs[0].pid
+
+	def pipe(self, i, bufsize=4096):
+		try:
+			proc = self.procs[i]
+			proc2 = self.procs[i + 1]
+			si = 0
+			while proc.is_running() and proc2.is_running():
+				b = proc.stdout.read(si * (si + 1) * bufsize // 8 + bufsize)
+				if not b:
+					break
+				proc2.stdin.write(b)
+				proc2.stdin.flush()
+				si += 1
+			if proc2.is_running():
+				proc2.stdin.close()
+		except:
+			import traceback
+			traceback.print_exc()
+			if not proc.is_running() or not proc2.is_running():
+				self.terminate()
+		if self.exc:
+			self.exc.shutdown(wait=False)
+
+	def is_running(self):
+		for proc in self.procs:
+			if proc.is_running():
+				return True
+		return False
+
+	def terminate(self):
+		for proc in self.procs:
+			proc.terminate()
+
+	def kill(self):
+		for proc in self.procs:
+			proc.kill()
+
+	def wait(self):
+		for proc in self.procs:
+			proc.wait()
+
+	def status(self):
+		return self.procs[-1].status()
+
+
 def kill(proc):
 	try:
 		return proc.kill2()
@@ -654,7 +726,15 @@ def duration_est():
 				last_fn = stream
 				last_mt = stat.st_mtime
 				last_fs = stat.st_size
-				duration = get_duration(stream)
+				if stream.endswith(".ecdc"):
+					args = [sys.executable, "misc/ecdc_stream.py", "-i", stream]
+					info = subprocess.check_output(args).decode("utf-8", "replace").splitlines()
+					assert info
+					info = cdict(line.split(": ", 1) for line in info if line)
+					if info.get("Duration"):
+						duration = orjson.loads(info["Duration"])
+				else:
+					duration = get_duration(stream)
 		except:
 			print_exc()
 		time.sleep(0.5)
@@ -2318,6 +2398,14 @@ while not sys.stdin.closed and failed < 8:
 					kill=lambda: None,
 					kill2=f.close,
 				)
+			elif cdc == "ecdc" or stream.endswith(".ecdc"):
+				pos = pos or 0
+				args1 = [sys.executable, "misc/ecdc_stream.py", "-ss", str(pos), "-d", stream]
+				i = cmd.index("-i")
+				args2 = ffmpeg_start + ("-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "-") + tuple(cmd[i + 2:])
+				print(args1)
+				print(args2)
+				proc = PipedProcess(args1, args2, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE)
 			else:
 				print(cmd)
 				proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, bufsize=65536)

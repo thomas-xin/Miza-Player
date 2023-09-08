@@ -1271,70 +1271,60 @@ if "caption" in CAPS:
 			return [i for i in pcs if gmems[i].free >= mem], torch.float16
 		return pcs[0], torch.float16
 
-	device, dtype = determine_cuda(1073741824, priority=None)
-	device = f"cuda:{device}" if device >= 0 else "cpu"
-	from sentence_transformers import SentenceTransformer
-	Embedder = SentenceTransformer("LLukas22/all-mpnet-base-v2-embedding-all", device=device)
-	if torch and dtype == torch.float16 and torch.cuda.get_device_properties(device).major >= 7:
-		try:
-			Embedder = Embedder.half()
-		except (RuntimeError, NotImplementedError):
-			pass
-	def embedding(s):
-		a = Embedder.encode(s).astype(np.float16)
-		return a.data
-
 	import tiktoken
-	from clip_interrogator import Config, Interrogator
 	try:
 		import pytesseract
 	except ImportError:
 		pytesseract = None
 
-	# class CustomInterrogator(Interrogator):
-	# 	def __init__(self, config, dtype=torch.float32):
-	# 		self.config = config
-	# 		self.device = config.device
-	# 		self.dtype = dtype
-	# 		self.caption_offloaded = True
-	# 		self.clip_offloaded = True
-
-	VIT = VIT2 = True
+	VIT = True
 	def download_model():
-		# if 0:#torch and torch.cuda.device_count():
-		# 	device, dtype = determine_cuda(priority=None)
-		# 	if torch.cuda.get_device_properties(device).total_memory < 9 * 1073741824:
-		# 		device, dtype = "cpu", torch.float32
-		# else:
-		# 	device, dtype = "cpu", torch.float32
-		config = Config(
+		from clip_interrogator import Config, Interrogator
+		Vconfig = Config(
 			clip_model_name="ViT-H-14/laion2b_s32b_b79k",
 			clip_model_path="misc/Clip",
+			caption_model_name="blip-base",
 			cache_path="misc/Clip",
 			device="cpu",
-			# caption_model_name="blip-base",
-			# caption_offload = True
-			# clip_offload = True
-			# chunk_size=1024,
-			# flavor_intermediate_count=1024,
 			caption_max_length=48,
 		)
-		config.apply_low_vram_defaults()
+		globals()["VIT"] = Interrogator(Vconfig)
+		VIT.dtype = torch.float32
+		VIT.device = "cpu"
+
+		def image_to_features(self, image: Image) -> torch.Tensor:
+			self._prepare_clip()
+			images = self.clip_preprocess(image).unsqueeze(0).to(self.device).to(torch.float32)
+			with torch.no_grad():
+				image_features = self.clip_model.encode_image(images)
+				image_features /= image_features.norm(dim=-1, keepdim=True)
+			return image_features
+		Interrogator.image_to_features = lambda self, image=None: image_to_features(self, image) if image else image_to_features(VIT, self)
+
+		print("Interrogator:", VIT)
+		im = Image.new("RGB", (4, 4), (0, 0, 255))
+		VIT.caption_model = VIT.caption_model.to(torch.float32).to("cpu")
+		VIT.clip_model = VIT.clip_model.to(torch.float32).to("cpu")
+		description = VIT.interrogate_fast(im, max_flavors=12)#, caption=caption)
+		print("VIT:", description)
+		# config.apply_low_vram_defaults()
 		# globals()["VIT"] = CustomInterrogator(config, dtype=dtype)
 		# VIT.load_caption_model()
 		# config.device = "cpu"
 		# globals()["VIT2"] = CustomInterrogator(config, dtype=torch.float32)
 		# VIT2.load_clip_model()
-		VIT = VIT2 = Interrogator(config)
-		im = Image.new("RGB", (4, 4), (0, 0, 255))
 		# caption = VIT.generate_caption(im)
-		description = VIT2.interrogate_fast(im, max_flavors=12)#, caption=caption)
-		print("VIT:", description)
 		# with torch.no_grad():
 		# 	torch.cuda.empty_cache()
 		return pytesseract.image_to_string(im, config="--psm 1")
 	dfut = exc.submit(download_model)
+
 	def caption(im, best=False):
+		if not best:
+			try:
+				dfut.result(timeout=1)
+			except concurrent.futures.TimeoutError:
+				raise RuntimeError("Model is loading, please wait...")
 		im = resize_max(im, 1024, "auto")
 		if im.mode != "RGB":
 			image = im.convert("RGB")
@@ -1345,12 +1335,8 @@ if "caption" in CAPS:
 		else:
 			fut = None
 		if not best:
-			try:
-				dfut.result(timeout=1)
-			except concurrent.futures.TimeoutError:
-				raise RuntimeError("Model is loading, please wait...")
 			# cfut = exc.submit(VIT.generate_caption, image)
-			desc = VIT2.interrogate_fast(image, max_flavors=24)#, caption=" ")
+			desc = VIT.interrogate_fast(image, max_flavors=24)#, caption=" ")
 			p1 = desc.lstrip()
 			enc = tiktoken.get_encoding("cl100k_base")
 			out = []
@@ -1375,9 +1361,20 @@ if "caption" in CAPS:
 			p2 = fut.result().strip()
 		else:
 			p2 = None
-		# with torch.no_grad():
-		# 	torch.cuda.empty_cache()
 		return (p1, p2)
+
+	device, dtype = determine_cuda(1073741824, priority=None)
+	device = f"cuda:{device}" if device >= 0 else "cpu"
+	from sentence_transformers import SentenceTransformer
+	Embedder = SentenceTransformer("LLukas22/all-mpnet-base-v2-embedding-all", device=device)
+	if torch and dtype == torch.float16 and torch.cuda.get_device_properties(device).major >= 7:
+		try:
+			Embedder = Embedder.half()
+		except (RuntimeError, NotImplementedError):
+			pass
+	def embedding(s):
+		a = Embedder.encode(s).astype(np.float16)
+		return a.data
 
 discord_emoji = re.compile("^https?:\\/\\/(?:[a-z]+\\.)?discord(?:app)?\\.com\\/assets\\/[0-9A-Fa-f]+\\.svg")
 is_discord_emoji = lambda url: discord_emoji.search(url)

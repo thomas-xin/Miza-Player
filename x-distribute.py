@@ -91,7 +91,7 @@ def spec2cap():
 				caps.append("sd")
 				done.add("sd")
 				v -= 5 * 1073741824
-		if v <= 7 * 1073741824:
+		if v <= 4 * 1073741824:
 			v = 0
 		vrams[i] = v
 		if len(caps) > 1:
@@ -331,6 +331,7 @@ try:
 		cpercent = psutil.cpu_percent()
 		try:
 			import pynvml
+			pynvml.nvmlInit()
 			dc = pynvml.nvmlDeviceGetCount()
 			handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(dc)]
 			gname = [pynvml.nvmlDeviceGetName(d) for d in handles]

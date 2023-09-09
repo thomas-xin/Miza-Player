@@ -1442,6 +1442,7 @@ def play(pos):
 				paused.result()
 			p = proc
 			b = b""
+			# print("READING...")
 			if fn:
 				if not file:
 					try:
@@ -1480,7 +1481,7 @@ def play(pos):
 					async_wait()
 				try:
 					fut = submit(proc.stdout.read, req)
-					b = fut.result(timeout=4)
+					b = fut.result(timeout=12)
 				except (AttributeError, concurrent.futures.TimeoutError):
 					pass
 			if not b:
@@ -2401,11 +2402,15 @@ while not sys.stdin.closed and failed < 8:
 			elif cdc == "ecdc" or stream.endswith(".ecdc"):
 				pos = pos or 0
 				args1 = [sys.executable, "misc/ecdc_stream.py", "-ss", str(pos), "-d", stream]
-				i = cmd.index("-i")
-				args2 = ffmpeg_start + ("-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "-") + tuple(cmd[i + 2:])
-				print(args1)
-				print(args2)
-				proc = PipedProcess(args1, args2, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE)
+				if cmd[-1] == "-" and not fn:
+					print(args1)
+					proc = psutil.Popen(args1, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
+				else:
+					i = cmd.index("-i")
+					args2 = ffmpeg_start + ("-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "-") + tuple(cmd[i + 2:])
+					print(args1)
+					print(args2)
+					proc = PipedProcess(args1, args2, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE)
 			else:
 				print(cmd)
 				proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, bufsize=65536)

@@ -245,6 +245,8 @@ def add_instrument(first=False):
 
 def playlist_sync():
 	# print("Syncing playlists...")
+	if utc() - has_api >= 60:
+		return
 	try:
 		try:
 			t1 = max(max(st.st_mtime, st.st_ctime) for f in os.scandir("playlists") for st in (f.stat(),))
@@ -1751,7 +1753,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	fn = ofn = "cache/~" + shash(url) + ".webm"
 	if delay:
 		time.sleep(delay)
-	if utc() - has_api < 120 and is_url(entry.url) and (entry.get("stream") or "").endswith(".ecdc"):
+	if utc() - has_api < 60 and is_url(entry.url) and (entry.get("stream") or "").endswith(".ecdc"):
 		entry.pop("stream", None)
 	try:
 		# raise
@@ -1898,8 +1900,14 @@ def prepare(entry, force=False, download=False, delay=0):
 			entry.duration = duration or entry.duration
 			return entry.stream
 	except:
-		print_exc()
-		if is_url(entry.url) and utc() - has_api < 120 and utc() - entry.get("tried_api", 0) > 120:
+		if force and is_url(entry.url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
+			try:
+				resp = requests.head("https://api.mizabot.xyz/ip")
+				resp.raise_for_status()
+			except:
+				# print_exc()
+				globals()["has_api"] = 0
+		if is_url(entry.url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
 			stream = f"https://api.mizabot.xyz/ytdl?d={entry.url}&fmt=webm"
 			if not download:
 				return stream
@@ -1936,20 +1944,23 @@ def prepare(entry, force=False, download=False, delay=0):
 			finally:
 				api_wait.discard(stream)
 		url = entry.url
+		if not url:
+			return
 		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
 		cfn = "persistent/~" + shash(url) + ".ecdc"
-		out = "cache/~" + shash(url) + ".wav"
-		if os.path.exists(out):
-			return out
-		while ecdc_wait.get(cfn):
-			time.sleep(1)
-		if os.path.exists(out):
-			return out
+		# out = "cache/~" + shash(url) + ".wav"
+		# if os.path.exists(out):
+			# return out
+		# while ecdc_wait.get(cfn):
+			# time.sleep(1)
+		# if os.path.exists(out):
+			# return out
 		if os.path.exists(cfn) and os.path.getsize(cfn):
 			entry.stream = cfn
 			return cfn
 		entry.url = ""
 		print_exc()
+		print("DELETING:", entry, cfn)
 		return
 	stream = stream.strip()
 	duration = entry.duration
@@ -2102,6 +2113,8 @@ def ecdc_compress(entry, stream, force=False):
 	exists = os.path.exists(ofn) and os.path.getsize(ofn)
 	try:
 		if exists:
+			if utc() - has_api >= 60:
+				return ofn
 			with open(ofn, "rb") as f:
 				b = f.read(5)
 			if len(b) < 5 or b[-1] < 192:
@@ -2131,7 +2144,7 @@ def ecdc_compress(entry, stream, force=False):
 			dc = pynvml.nvmlDeviceGetCount()
 		except:
 			dc = 0
-		if exists or not force and psutil.cpu_count() >= 8 and (dc > len(ECDC_RUNNING) / 2):
+		if exists or not force and psutil.cpu_count() >= 8 and (dc > len(ECDC_RUNNING) / 2) or utc() - has_api >= 60:
 			i = None
 		else:
 			i = False
@@ -2153,6 +2166,8 @@ def ecdc_compress(entry, stream, force=False):
 				b = b""
 			try:
 				# print(api)
+				if utc() - has_api >= 60:
+					raise EOFError
 				with requests.post(api, data=b, stream=True) as resp:
 					resp.raise_for_status()
 					b = resp.content
@@ -2166,7 +2181,7 @@ def ecdc_compress(entry, stream, force=False):
 			except Exception as ex:
 				if force:
 					raise
-				print_exc()
+				# print_exc()
 				if not os.path.exists(ofn) or not os.path.getsize(ofn):
 					if ofn in ECDC_RUNNING:
 						raise
@@ -2208,6 +2223,10 @@ def delete_entry(e):
 last_save = -inf
 last_sync = -inf
 def skip():
+	import inspect
+	curframe = inspect.currentframe()
+	calframe = inspect.getouterframes(curframe, 2)
+	print('Skipped:', calframe)
 	if player.video:
 		player.video.url = None
 	if queue:
@@ -2328,6 +2347,7 @@ def reevaluate():
 					else:
 						print_exc()
 						queue[0].url = ""
+						print("REDELETING:", entry, cfn)
 		start_player(0, force=force)
 		time.sleep(2)
 
@@ -2363,11 +2383,14 @@ def reevaluate_in(delay=0):
 				else:
 					print_exc()
 					queue[0].url = ""
+					print("REDELETING:", entry, cfn)
 	return start_player(0, force=force)
 
 def distribute_in(delay):
 	if delay:
 		time.sleep(delay)
+		while utc() - has_api > 60:
+			time.sleep(600)
 	if os.name == "nt" and os.path.exists("x-distribute.py"):
 		args = [sys.executable, "x-distribute.py"]
 		print(args)
@@ -2710,6 +2733,7 @@ def mixer_stdout():
 			# print(s)
 			s = s[1:]
 			if s == "s":
+				print("ENTERED ~S")
 				submit(skip)
 				player.last = 0
 				continue
@@ -2925,7 +2949,7 @@ def pause_toggle(state=None):
 	if not player.paused:
 		if reevaluating:
 			reevaluating.cancel()
-		globals()["reevaluating"] = submit(reevaluate_in, 1)
+		globals()["reevaluating"] = submit(reevaluate_in, 5)
 	toolbar.pause.speed = toolbar.pause.maxspeed
 	sidebar.menu = 0
 	player.editor.played.clear()

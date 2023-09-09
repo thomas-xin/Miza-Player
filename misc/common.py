@@ -2280,15 +2280,15 @@ def update_repo(force=False):
 			if commitf == commitr:
 				with open(commitf, "w") as f:
 					f.write(commit)
-	except:
-		print_exc()
+	except Exception as ex:
+		print(repr(ex))
 
 def update_collections2():
 	try:
 		resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py")
 		resp.raise_for_status()
 	except:
-		print_exc()
+		# print_exc()
 		with open(collections2f, "rb+") as f:
 			pass
 		return

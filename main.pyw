@@ -1786,7 +1786,7 @@ def prepare(entry, force=False, download=False, delay=0):
 				url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
 				ofn = "persistent/~" + shash(url) + ".ecdc"
 				if not os.path.exists(ofn) or not os.path.getsize(ofn):
-					submit(ecdc_compress, entry, fn)
+					ecdc_submit(entry, fn)
 			dur = entry.get("duration")
 			if dur and not isinstance(dur, str) and isfinite(dur):
 				entry.stream = fn
@@ -2025,14 +2025,14 @@ def start_player(pos=None, force=False):
 			if pos is not None:
 				player.pos = pos
 				player.index = player.pos * 30
-			if force and is_url(queue[0].url):
+			if force and queue and is_url(queue[0].url):
 				queue[0].stream = None
 				queue[0].research = True
 				downloader.result().cache.pop(queue[0].url, None)
 			player.last = 0
 			player.amp = 0
 			stream = prepare(queue[0], force=force + 1)
-			if not queue[0].url:
+			if not queue or not queue[0].url:
 				return skip()
 			stream = prepare(queue[0], force=force + 1)
 			entry = queue[0]
@@ -2086,9 +2086,9 @@ def start_player(pos=None, force=False):
 				stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
 			if is_url(entry.url):
 				if not is_url(stream) and os.path.exists(stream) and not stream.endswith(".ecdc") and time.time() - os.path.getmtime(stream) > 30:
-					submit(ecdc_compress, entry, stream)
+					ecdc_submit(entry, stream)
 				else:
-					submit(ecdc_compress, entry, stream, force=True)
+					ecdc_submit(entry, stream, force=True)
 			es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
 			url = entry.url
 			url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
@@ -2102,10 +2102,33 @@ def start_player(pos=None, force=False):
 			return stream, duration
 	finally:
 		if reevaluating:
+			reevaluating.mut.append(None)
 			reevaluating.cancel()
-		globals()["reevaluating"] = submit(reevaluate_in, 20)
+		mut = []
+		globals()["reevaluating"] = submit(reevaluate_in, 20, mut=mut)
+		reevaluating.mut = mut
 
+
+ECDC_CURR = None
+ECDC_QUEUE = {}
 ECDC_RUNNING = set()
+ECDC_TRIED = set()
+
+def ecdc_submit(entry, stream="", force=False):
+	url = entry.url
+	url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+	ofn = "persistent/~" + shash(url) + ".ecdc"
+	if not force and os.path.exists(ofn) and os.path.getsize(ofn):
+		return
+	if force is None and ofn in ECDC_TRIED:
+		return
+	try:
+		ECDC_QUEUE[ofn][1] = stream or ECDC_QUEUE[ofn][1]
+		ECDC_QUEUE[ofn][2] = force or ECDC_QUEUE[ofn][2]
+	except KeyError:
+		ECDC_QUEUE[ofn] = [entry, stream, force]
+		ECDC_TRIED.add(ofn)
+
 def ecdc_compress(entry, stream, force=False):
 	url = entry.url
 	url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
@@ -2119,16 +2142,19 @@ def ecdc_compress(entry, stream, force=False):
 				b = f.read(5)
 			if len(b) < 5 or b[-1] < 192:
 				exists = False
-		if is_url(stream) and expired(stream):
-			ytdl = downloader.result()
-			data = ytdl.extract(entry.url)
-			entry.name = data[0].name
-			stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
-		try:
-			dur, bps, cdc = _get_duration_2(stream)
-		except:
-			print_exc()
-			bps = 196608
+		if stream and force is not None:
+			if is_url(stream) and expired(stream):
+				ytdl = downloader.result()
+				data = ytdl.extract(entry.url)
+				entry.name = data[0].name
+				stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
+			try:
+				dur, bps, cdc = _get_duration_2(stream)
+			except:
+				print_exc()
+				bps = 196608
+		else:
+			bps = 64000
 		if not bps:
 			br = 24
 		elif bps < 48000:
@@ -2144,19 +2170,22 @@ def ecdc_compress(entry, stream, force=False):
 			dc = pynvml.nvmlDeviceGetCount()
 		except:
 			dc = 0
-		if exists or not force and psutil.cpu_count() >= 8 and (dc > len(ECDC_RUNNING) / 2) or utc() - has_api >= 60:
+		if exists or force is None or not force and psutil.cpu_count() >= 8 and (dc > len(ECDC_RUNNING) / 2) or utc() - has_api >= 60:
 			i = None
 		else:
 			i = False
 		ECDC_RUNNING.add("!" + ofn)
 		try:
 			name = entry.get("name") or ""
-			query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
+			b = "auto" if i is None else br
+			query = f"bitrate={b}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
 			api = f"https://api.mizabot.xyz/encodec?{query}&inference={i}&url=https://api.mizabot.xyz/ytdl?d={url}"
 			if i is not None:
 				print(api)
 			ifn = "cache/~" + shash(url) + ".webm"
-			if exists:
+			if force is None:
+				b = b""
+			elif exists:
 				with open(ofn, "rb") as f:
 					b = f.read()
 			elif os.path.exists(ifn):
@@ -2179,6 +2208,8 @@ def ecdc_compress(entry, stream, force=False):
 						f.write(b)
 				return
 			except Exception as ex:
+				if force is None:
+					return
 				if force:
 					raise
 				# print_exc()
@@ -2194,6 +2225,7 @@ def ecdc_compress(entry, stream, force=False):
 				if isinstance(ex, EOFError) and i is None:
 					with open(ofn, "rb") as f:
 						b = f.read()
+					query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
 					api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url=https://api.mizabot.xyz/ytdl?d={url}"
 					# print(api)
 					with requests.post(api, data=b, stream=True) as resp:
@@ -2351,9 +2383,11 @@ def reevaluate():
 		start_player(0, force=force)
 		time.sleep(2)
 
-def reevaluate_in(delay=0):
+def reevaluate_in(delay=0, mut=()):
 	if delay:
 		time.sleep(delay)
+	if mut:
+		return
 	a = is_active()
 	print("WATCHDOG:", a)
 	if not queue or a or player.paused:
@@ -2757,8 +2791,11 @@ def mixer_stdout():
 				submit(start_player, 0, True)
 				print("Re-evaluating file stream...")
 				if reevaluating:
+					reevaluating.mut.append(None)
 					reevaluating.cancel()
-				globals()["reevaluating"] = submit(reevaluate)
+				mut = []
+				globals()["reevaluating"] = submit(reevaluate, mut=mut)
+				reevaluating.mut = mut
 				continue
 			if s[0] == "R":
 				url = s[2:]
@@ -2948,8 +2985,11 @@ def pause_toggle(state=None):
 	mixer.state(player.paused or toolbar.editor)
 	if not player.paused:
 		if reevaluating:
+			reevaluating.mut.append(None)
 			reevaluating.cancel()
-		globals()["reevaluating"] = submit(reevaluate_in, 5)
+		mut = []
+		globals()["reevaluating"] = submit(reevaluate_in, 5, mut=mut)
+		reevaluating.mut = mut
 	toolbar.pause.speed = toolbar.pause.maxspeed
 	sidebar.menu = 0
 	player.editor.played.clear()
@@ -4387,7 +4427,18 @@ try:
 				globals()["last_sync"] = max(last_sync, t - 10)
 		if not (tick << 3) % (status_freq + (status_freq & 1)):
 			submit(send_status)
+			if queue:
+				q2 = list(queue)
+				random.shuffle(q2)
+				for entry in q2:
+					if is_url(entry.url):
+						ecdc_submit(entry, entry.get("stream") or "", force=None)
 			# print("UTC:", utc())
+		if ECDC_QUEUE and (not ECDC_CURR or ECDC_CURR.done()):
+			entry, stream, force = ECDC_QUEUE.pop(next(iter(ECDC_QUEUE)))
+			fut = submit(ecdc_compress, entry, stream, force=force)
+			if 1:#force is not None:
+				ECDC_CURR = fut
 		fut = common.__dict__.get("repo-update")
 		if fut:
 			if fut is True:

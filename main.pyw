@@ -4432,8 +4432,9 @@ try:
 			if t >= last_sync + 730 and control.autobackup:
 				submit(playlist_sync)
 				globals()["last_sync"] = max(last_sync, t - 10)
-		if not (tick << 3) % (status_freq + (status_freq & 1)):
+		if not (tick << 3) % (status_freq + (status_freq & 1)) or minimised and not tick + 1 & 7:
 			submit(send_status)
+		if not tick + 1 & 127:
 			if queue:
 				q2 = list(queue)
 				random.shuffle(q2)

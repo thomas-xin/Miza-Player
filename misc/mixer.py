@@ -535,6 +535,10 @@ ffmpeg = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
 ffprobe = "ffprobe.exe" if os.name == "nt" else "ffprobe"
 
 def _get_duration(filename, _timeout=12):
+	if filename.startswith("https://api.mizabot.xyz/ytdl"):
+		url = filename.replace("?v=", "?q=").replace("?d=", "?q=")
+		resp = reqs.get(url)
+		return resp.json().get("duration"), None, "webm"
 	command = (
 		ffprobe,
 		"-v",

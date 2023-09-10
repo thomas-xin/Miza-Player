@@ -4410,6 +4410,13 @@ try:
 	toolbar.editor = 0
 	tick = 0
 	while True:
+		foc = get_focused()
+		unfocused = False
+		if foc:
+			minimised = False
+		else:
+			minimised = is_minimised()
+		unfocused = is_unfocused()
 		if not tick + 1 & 31:
 			try:
 				if utc() - max(os.path.getmtime(collections2f), os.path.getatime(collections2f)) > 3600:
@@ -4434,11 +4441,12 @@ try:
 					if is_url(entry.url):
 						ecdc_submit(entry, entry.get("stream") or "", force=None)
 			# print("UTC:", utc())
-		if ECDC_QUEUE and (not ECDC_CURR or ECDC_CURR.done()):
-			entry, stream, force = ECDC_QUEUE.pop(next(iter(ECDC_QUEUE)))
-			fut = submit(ecdc_compress, entry, stream, force=force)
-			if 1:#force is not None:
-				ECDC_CURR = fut
+		if not tick & 7 or minimised:
+			if ECDC_QUEUE and (not ECDC_CURR or ECDC_CURR.done()):
+				entry, stream, force = ECDC_QUEUE.pop(next(iter(ECDC_QUEUE)))
+				fut = submit(ecdc_compress, entry, stream, force=force)
+				if force is not None:
+					ECDC_CURR = fut
 		fut = common.__dict__.get("repo-update")
 		if fut:
 			if fut is True:
@@ -4459,13 +4467,6 @@ try:
 					restarting = True
 					raise StopIteration
 				common.__dict__.pop("repo-update", None)
-		foc = get_focused()
-		unfocused = False
-		if foc:
-			minimised = False
-		else:
-			minimised = is_minimised()
-		unfocused = is_unfocused()
 		if not minimised and not tick % 2401:
 			garbage_collector()
 		v = minimised | unfocused << 1

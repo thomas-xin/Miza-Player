@@ -2238,6 +2238,15 @@ def ecdc_compress(entry, stream, force=False):
 	except:
 		print_exc()
 
+def persist():
+	q2 = list(queue)
+	random.shuffle(q2)
+	for i, entry in enumerate(q2):
+		if is_url(entry.url):
+			ecdc_submit(entry, entry.get("stream") or "", force=None)
+		if not i + 1 & 511:
+			time.sleep(0.5)
+
 def start():
 	if queue:
 		return enqueue(queue[0])
@@ -4436,11 +4445,7 @@ try:
 			submit(send_status)
 		if not tick + 1 & 127:
 			if queue:
-				q2 = list(queue)
-				random.shuffle(q2)
-				for entry in q2:
-					if is_url(entry.url):
-						ecdc_submit(entry, entry.get("stream") or "", force=None)
+				submit(persist)
 			# print("UTC:", utc())
 		if not tick & 7 or minimised:
 			if ECDC_QUEUE and (not ECDC_CURR or ECDC_CURR.done()):

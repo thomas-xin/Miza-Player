@@ -18,9 +18,10 @@ if os.path.exists("x-compute.py"):
 import benchmark, json, psutil, subprocess
 
 with open("auth.json", "rb") as f:
-	data = json.load(f)
-compute_load = data.get("compute_load") or []
+	AUTH = json.load(f)
+compute_load = AUTH.get("compute_load") or []
 
+IS_MAIN = False
 # Spec requirements:
 # ytdl											anything with internet
 # math			CPU >1							multithreading support
@@ -32,9 +33,9 @@ compute_load = data.get("compute_load") or []
 # sd			GPU >200k, VRAM >5GB			RTX2060, T4, RTX3050, RTX3060m, A16
 # sdxl			GPU >400k, VRAM >9GB			GTX1080ti, RTX2080ti, RTX3060, RTX3080, A2000
 # sdxlr			GPU >400k, VRAM >15GB			V100, RTX3090, A4000, RTX4080, L4
-# gptq			GPU >800k, VRAM >43GB			2xRTX3090, A6000, A40, A100, 2xRTX4090, L6000, L40
+# gptq			GPU >700k, VRAM >59GB			2xV100, 6xRTX3080, 3xRTX3090, 2xA6000, 2xA40, A100, 3xRTX4090, 2xL6000, 2xL40
 def spec2cap():
-	caps = [-1, "ytdl"]
+	caps = [[], "ytdl"]
 	cc = psutil.cpu_count()
 	ram = psutil.virtual_memory().total
 	try:
@@ -43,63 +44,90 @@ def spec2cap():
 		ffmpeg = False
 	else:
 		ffmpeg = True
+	done = set()
+	try:
+		import pynvml
+		pynvml.nvmlInit()
+		handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(DC)]
+		rrams = [pynvml.nvmlDeviceGetMemoryInfo(d).total for d in handles]
+	except:
+		rrams = []
+	vrams = tuple(rrams)
+	cut = 0
+	if AUTH.get("discord_token") and any(v > 6 * 1073741824 and c > 700000 for v, c in zip(rrams, COMPUTE_POT)):
+		vram = sum(rrams[i] for i in range(DC) if COMPUTE_POT[i] > 400000)
+		if vram > 59 * 1073741824:
+			cut = 60 * 1073741824
+			did = []
+			for i in COMPUTE_ORDER:
+				v = rrams[i]
+				if cut > 0:
+					red = min(cut, v)
+					rrams[i] = v - red
+					cut -= red
+					did.append(i)
+				else:
+					break
+			yield [did, "agpt", "gptq"]
+			done.add("gptq")
 	if cc > 1:
 		caps.append("math")
 		if cc > 3 and ram > 6 * 1073741824 and ffmpeg:
 			caps.append("image")
 		if cc > 5 and ram > 14 * 1073741824:
 			caps.append("caption")
-		if cc > 1 and ram > 22 * 1073741824:
+		if AUTH.get("discord_token") and cc > 1 and ram > 22 * 1073741824:
 			caps.append("agpt")
 	yield caps
 	if cc > 2:
-		caps = [-1, "ytdl", "math"]
+		caps = [[], "ytdl", "math"]
 		if ram > 14 * 1073741824 and ffmpeg:
 			caps.append("image")
 		if ram > 46 * 1073741824:
 			caps.append("caption")
-		if cc > 3 and ram > 46 * 1073741824:
+		if AUTH.get("discord_token") and not cut and cc > 3 and ram > 46 * 1073741824:
 			caps.append("agpt")
 		yield caps
 	if not DC:
 		return
-	done = set()
-	import pynvml
-	pynvml.nvmlInit()
-	handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(DC)]
-	vrams = [pynvml.nvmlDeviceGetMemoryInfo(d).total for d in handles]
-	for i, v in reversed(tuple(enumerate(vrams))):
+	for i, v in reversed(tuple(enumerate(rrams))):
 		c = COMPUTE_POT[i]
-		caps = [i]
+		caps = [[i]]
 		if c > 100000 and v > 3 * 1073741824 and ffmpeg:
 			caps.append("video")
 			caps.append("ecdc")
 		if c > 400000 and v > 15 * 1073741824:
-			if "sdxlr" not in done or c <= 600000:
+			if "sdxlr" not in done or c <= 600000 or "sd" in done:
 				caps.append("sdxlr")
 				caps.append("sdxl")
 				done.add("sdxlr")
 				v -= 15 * 1073741824
+		elif c > 400000 and IS_MAIN and "sdxlr" not in done and vrams[i] > 15 * 1073741824:
+			caps.append("sdxlr")
+			caps.append("ngptq")
+			done.add("sdxlr")
+			v = 0
 		elif c > 400000 and v > 9 * 1073741824:
-			if "sdxl" not in done or c <= 600000:
-				caps.append("sdxl")
-				caps.append("sd")
-				done.add("sdxl")
-				v -= 9 * 1073741824
+			# if "sdxl" not in done or c <= 600000:
+			caps.append("sdxl")
+			caps.append("sd")
+			done.add("sdxl")
+			v -= 9 * 1073741824
+		elif c > 400000 and IS_MAIN and "sdxl" not in done and vrams[i] > 9 * 1073741824:
+			caps.append("sdxl")
+			caps.append("ngptq")
+			done.add("sdxl")
+			v = 0
 		elif c > 200000 and v > 5 * 1073741824:
 			if "sd" not in done or c <= 600000:
 				caps.append("sd")
 				done.add("sd")
 				v -= 5 * 1073741824
-		if v <= 4 * 1073741824:
-			v = 0
-		vrams[i] = v
+		# if v <= 4 * 1073741824:
+			# v = 0
+		# vrams[i] = v
 		if len(caps) > 1:
 			yield caps
-	if any(v > 6 * 1073741824 and c > 800000 for v, c in zip(vrams, COMPUTE_POT)):
-		vram = sum(vrams[i] for i in range(DC) if COMPUTE_POT[i] > 400000)
-		if vram > 43 * 1073741824:
-			yield [-1, "agpt", "gptq"]
 
 COMPUTE_POT = compute_load.copy()
 DC = benchmark.DC
@@ -112,6 +140,8 @@ req = [
 	"tiktoken",
 	"pillow",
 ]
+if os.name == "nt":
+	req.append("wmi")
 if any("ytdl" in caps for caps in CAPS):
 	req.append("yt-dlp")
 if any("image" in caps for caps in CAPS):
@@ -174,7 +204,7 @@ def task_submit(proc, command, _timeout=12):
 		print_exc()
 		proc.kill()
 		procs.remove(proc)
-		start_proc(proc.i, proc.caps)
+		start_proc(proc.di, proc.caps)
 		raise
 	finally:
 		PROC_RESP.pop(ts, None)
@@ -275,8 +305,8 @@ def update_tasks(proc):
 					resps[str(i)] = "RES:" + resp if isinstance(resp, str) else resp
 	return func
 
-def start_proc(i, caps):
-	args = [python, "misc/x-compute.py", str(i), ",".join(caps)]
+def start_proc(di, caps):
+	args = [python, "misc/x-compute.py", ",".join(map(str, di)), ",".join(caps)]
 	print(args)
 	proc = psutil.Popen(
 		args,
@@ -287,7 +317,7 @@ def start_proc(i, caps):
 	)
 	proc.busy = None
 	proc.waiting = concurrent.futures.Future()
-	proc.i = i
+	proc.di = di
 	proc.caps = caps
 	procs.append(proc)
 	threading.Thread(target=update_tasks(proc)).start()
@@ -295,8 +325,8 @@ def start_proc(i, caps):
 	return proc
 
 
-for i, *caps in CAPS:
-	start_proc(i, caps)
+for di, *caps in CAPS:
+	start_proc(di, caps)
 	time.sleep(1)
 try:
 	import time, requests, orjson, base64, cpuinfo
@@ -352,6 +382,42 @@ try:
 				dinfo[p.mountpoint] = psutil.disk_usage(p.mountpoint)
 			except OSError:
 				pass
+		ram_name = "RAM"
+		if os.name == "nt" and globals().get("WMI") is not False:
+			if not globals().get("WMI"):
+				try:
+					import wmi
+					globals()["WMI"] = wmi.WMI()
+				except:
+					print_exc()
+					globals()["WMI"] = False
+			if WMI:
+				OS = WMI.Win32_Operatingsystem()[0]
+				cswap = (int(OS.TotalVirtualMemorySize) - int(OS.FreeVirtualMemory)) * 1024 - psutil.virtual_memory().used
+				if cswap > sinfo.used:
+					class mtemp:
+						def __init__(self, used, total):
+							self.used, self.total = used, total
+					sinfo = mtemp(used=cswap, total=sinfo.total)
+				ram = WMI.Win32_PhysicalMemory()[0]
+				ram_speed = ram.ConfiguredClockSpeed
+				ram_type = ram.SMBIOSMemoryType
+				try:
+					ram_class = {
+						2: "DRAM",
+						5: "EDO",
+						9: "RAM",
+						10: "ROM",
+						20: "DDR1",
+						21: "DDR2",
+						24: "DDR3",
+						26: "DDR4",
+						34: "DDR5",
+						35: "DDR5",
+					}[ram_type]
+				except KeyError:
+					ram_class = "DDR" + str(max(1, ceil(math.log2(ram_speed / 250))))
+				ram_name = f"{ram_class}-{ram_speed}"
 		stats = orjson.dumps(dict(
 			cpu={ip: dict(name=cinfo["brand_raw"], count=cinfo["count"], usage=cpercent / 100, max=1, time=t)},
 			gpu={f"{ip}-{i}": dict(
@@ -362,7 +428,7 @@ try:
 				time=t,
 			) for i, name in enumerate(gname)},
 			memory={
-				f"{ip}-v": dict(name="RAM", count=1, usage=minfo.used, max=minfo.total, time=t),
+				f"{ip}-v": dict(name=ram_name, count=1, usage=minfo.used, max=minfo.total, time=t),
 				f"{ip}-s": dict(name="Swap", count=1, usage=sinfo.used, max=sinfo.total, time=t),
 				**{f"{ip}-{i}": dict(
 					name=name,
@@ -435,7 +501,10 @@ try:
 		if data:
 			for proc in procs:
 				if proc.waiting:
-					proc.waiting.set_result(None)
+					try:
+						proc.waiting.set_result(None)
+					except:
+						pass
 					# proc.waiting = None
 		time.sleep(5)
 except:

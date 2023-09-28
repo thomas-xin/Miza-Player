@@ -5084,10 +5084,7 @@ except Exception as ex:
 	futs = set()
 	futs.add(submit(reqs.delete, mp))
 	futs.add(submit(update_collections2))
-	DISP.close()
-	if globals().get("last_save_fut"):
-		last_save_fut.result()
-	save_settings(closing=True)
+	futs.add(submit(DISP.close))
 	if restarting:
 		futs.add(submit(os.execl, sys.executable, "python", *sys.argv))
 	pygame.closed = True
@@ -5107,6 +5104,9 @@ except Exception as ex:
 			fut.result(timeout=1)
 		except:
 			pass
+	if globals().get("last_save_fut"):
+		last_save_fut.result()
+	save_settings(closing=True)
 	pygame.quit()
 	if type(ex) is not StopIteration:
 		easygui.exceptionbox()

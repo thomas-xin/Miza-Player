@@ -225,7 +225,7 @@ def determine_cuda(mem=1, priority=None, multi=False, major=0):
 	dc = pynvml.nvmlDeviceGetCount()
 	handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(dc)]
 	gmems = [pynvml.nvmlDeviceGetMemoryInfo(d) for d in handles]
-	tinfo = [torch.cuda.get_device_properties(i) for i in range(n)]
+	tinfo = [torch.cuda.get_device_properties(COMPUTE_ORDER.index(i)) if i in COMPUTE_ORDER else None for i in range(dc)]
 	COMPUTE_LOAD = globals().get("COMPUTE_LOAD") or [0] * dc
 	high = max(COMPUTE_LOAD)
 	if priority == "full":
@@ -238,8 +238,8 @@ def determine_cuda(mem=1, priority=None, multi=False, major=0):
 		key = lambda i: (p := tinfo[i]) and (gmems[i].free >= mem, COMPUTE_LOAD[i] < high * 0.5, p.major >= major, p.major >= 7, -p.major, -p.minor, COMPUTE_LOAD[i] * (random.random() + 4.5) * 0.2, -p.multi_processor_count, -gmems[i].free)
 	pcs = sorted(DEVICES, key=key, reverse=True)
 	if multi:
-		return [i for i in pcs if gmems[i].free >= mem], torch.float16
-	return pcs[0], torch.float16
+		return [COMPUTE_ORDER.index(i) for i in pcs if gmems[i].free >= mem], torch.float16
+	return COMPUTE_ORDER.index(pcs[0]), torch.float16
 
 mcache = {}
 def cached_model(cls, model, **kwargs):
@@ -518,7 +518,7 @@ class Bot:
 
 			futs = []
 			for i in range(len(dv2) // 2 + 1):
-				dtype = torch.float16 if torch.cuda.get_device_properties(i).major >= 7 else torch.float32
+				dtype = torch.float16 if dv2[i] >= 0 and torch.cuda.get_device_properties(dv2[i]).major >= 7 else torch.float32
 				futs.append(exc.submit(load_pipe, dv2[i], dtype))
 			print(futs)
 			pipes = []
@@ -528,8 +528,11 @@ class Bot:
 				self.models[m].extend(pipes)
 			except KeyError:
 				self.models[m] = pipes
-			self.summ_waiting.set_result(pipes)
-			self.summ_waiting = None
+			try:
+				self.summ_waiting.set_result(pipes)
+				self.summ_waiting = None
+			except:
+				print_exc()
 			print(pipes)
 		enc = tiktoken.get_encoding("cl100k_base")
 		tokens = enc.encode(q)
@@ -656,6 +659,9 @@ class Bot:
 			if model == "wizard-70b":
 				m = "TheBloke/WizardLM-70B-V1.0-GPTQ"
 				req = 35
+			elif model == "xwin-70b":
+				m = "TheBloke/Xwin-LM-70B-V0.1-GPTQ"
+				req = 35
 			elif model == "nous-puffin-70b":
 				m = "TheBloke/Nous-Puffin-70B-GPTQ"
 				req = 35
@@ -712,7 +718,7 @@ class Bot:
 						total = sum(COMPUTE_LOAD[i] for i in bit4)
 						hmem = max(m.total for m in gmems if m)
 						if high:
-							loads = [(max(r / total, 1.25 / len(bit4)) * req if r < high * 0.9 else inf) if gmems[i].total > hmem * 0.6 else 0 for i, r in enumerate(COMPUTE_LOAD)]
+							loads = [(max(r / total, 1.25 / len(bit4)) * req if r < high * 0.9 else inf) if gmems[i] and gmems[i].total > hmem * 0.6 else 0 for i, r in enumerate(COMPUTE_LOAD)]
 						else:
 							loads = [inf] * n
 						max_mem = {COMPUTE_ORDER.index(i): f"{round(min((gmems[i].total / 1048576 - (1 if i else 2) * 1024), loads[i] * 1024))}MiB" for i in bit4}
@@ -939,6 +945,10 @@ class Bot:
 			name="orca-70b",
 			cm=20,
 		),
+		xwin=dict(
+			name="xwin-70b",
+			cm=20,
+		),
 		wizard=dict(
 			name="wizard-70b",
 			cm=20,
@@ -956,15 +966,14 @@ class Bot:
 		),
 	)
 	mock_functions = [
-		[None, "Asking for real-world assistance or advice"],
-		[False, "Describes a roleplay or fictional scenario"],
-		["stable_diffusion", "Asking to create or edit a picture"],
+		[None, "Placeholder (Do not choose this!)"],
+		[None, "Providing real-world assistance or advice"],
+		[False, "Describe a roleplay or fictional scenario (Choose this if user is roleplaying!)"],
+		["stable_diffusion", "Create or edit a picture or art"],
 		["reminder", "Set alarm or reminder"],
-		["wolfram_alpha", "Math question"],
-		["play", "Play music"],
-		["astate", "Pause or repeat music"],
-		["audio", "Change audio settings"],
-		[None, "None of the above"],
+		["wolfram_alpha", "Math or calculator"],
+		["play", "Play or pause music, or change audio settings"],
+		[None, "None of the above or don't understand (Continues as normal)"],
 	]
 	functions = dict(
 		web_search={
@@ -1163,7 +1172,7 @@ class Bot:
 		if model in self.modmap:
 			data = self.modmap[model]
 			model = data.get("name") or model
-			limit = data.get("limit") or model
+			limit = data.get("limit") or limit
 			cm = data.get("cm") or cm
 			longer = data.get("longer") or longer
 		elif premium < 2:
@@ -1192,7 +1201,7 @@ class Bot:
 		print("INS:", ins)
 		p = per
 		bnb_models = ("pygmalion-13b", "manticore-13b", "hippogriff-30b", "wizard-vicuna-30b", "gplatty-30b", "airochronos-33b")
-		gptq_models = ("wizard-70b", "nous-puffin-70b", "orca-70b", "kimiko-70b", "wizard-coder-34b", "mythalion-13b")
+		gptq_models = ("wizard-70b", "xwin-70b", "nous-puffin-70b", "orca-70b", "kimiko-70b", "wizard-coder-34b", "mythalion-13b")
 		local_models = bnb_models + gptq_models
 		if self.name.casefold() not in p.casefold() and "you" not in p.casefold():
 			if model in ("gpt-3.5-turbo", "gpt-4", "gpt-3.5-turbo-instruct", "text-davinci-003"):
@@ -1233,7 +1242,7 @@ class Bot:
 			prompt = '"""\n' + q2 + "\n" + f'''"""
 
 ### Instruction:
-<|system|>: Your name is {self.name}. Classify the above request into one of the following:
+SYSTEM: Your name is Miza. Please select one of the following actions by number:
 '''
 			mocked = {}
 			i = 1
@@ -1242,8 +1251,9 @@ class Bot:
 					mocked[i] = k
 					prompt += f"{i}: {v}\n"
 					i += 1
-			prompt += "\n### Response:\n"
+			prompt += f"\n### Response:\n{self.name}: I choose option"
 			print("Mock prompt:", prompt)
+			# M, T = self.load_gptq("xwin-70b", priority=True)
 			M, T = self.load_gptq("mythalion-13b", priority=False)
 			tokens = T(prompt, return_tensors="pt").input_ids[:, -960:].to(M.device)
 			pc = len(tokens)
@@ -1267,17 +1277,19 @@ class Bot:
 			except:
 				k = None
 			if k is None:
-				pass
+				blocked.update(("audio", "astate", "askip", "reminder"))
 			elif k is False:
 				blocked.update(self.functions)
 				extensions = False
+			elif k == "play":
+				blocked.update(("web_search", "wolfram_alpha", "stable_diffusion", "reminder"))
 			else:
 				rem = set(self.functions)
 				rem.discard(k)
 				blocked.update(rem)
 				extensions = k not in blocked
-			if not extensions and model in ("gpt-3.5-turbo", "gpt-4") and sum(map(len, ins)) >= 512:
-				model = "wizard-70b"
+			if not extensions and model in ("gpt-3.5-turbo", "gpt-4") and sum(map(len, ins[:4])) >= 512:
+				model = "xwin-70b"
 				cm = 20
 		if model in ("gpt-3.5-turbo", "gpt-4") or extensions:
 			mod = model if model in ("gpt-3.5-turbo", "gpt-4") else "gpt-3.5-turbo"
@@ -1464,8 +1476,9 @@ class Bot:
 									res = res.strip()
 									messages = [messages[0], messages[-1]]
 									messages.append(m)
-									messages.append(dict(role="function", name=name, content=res or ""))
-									model = "gpt-4-0613" if model.startswith("gpt-4") else "gpt-3.5-turbo-0613"
+									messages.append(dict(role="function", name=name, content=res))
+									pc += len(self.gpttokens(res))
+									model = "gpt-4" if model.startswith("gpt-4") else "gpt-3.5-turbo"
 									searched = True
 									print("ChatGPT prompt:", messages)
 							elif name == "wolfram_alpha":
@@ -1478,7 +1491,8 @@ class Bot:
 									res = res.strip()
 									messages = [messages[0], messages[-1]]
 									messages.append(m)
-									messages.append(dict(role="function", name=name, content=res or ""))
+									messages.append(dict(role="function", name=name, content=res))
+									pc += len(self.gpttokens(res))
 									model = "gpt-4-0613" if model.startswith("gpt-4") else "gpt-3.5-turbo-0613"
 									searched = True
 									print("ChatGPT prompt:", messages)
@@ -1511,7 +1525,7 @@ class Bot:
 				print(f"{model.capitalize()} prompt:", prompt)
 			sys.stdout.flush()
 			pc = len(self.gpttokens(prompt))
-		elif model not in ("gpt-3.5-turbo", "gpt-4"):
+		elif not any(model.startswith(n) for n in ("gpt-3.5-turbo", "gpt-4")):
 			prompt = "".join(reversed(ins))
 			prompt = nstart + "\n\n" + prompt
 			if not self.bl:
@@ -1528,17 +1542,24 @@ class Bot:
 			prompt = prompt.strip()
 			tokens = tokeniser(prompt, return_tensors="pt").input_ids.to(model.device)
 			pc = len(tokens)
-			with torch.no_grad():
-				res = model.generate(
-					inputs=tokens,
-					temperature=temp,
-					top_k=96,
-					top_p=0.9,
-					repetition_penalty=1.2,
-					max_length=max(limit, len(tokens) + 1024),
-					do_sample=True,
-				)
-				torch.cuda.empty_cache()
+			while True:
+				try:
+					with torch.no_grad():
+						res = model.generate(
+							inputs=tokens,
+							temperature=temp,
+							top_k=96,
+							top_p=0.9,
+							repetition_penalty=1.2,
+							max_length=max(limit, len(tokens) + 1024),
+							do_sample=True,
+						)
+						torch.cuda.empty_cache()
+				except RuntimeError as ex:
+					if "probability tensor" in str(ex).lower():
+						continue
+					raise
+				break
 			text = tokeniser.decode(res[0]).removeprefix("<s>").strip().removeprefix(prompt).strip().split("</s>", 1)[0]
 			text = text.strip().replace(":\n", ": ").replace("<USER>", u)
 			spl = text.split(": ")
@@ -1557,6 +1578,10 @@ class Bot:
 				if text.startswith(start):
 					text = text[len(start):].strip()
 			model = omodel
+			if text.endswith(":"):
+				m2 = "mythalion-13b" if premium < 2 else "xwin-70b"
+				t2 = self.gptcomplete(u, q, refs=refs, start=text or " ", model=DEFMOD)
+				text += "\n" + t2
 		if model in bnb_models:
 			omodel = model
 			model, tokeniser = self.load_bnb(model)
@@ -1570,7 +1595,7 @@ class Bot:
 					top_k=96,
 					top_p=0.9,
 					repetition_penalty=1.2,
-					max_length=max(limit, len(tokens) + 1024),
+					max_length=max(min, len(tokens) + 1024),
 					do_sample=True,
 				)
 				torch.cuda.empty_cache()
@@ -1823,7 +1848,7 @@ class Bot:
 					m = response["choices"][0]["message"]
 					role = m["role"]
 					text = m["content"].removeprefix(f"{self.name} says: ").replace("<|im_sep|>", ":").removeprefix(f"{self.name}:") if m["content"] else ""
-					if len(text) >= 2 and text[-1] in " aAsS" and text[-2] not in ".!?" or text.endswith(' "') or text.endswith('\n"'):
+					if len(text) >= 2 and text[-1] in "aAsS" and text[-2] in " " or text.endswith(' "') or text.endswith('\n"'):
 						redo = True
 						if len(self.gpttokens(text)) < 24:
 							text = ""
@@ -1845,7 +1870,7 @@ class Bot:
 					# if searched:
 					# 	refs = list(refs) + [(f"[{sname}]", searched)]
 					t2 = self.gptcomplete(u, q, refs=refs, start=text or " ", model=DEFMOD)
-					if len(text) >= 2 and text[-1] in " aAsS" and text[-2] not in ".!?":
+					if len(text) >= 2 and text[-1] in "aAsS" and text[-2] in " ":
 						text += t2
 					else:
 						text += " " + t2
@@ -2126,7 +2151,7 @@ class Bot:
 				model="gpt-3.5-turbo",
 				user=str(random.randint(0, 4294967295)),
 			)
-		cm = cm2 = 20
+		cm = cm2 = 15
 		ok = openai.api_key
 		try:
 			resp = exc.submit(
@@ -2140,17 +2165,56 @@ class Bot:
 				self.submit_cost(ok, resp["usage"]["prompt_tokens"] * cm * costs + resp["usage"].get("completion_tokens", 0) * (cm2 or cm) * costs)
 				return resp["choices"][0]["message"]["content"]
 
+	def cgp2(self, data, stop=None):
+		prompt = data.strip() + "\n\n"
+		oai = getattr(self, "oai", None)
+		bals = getattr(self, "bals", {})
+		if oai:
+			openai.api_key = oai
+			costs = 0
+		elif bals:
+			openai.api_key = uoai = sorted(bals, key=bals.get)[0]
+			costs = -1
+		else:
+			openai.api_key = self.key
+			costs = 1
+		if isinstance(data, str):
+			data = dict(
+				prompt=prompt,
+				temperature=0.7,
+				top_p=0.9,
+				frequency_penalty=0.5,
+				presence_penalty=0.5,
+				stop=stop,
+				max_tokens=min(2048, 4000 - len(self.gpttokens(data))),
+				model="gpt-3.5-turbo-instruct",
+				user=str(random.randint(0, 4294967295)),
+			)
+		cm = cm2 = 15
+		ok = openai.api_key
+		try:
+			resp = exc.submit(
+				openai.Completion.create,
+				**data,
+			).result(timeout=60)
+		except concurrent.futures.TimeoutError:
+			print_exc()
+		else:
+			if resp:
+				self.submit_cost(ok, resp["usage"]["prompt_tokens"] * cm * costs + resp["usage"].get("completion_tokens", 0) * (cm2 or cm) * costs)
+				return resp.choices[0].text
+
 	def au(self, prompt, stop=None):
 		bals = getattr(self, "bals", {})
 		oai = getattr(self, "oai", None)
 		if bals or oai or self.premium >= 2:
-			funcs = [self.cgp]
+			funcs = [self.cgp2]
 		else:
-			funcs = [self.chatgpt, self.chatgpt, self.cgp, self.cgp]
+			funcs = [self.chatgpt, self.chatgpt, self.cgp2, self.cgp2]
 			# if len(self.gpttokens(prompt)) > 24:
 				# funcs.append(self.vai)
 			random.shuffle(funcs)
-		funcs.extend((self.cgp, self.cgp))
+		funcs.extend((self.cgp2, self.cgp))
 		while funcs:
 			func = funcs.pop(0)
 			try:
@@ -2267,11 +2331,10 @@ class Bot:
 				return self.after(tup, (self.name, response))
 			response = "Sorry, I don't know."
 		return self.after(tup, (self.name, response))
+	ask = ai
 
 	def deletes(self):
 		self.chat_history = self.chat_history[:-2]
-
-	ask = ai
 
 	def append(self, tup, nin=0, to=None, ai=True):
 		to = to if to is not None else self.chat_history
@@ -2298,7 +2361,7 @@ class Bot:
 		if not to or tup != to[0]:
 			k, v = tup
 			if isinstance(v, dict):
-				v = v["func"] + " " + v["argv"]
+				v = (v["func"] + " " + v.get("argv", "")).strip()
 			if k == self.name:
 				v = self.alm_re.sub("", v)
 			tlim = round(2 ** (-nin / 3) * (384 if self.premium >= 2 else 192))
@@ -2353,9 +2416,9 @@ class Bot:
 		gpt3a=(120, 2),
 		gpt4a=(480, 3),
 		mythalion=(960, 4),
-		hippogriff=(960, 4),
+		orca=(960, 4),
 		wizard=(960, 4),
-		platypus=(960, 4),
+		xwin=(960, 4),
 	)
 
 	def rerender(self, model=""):
@@ -2395,17 +2458,9 @@ class Bot:
 		return t2[1]
 
 
-class Cancel:
-	@classmethod
-	def result(timeout=None):
-		pass
-LOADED = Cancel
-
 if __name__ == "__main__":
 	import sys
 	token = sys.argv[1] if len(sys.argv) > 1 else ""
 	bot = Bot(token)
 	while True:
 		print(bot.talk(input()))
-else:
-	LOADED = exc.submit(Bot.answer_summarise, Bot, q="test")

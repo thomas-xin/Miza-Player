@@ -998,7 +998,9 @@ if "video" in CAPS:
 					command.extend(("-c:v", "av1_nvenc"))
 			command.append(out)
 			print(command)
-			subprocess.check_output(command)
+			env = dict(os.environ)
+			env.pop("CUDA_VISIBLE_DEVICES", None)
+			subprocess.check_output(command, env=env)
 			if direct:
 				os.remove(fn)
 		except:
@@ -1180,6 +1182,7 @@ if "ecdc" in CAPS:
 				proc = psutil.Popen(arg, stdin=si, stdout=so, stderr=se, cwd=cwd, bufsize=bufsize * 256)
 				if first:
 					self.stdin = proc.stdin
+					self.args = arg
 				if last:
 					self.stdout = proc.stdout
 					self.stderr = proc.stderr
@@ -1280,7 +1283,7 @@ if "caption" in CAPS:
 		dc = pynvml.nvmlDeviceGetCount()
 		handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(dc)]
 		gmems = [pynvml.nvmlDeviceGetMemoryInfo(d) for d in handles]
-		tinfo = [torch.cuda.get_device_properties(i) for i in range(n)]
+		tinfo = [torch.cuda.get_device_properties(COMPUTE_ORDER.index(i)) if i in COMPUTE_ORDER else None for i in range(dc)]
 		COMPUTE_LOAD = globals().get("COMPUTE_LOAD") or [0] * dc
 		high = max(COMPUTE_LOAD)
 		if priority == "full":
@@ -1293,8 +1296,8 @@ if "caption" in CAPS:
 			key = lambda i: (p := tinfo[i]) and (gmems[i].free >= mem, COMPUTE_LOAD[i] < high * 0.5, p.major >= major, p.major >= 7, -p.major, -p.minor, COMPUTE_LOAD[i] * (random.random() + 4.5) * 0.2, -p.multi_processor_count, -gmems[i].free)
 		pcs = sorted(DEVICES, key=key, reverse=True)
 		if multi:
-			return [i for i in pcs if gmems[i].free >= mem], torch.float16
-		return pcs[0], torch.float16
+			return [COMPUTE_ORDER.index(i) for i in pcs if gmems[i].free >= mem], torch.float16
+		return COMPUTE_ORDER.index(pcs[0]), torch.float16
 
 	import tiktoken
 	try:
@@ -1623,6 +1626,7 @@ if "gptq" in CAPS or "agpt" in CAPS:
 	convobot.COMPUTE_LOAD = COMPUTE_LOAD
 	convobot.COMPUTE_CAPS = COMPUTE_CAPS
 	convobot.COMPUTE_ORDER = COMPUTE_ORDER
+	convobot.DEVICES = DEVICES
 
 	def CBAI(inputs):
 		user_id = inputs["user_id"]
@@ -1631,6 +1635,7 @@ if "gptq" in CAPS or "agpt" in CAPS:
 		ht = inputs["huggingface_token"]
 		name = inputs["name"]
 		model = inputs["model"]
+		keep_model = inputs.get("keep_model")
 		auto = inputs["auto"]
 		personality = inputs["personality"]
 		premium = inputs["premium"]
@@ -1661,7 +1666,8 @@ if "gptq" in CAPS or "agpt" in CAPS:
 			)
 		else:
 			cb.premium = premium
-		cb.model = model or cb.model
+		orig_model = cb.model
+		cb.model = model or orig_model
 		cb.auto = auto
 		cb.user_id = user_id
 		cb.channel_id = channel_id
@@ -1700,6 +1706,8 @@ if "gptq" in CAPS or "agpt" in CAPS:
 		res = cb.ai(*prompt, refs=refs, im=im)
 		if cb.model in ("gpt3", "gpt4", "gpt3+", "gpt4+"):
 			cb.model = None
+		elif auto or not keep_model:
+			cb.model = orig_model
 		with torch.no_grad():
 			torch.cuda.empty_cache()
 		return res
@@ -1757,22 +1765,12 @@ if "gptq" in CAPS or "agpt" in CAPS:
 		cb.premium = premium
 		return cb.aa(system, prompt)
 
-	try:
-		from chatgpt_wrapper import AsyncChatGPT
-	except ImportError:
-		convobot.AsyncChatGPT = None
-	except:
-		convobot.AsyncChatGPT = None
-		print(traceback.format_exc(), end="")
-	else:
-		convobot.AsyncChatGPT = AsyncChatGPT
-
 	if "gptq" in CAPS:
 		convobot.GPTQ = True
 		def load_models():
-			convobot.LOADED.result()
 			mods = dict(
 				load_gptq=(
+					"xwin-70b",
 					"wizard-70b",
 					"kimiko-70b",
 					"wizard-coder-34b",
@@ -1794,13 +1792,29 @@ if "gptq" in CAPS or "agpt" in CAPS:
 				for m in v:
 					exc.submit(getattr(bot, k), m, fail=True)
 					time.sleep(1)
+		if "load" in CAPS:
+			load_models()
+			raise SystemExit
 		# exc.submit(load_models)
+
+	exc.submit(convobot.Bot.answer_summarise, convobot.Bot, q="test")
+
+	try:
+		from chatgpt_wrapper import AsyncChatGPT
+	except ImportError:
+		convobot.AsyncChatGPT = None
+	except:
+		convobot.AsyncChatGPT = None
+		print(traceback.format_exc(), end="")
+	else:
+		convobot.AsyncChatGPT = AsyncChatGPT
 
 if CAPS.intersection(("sd", "sdxl", "sdxlr")):
 	import imagebot
 	imagebot.COMPUTE_LOAD = COMPUTE_LOAD
 	imagebot.COMPUTE_CAPS = COMPUTE_CAPS
 	imagebot.COMPUTE_ORDER = COMPUTE_ORDER
+	imagebot.DEVICES = DEVICES
 
 	def IBASL(prompt, kwargs, nsfw=False, force=True, count=1, sdxl=False):
 		try:
@@ -1826,6 +1840,13 @@ if CAPS.intersection(("sd", "sdxl", "sdxlr")):
 		im.save(b, format="png")
 		b.seek(0)
 		return b.read()
+
+	def IBASLR(prompt, kwargs, nsfw=False, force=True, count=1):
+		try:
+			ib = CBOTS[None]
+		except KeyError:
+			ib = CBOTS[None] = imagebot.Bot()
+		return ib.art_stablediffusion_local(prompt, kwargs, nsfw=nsfw, fail_unless_gpu=not force, count=count, sdxl=2)
 
 	# def whisper(url, best=False):
 	# 	ts = time.time()
@@ -1924,7 +1945,13 @@ def from_bytes(b, save=None, nogif=False):
 				raise
 			print(info)
 			size = tuple(map(int, info[:2]))
-			dur = float(info[3])
+			if info[3] == "N/A":
+				cmd = ("./ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "format=duration", "-of", "csv=p=0", fn)
+				info[3] = subprocess.check_output(cmd)
+			try:
+				dur = float(info[3])
+			except (ValueError, TypeError, SyntaxError, ZeroDivisionError):
+				dur = 0
 			try:
 				fps = eval(info[2], {}, {})
 			except (ValueError, TypeError, SyntaxError, ZeroDivisionError):
@@ -1942,7 +1969,7 @@ def from_bytes(b, save=None, nogif=False):
 				framedur = 1000 / fps
 				bcount = 4 if fmt == "rgba" else 3
 				bcount *= int(np.prod(size))
-				cmd3 = ["./ffmpeg", "-hide_banner", "-v", "error", "-y", "-i", fn, "-vf", f"fps=fps={fps},scale={w}:{h}:flags=bicubic", "-f", "rawvideo", "-pix_fmt", fmt, "-vsync", "0", "-"]
+				cmd3 = ["./ffmpeg", "-hwaccel", hwaccel, "-hide_banner", "-v", "error", "-y", "-i", fn, "-vf", f"fps=fps={fps},scale={w}:{h}:flags=bicubic", "-f", "rawvideo", "-pix_fmt", fmt, "-vsync", "0", "-"]
 				print(cmd3)
 				proc = psutil.Popen(cmd3, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1048576)
 			images = deque()
@@ -2035,9 +2062,23 @@ if Image:
 
 		def __init__(self, *images, copy=False, func=None, args=()):
 			if len(images) == 1:
-				images = ImageIterator(images[0])
-				if not func and not copy:
-					copy = True
+				simages = []
+				im = images[0]
+				try:
+					for i in range(2147483648):
+						im.seek(i)
+						if i:
+							im2 = im.copy()
+						else:
+							im2 = im
+						simages.append(im2)
+				except EOFError:
+					pass
+				images = simages
+				if len(images) > 1 or copy:
+					im.seek(0)
+					images[0] = im.copy()
+				copy = False
 			if func:
 				self._images = [func(image, *args) for image in images]
 			elif copy:
@@ -2178,10 +2219,10 @@ def evalImg(url, operation, args):
 						break
 					new["duration"] += max(image.info.get("duration", 0), 1000 / 240)
 				fps = 1000 * f / new["duration"]
-				fpl = 30 if opt else 40
+				fpl = 15 if opt else 30
 				step = 1
 				while fps / step >= fpl:
-					step += 1
+					step += 0.25
 				if f // step > 2000:
 					step = f / 1999
 				elif f // step > 1000 and fpl > 20:
@@ -2196,7 +2237,7 @@ def evalImg(url, operation, args):
 		if getattr(new, "audio", None):
 			new = dict(count=1, duration=1, frames=[new])
 	# print("NEW:", new)
-	if type(new) is dict and "frames" in new:
+	if isinstance(new, dict) and "frames" in new:
 		frames = optimise(new["frames"])
 		if not frames:
 			raise EOFError("No image output detected.")
@@ -2279,7 +2320,7 @@ def evalImg(url, operation, args):
 						c = min(len(fr), max(5, floor(sqrt(len(fr)))))
 						for i, f in enumerate(fr[:c]):
 							if isinstance(f, Image.Image):
-								im = f.resize((5, 5), resample=Resampling.NEAREST)
+								im = f.resize((7, 7), resample=Resampling.NEAREST)
 								R, G, B = rgb_split(im)
 								for r, g, b in zip(R.ravel(), G.ravel(), B.ravel()):
 									l = max(r, g, b)
@@ -2288,7 +2329,7 @@ def evalImg(url, operation, args):
 									t = tuple(min(255, round(log2(x / l * 255 + 1) * 2) * 16) for x in (r, g, b))
 									if t not in cols:
 										cols.add(t)
-						mc = min(64, max(4, 2 ** ceil(log2(len(cols) + 1 >> 1))))
+						mc = min(128, max(4, 2 ** ceil(log2(len(cols) + 2 >> 1))))
 						vf += f"max_colors={mc}:stats_mode=diff[p];[s1][p]paletteuse=dither=sierra3:diff_mode=rectangle"
 					elif new["count"] > 4096:
 						vf += "max_colors=128:stats_mode=diff[p];[s1][p]paletteuse=dither=sierra2_4a:diff_mode=rectangle"
@@ -2343,7 +2384,9 @@ def evalImg(url, operation, args):
 					out = "cache/" + str(ts) + "." + fmt
 				command.append(out)
 				print(command)
-				proc = psutil.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, bufsize=1048576)
+				env = dict(os.environ)
+				env.pop("CUDA_VISIBLE_DEVICES", None)
+				proc = psutil.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, bufsize=1048576, env=env)
 			for i, frame in enumerate(frames):
 				if fmt == "zip":
 					b = io.BytesIO()
@@ -2416,6 +2459,8 @@ def evalImg(url, operation, args):
 			# return [out]
 			with open(out, "rb") as f:
 				return f.read()
+		else:
+			new = next(iter(new["frames"]))
 	if Image and isinstance(new, Image.Image):
 		new = optimise(new, keep_rgb=False)
 		if new.entropy() > 8 and fmt in ("default", "webp"):

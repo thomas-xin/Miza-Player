@@ -2434,7 +2434,10 @@ def distribute_in(delay):
 		time.sleep(delay)
 		while utc() - has_api > 60:
 			time.sleep(600)
-	if os.name == "nt" and os.path.exists("x-distribute.py"):
+	if os.name == "nt":
+		resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Miza/master/x-distribute.py")
+		with open("x-distribute.py", "wb") as f:
+			f.write(resp.content)
 		args = [sys.executable, "x-distribute.py"]
 		print(args)
 		psutil.Popen(args)
@@ -4314,7 +4317,7 @@ def save_settings(closing=False):
 			json.dump(data, f, separators=(",", ":"), default=json_default)
 		if os.path.exists("dump.json"):
 			os.remove("dump.json")
-			os.rename("dump2.json", "dump.json")
+		os.rename("dump2.json", "dump.json")
 	options.screensize = temp
 	for e in os.scandir("cache"):
 		fn = e.name
@@ -5086,7 +5089,7 @@ except Exception as ex:
 		last_save_fut.result()
 	save_settings(closing=True)
 	if restarting:
-		futs.add(submit(os.system, f"start /MIN cmd /k {sys.executable} main.pyw"))
+		futs.add(submit(os.execl, sys.executable, "python", *sys.argv))
 	pygame.closed = True
 	if type(ex) is not StopIteration:
 		print_exc()

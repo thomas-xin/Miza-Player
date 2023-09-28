@@ -55,6 +55,15 @@ def lim_tokens(s, maxlen=10, mode="centre"):
 			s = enc.decode(tokens[:maxlen - 3]) + "..."
 	return s.strip()
 
+def max_size(w, h, maxsize, force=False):
+	s = w * h
+	m = maxsize * maxsize
+	if s > m or force:
+		r = (m / s) ** 0.5
+		w = round(w * r)
+		h = round(h * r)
+	return w, h
+
 class_name = webdriver.common.by.By.CLASS_NAME
 css_selector = webdriver.common.by.By.CSS_SELECTOR
 xpath = webdriver.common.by.By.XPATH
@@ -195,7 +204,7 @@ def update():
 			return_driver(d)
 
 def determine_cuda(mem=1, priority=None, multi=False, major=0):
-	if not torch or not torch.cuda.is_available():
+	if not torch or not DEVICES or not torch.cuda.is_available():
 		if multi:
 			return [-1], torch.float32
 		return -1, torch.float32
@@ -209,7 +218,7 @@ def determine_cuda(mem=1, priority=None, multi=False, major=0):
 	dc = pynvml.nvmlDeviceGetCount()
 	handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(dc)]
 	gmems = [pynvml.nvmlDeviceGetMemoryInfo(d) for d in handles]
-	tinfo = [torch.cuda.get_device_properties(i) for i in range(n)]
+	tinfo = [torch.cuda.get_device_properties(COMPUTE_ORDER.index(i)) if i in COMPUTE_ORDER else None for i in range(dc)]
 	COMPUTE_LOAD = globals().get("COMPUTE_LOAD") or [0] * dc
 	high = max(COMPUTE_LOAD)
 	if priority == "full":
@@ -220,10 +229,10 @@ def determine_cuda(mem=1, priority=None, multi=False, major=0):
 		key = lambda i: (p := tinfo[i]) and (gmems[i].free >= mem, -mem // 1073741824, p.major, p.minor, COMPUTE_LOAD[i] < high * 0.75, COMPUTE_LOAD[i] * (random.random() + 4.5) * 0.2, -gmems[i].free, p.multi_processor_count)
 	else:
 		key = lambda i: (p := tinfo[i]) and (gmems[i].free >= mem, COMPUTE_LOAD[i] < high * 0.5, p.major >= major, p.major >= 7, -p.major, -p.minor, COMPUTE_LOAD[i] * (random.random() + 4.5) * 0.2, -p.multi_processor_count, -gmems[i].free)
-	pcs = sorted(range(n), key=key, reverse=True)
+	pcs = sorted(DEVICES, key=key, reverse=True)
 	if multi:
-		return [i for i in pcs if gmems[i].free >= mem], torch.float16
-	return pcs[0], torch.float16
+		return [COMPUTE_ORDER.index(i) for i in pcs if gmems[i].free >= mem], torch.float16
+	return COMPUTE_ORDER.index(pcs[0]), torch.float16
 
 mcache = {}
 def cached_model(cls, model, **kwargs):
@@ -716,12 +725,14 @@ class Bot:
 			if not isinstance(b, str):
 				b = io.BytesIO(b)
 			mask = Image.open(b)
-		output_type = "pil"#"latent" if sdxl else "pil"
+		output_type = "latent" if sdxl > 1 else "pil"
 		kw = {}
 		if sdxl:
 			kw = dict(output_type=output_type, denoising_end=0.8)
 			if im:
-				kw["target_size"] = im.size
+				kw["target_size"] = max_size(*im.size, 1024 if sdxl > 1 else 512, force=True)
+			elif sdxl > 1:
+				kw["target_size"] = (1024, 1024)
 			else:
 				kw["target_size"] = (512, 512)
 			kw["negative_prompt"] = self.neg_prompt
@@ -863,14 +874,6 @@ class Bot:
 					# torch.cuda.empty_cache()
 		# pipe.safety_checker = lambda images, **kwargs: (images, [False] * len(images))
 		prompt = lim_tokens(prompt, 80, mode="left")
-		def max_size(w, h, maxsize, force=False):
-			s = w * h
-			m = maxsize * maxsize
-			if s > m or force:
-				r = (m / s) ** 0.5
-				w = round(w * r)
-				h = round(h * r)
-			return w, h
 		data = pipe(
 			prompt=[prompt] * len(images),
 			negative_prompt=[self.neg_prompt] * len(images),

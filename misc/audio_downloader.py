@@ -1565,7 +1565,8 @@ class AudioDownloader:
 			# Allow loading of files output by ~dump
 			if is_url(item):
 				url = verify_url(item)
-				if url[-5:] == ".json" or url[-4:] in (".txt", ".bin", ".zip"):
+				utest = url.split("?", 1)[0]
+				if utest[-5:] == ".json" or utest[-4:] in (".txt", ".bin", ".zip"):
 					s = reqs.get(url).content
 					if not s.startswith(b"{"):
 						b = io.BytesIO(s)

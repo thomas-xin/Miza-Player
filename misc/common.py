@@ -3044,7 +3044,7 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, filled=True
 			colours = []
 			for i in range(bevel):
 				p = [rect[0] + i + 1, screensize[1] - rect[1] - i - 1]
-				q = [rect[0] + rect[2] - i, screensize[1] - rect[1] - rect[3] + i]
+				q = [rect[0] + rect[2] - i, screensize[1] - rect[1] - rect[3] + i + 1]
 				v1 = 128 - i / bevel * 128
 				v2 = i / bevel * 96 - 96
 				col1 = col2 = colour
@@ -3064,9 +3064,9 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, filled=True
 				colours.append(col2)
 				lines.append((q[0], q[1]))
 				colours.append(col2)
-				lines.append((p[0], q[1]))
+				lines.append((p[0] - 1, q[1]))
 				colours.append(col2)
-				lines.append((p[0], q[1]))
+				lines.append((p[0] - 1, q[1]))
 				colours.append(col1)
 				lines.append((p[0], p[1]))
 				colours.append(col1)

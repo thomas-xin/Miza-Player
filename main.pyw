@@ -2225,13 +2225,15 @@ def ecdc_compress(entry, stream, force=False):
 				if isinstance(ex, EOFError) and i is None:
 					with open(ofn, "rb") as f:
 						b = f.read()
-					query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
-					api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url=https://api.mizabot.xyz/ytdl?d={url}"
-					# print(api)
-					with requests.post(api, data=b, stream=True) as resp:
-						print(resp)
-						if resp.status_code not in range(200, 400):
-							print(api, resp.content)
+					if utc() - has_api >= 60:
+						query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
+						api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url=https://api.mizabot.xyz/ytdl?d={url}"
+						# print(api)
+						with requests.post(api, data=b, stream=True) as resp:
+							print(resp)
+							if resp.status_code not in range(200, 400):
+								print(api, resp.content)
+								has_api = utc()
 				return ofn
 		finally:
 			ECDC_RUNNING.discard("!" + ofn)
@@ -4369,7 +4371,8 @@ lp = None
 addp.result()
 
 try:
-	submit(distribute_in, 0 if "-d" in sys.argv else 300)
+	if "-nd" not in sys.argv:
+		submit(distribute_in, 0 if "-d" in sys.argv else 300)
 	if options.control.preserve and os.path.exists("dump.json"):
 		ytdl = downloader.result()
 		with open("dump.json", "rb") as f:

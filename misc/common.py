@@ -4310,4 +4310,4 @@ def expired(stream):
 
 is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r+[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
 is_youtube_url = lambda url: url and re.findall("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+", url)
-# Regex moment - Smudge
+# Regex moment - Lou

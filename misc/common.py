@@ -3067,6 +3067,8 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, filled=True
 				lines.append((p[0] - 1, q[1]))
 				colours.append(col2)
 				lines.append((p[0] - 1, q[1]))
+				# How to flex on people that you have a good monitor without telling people you have a good monitor: this bug fix actually means something to you
+				# Also hi Lou was here on the 17th of Spooky Month 2023 *dabs and eats Miza's cables*
 				colours.append(col1)
 				lines.append((p[0], p[1]))
 				colours.append(col1)

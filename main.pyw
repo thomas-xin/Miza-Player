@@ -2250,7 +2250,7 @@ def ecdc_compress(entry, stream, force=False):
 							print(resp)
 							if resp.status_code not in range(200, 400):
 								print(api, resp.content)
-								has_api = utc()
+								globals()["has_api"] = utc()
 				return ofn
 		finally:
 			ECDC_RUNNING.discard("!" + ofn)

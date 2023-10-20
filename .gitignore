@@ -9,6 +9,12 @@ Rockwell.ttf
 OpenSansEmoji.ttf
 sndlib
 training.txt
+x-distribute.py
+misc/convobot.py
+misc/imagebot.py
+misc/x-compute.py
+misc/x-math.py
+misc/x-image.py
 *.mpp
 *.json
 *.tmp

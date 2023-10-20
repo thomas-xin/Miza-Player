@@ -3688,7 +3688,7 @@ def text_size(text, size, font="OpenSansEmoji"):
 
 m_split = re.compile(r"[\s.\-/\\|:'%]")
 md_font = {}
-def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False, z=0):
+def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False, z=0, clip=False):
 	# text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
 	text = str(text if type(text) is not float else round_min(text)).replace("\u200b", "").strip()
 	if not text:
@@ -3757,6 +3757,13 @@ def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, 
 			TextRect = astype(pos, list) + TextRect[2:]
 		elif align == 2:
 			TextRect = [y - x for x, y in zip(TextRect[2:], pos)] + TextRect[2:]
+		if clip:
+			rect = (
+				max(0, min(surface.width - TextSurf.get_width(), TextRect[0])),
+				max(0, min(surface.height - TextSurf.get_height(), TextRect[1])),
+			)
+			rect += tuple(TextRect[:2])
+			TextRect = rect
 		blit_complex(surface, TextSurf, TextRect, colour=colour, alpha=alpha, copy=cache, z=z)
 		return TextRect
 	else:

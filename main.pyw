@@ -344,9 +344,10 @@ def setup_buttons():
 				),
 			)
 		sidebar.buttons.append(cdict(
-			name="Settings",
+			name="Settings (ESC)",
 			sprite=(gears, notes),
 			click=(settings_toggle, settings_menu),
+			hotkey=(K_ESCAPE,),
 		))
 		reset_menu(full=False)
 		folder = button_images.folder.result()
@@ -406,10 +407,11 @@ def setup_buttons():
 				multiple=False,
 			)
 		sidebar.buttons.append(cdict(
-			name="Open",
+			name="Open (CTRL+O)",
 			sprite=folder,
 			click=(enqueue_local, enqueue_menu),
 			click2=load_project_file,
+			hotkey=(CTRL, K_o),
 		))
 		reset_menu(full=False)
 		hyperlink = button_images.hyperlink.result()
@@ -439,12 +441,13 @@ def setup_buttons():
 				),
 			)
 		sidebar.buttons.append(cdict(
-			name="Search",
-			name2="New instrument",
+			name="Search (CTRL+F)",
+			name2="New instrument (CTRL+F)",
 			sprite=hyperlink,
 			sprite2=plus,
 			click=(enqueue_search, select_search),
 			click2=add_instrument,
+			hotkey=(CTRL, K_f),
 		))
 		reset_menu(full=False)
 		playlist = button_images.playlist.result()
@@ -753,12 +756,13 @@ def setup_buttons():
 		def waves_1():
 			raise BaseException
 		sidebar.buttons.append(cdict(
-			name="Playlist",
-			name2="Audio Clip",
+			name="Playlist (CTRL+P)",
+			name2="Audio Clip (CTRL+P)",
 			sprite=playlist,
 			sprite2=waves,
 			click=(get_playlist, playlist_menu),
 			click2=waves_1,
+			hotkey=(CTRL, K_p),
 		))
 		reset_menu(full=False)
 		history = button_images.history.result()
@@ -822,10 +826,11 @@ def setup_buttons():
 		def project_history():
 			raise BaseException
 		sidebar.buttons.append(cdict(
-			name="History",
+			name="History (CTRL+H)",
 			sprite=history,
 			click=(player_history, history_menu),
 			click2=project_history,
+			hotkey=(CTRL, K_h),
 		))
 		reset_menu(full=False)
 		edit = button_images.edit.result()
@@ -844,9 +849,10 @@ def setup_buttons():
 				mixer.submit(f"~setting spectrogram {options.spectrogram - 1}")
 				pygame.display.set_caption("Miza Player")
 		toolbar.buttons.append(cdict(
-			name="Editor",
+			name="Editor (CTRL+E)",
 			image=edit,
 			click=None,
+			hotkey=(CTRL, K_e),
 		))
 		reset_menu(full=False)
 		repeat = button_images.repeat.result()
@@ -857,9 +863,10 @@ def setup_buttons():
 			control.loop = (control.loop - 1) % 3
 			globals()["last-cond"] = 2
 		toolbar.buttons.append(cdict(
-			name="Repeat",
+			name="Repeat (ALT+Z)",
 			image=repeat,
 			click=(repeat_1, repeat_2),
+			hotkey=(ALT, K_z),
 		))
 		reset_menu(full=False)
 		shuffle = button_images.shuffle.result()
@@ -876,9 +883,10 @@ def setup_buttons():
 			if control.shuffle == 2 and player.get("needs_shuffle"):
 				seek_abs(player.pos)
 		toolbar.buttons.append(cdict(
-			name="Shuffle",
+			name="Shuffle (ALT+X)",
 			image=shuffle,
 			click=(shuffle_1, shuffle_2),
+			hotkey=(ALT, K_x),
 		))
 		reset_menu(full=False)
 		back = button_images.back.result()
@@ -891,9 +899,10 @@ def setup_buttons():
 			mixer.clear()
 			player.fut = None
 		toolbar.buttons.append(cdict(
-			name="Previous",
+			name="Previous (ALT+LEFT)",
 			image=back,
 			click=rleft,
+			hotkey=(ALT, K_LEFT),
 		))
 		front = pygame.transform.flip(back, True, False)
 		def rright():
@@ -902,9 +911,10 @@ def setup_buttons():
 			mixer.clear()
 			player.fut = None
 		toolbar.buttons.append(cdict(
-			name="Next",
+			name="Next (ALT+RIGHT)",
 			image=front,
 			click=rright,
+			hotkey=(ALT, K_RIGHT),
 		))
 		reset_menu(full=False)
 		flip = button_images.flip.result()
@@ -913,9 +923,10 @@ def setup_buttons():
 			mixer.clear()
 			player.fut = None
 		toolbar.buttons.append(cdict(
-			name="Flip",
+			name="Flip (ALT+F)",
 			image=flip,
 			click=flip_1,
+			hotkey=(ALT, K_f),
 		))
 		reset_menu(full=False)
 		scramble = button_images.scramble.result()
@@ -924,9 +935,10 @@ def setup_buttons():
 			mixer.clear()
 			player.fut = None
 		toolbar.buttons.append(cdict(
-			name="Scramble",
+			name="Scramble (ALT+S)",
 			image=scramble,
 			click=scramble_1,
+			hotkey=(ALT, K_s),
 		))
 		reset_menu(full=False)
 		unique = button_images.unique.result()
@@ -946,9 +958,10 @@ def setup_buttons():
 				mixer.clear()
 				player.fut = None
 		toolbar.buttons.append(cdict(
-			name="Remove Duplicates",
+			name="Remove Duplicates (ALT+U)",
 			image=unique,
 			click=unique_1,
+			hotkey=(ALT, K_u),
 		))
 		reset_menu(full=False)
 		microphone = button_images.microphone.result()
@@ -996,10 +1009,11 @@ def setup_buttons():
 				# ),
 			# )
 		sidebar.buttons.append(cdict(
-			name="Audio input",
+			name="Audio input (CTRL+I)",
 			sprite=microphone,
 			click=(lambda: None),
 			# click=enqueue_device,
+			hotkey=(CTRL, K_i),
 		))
 		reset_menu(full=False)
 		record = button_images.record.result()
@@ -1076,10 +1090,12 @@ def setup_buttons():
 				),
 			)
 		sidebar.buttons.append(cdict(
-			name="Audio output",
+			name="Audio output (CTRL+R)",
 			sprite=record,
 			click=(record_audio, record_menu),
+			hotkey=(CTRL, K_r),
 		))
+		hotkey=(ALT, K_p),
 		reset_menu(full=False)
 	except:
 		print_exc()
@@ -3194,40 +3210,54 @@ def update_menu():
 		else:
 			c = tc
 	toolbar.colour = c
-	if any(mclick):
-		for button in toolbar.buttons:
-			try:
-				if in_rect(mpos, button.rect):
-					button.flash = 64
-					sidebar.menu = 0
-					if callable(button.click):
-						button.click()
-					elif button.click:
-						button.click[min(mclick.index(1), len(button.click) - 1)]()
-			except AttributeError:
-				while "rect" not in button:
-					time.sleep(0.01)
-			if toolbar.editor:
-				break
-	else:
-		for button in toolbar.buttons:
-			if "flash" in button:
+	maxb = (options.sidebar_width - 12) // 44 + len(toolbar.buttons)
+	buttons = toolbar.buttons.concat(sidebar.buttons)
+	for i, button in enumerate(buttons):
+		try:
+			if button.get("flash"):
+				# print(i, button.flash)
 				button.flash = max(0, button.flash - duration * 64)
-	maxb = (options.sidebar_width - 12) // 44
-	if any(mclick):
-		for button in sidebar.buttons[:maxb]:
 			if in_rect(mpos, button.rect):
-				button.flash = 32
-				click = button.click if not toolbar.editor else button.get("click2") or button.click
+				button.flash = 16
 				sidebar.menu = 0
-				if callable(click):
-					click()
-				elif click:
-					click[min(mclick.index(1), len(click) - 1)]()
-	else:
-		for button in sidebar.buttons:
-			if "flash" in button:
-				button.flash = max(0, button.flash - duration * 64)
+				clicked = i < maxb and any(mclick)
+			else:
+				clicked = False
+		except AttributeError:
+			print_exc()
+			continue
+		if not clicked:
+			hotkey = button.get("hotkey")
+			if hotkey:
+				clicked = True
+				for k in hotkey[:-1]:
+					if callable(k):
+						if not k(kheld):
+							clicked = False
+							break
+					else:
+						if not kheld[k]:
+							clicked = False
+							break
+				else:
+					k = hotkey[-1]
+					if callable(k):
+						if not k(kclick):
+							clicked = False
+					else:
+						if not kclick[k]:
+							clicked = False
+		if clicked:
+			button.flash = 64
+			click = button.click if not toolbar.editor else button.get("click2") or button.click
+			sidebar.menu = 0
+			if callable(click):
+				click()
+			elif 1 not in mclick:
+				click[0]()
+			elif click:
+				click[min(mclick.index(1), len(click) - 1)]()
+
 	if in_rect(mpos, sidebar.rect[:2] + (6, sidebar.rect[3])):
 		if not toolbar.resizing and mclick[0]:
 			sidebar.resizing = True
@@ -4143,6 +4173,7 @@ def draw_menu():
 		hls[2] = sat
 		col = [round(i * 255) for i in colorsys.hls_to_rgb(*hls)]
 		for i, button in enumerate(sidebar.buttons[:maxb]):
+			lum = 175
 			if not button.get("rect"):
 				continue
 			redraw = False
@@ -4264,6 +4295,7 @@ def draw_menu():
 			align=hovertext.get("align", 1),
 			cache=True,
 			z=642,
+			clip=True,
 		)
 
 pdata = None
@@ -5087,13 +5119,12 @@ except Exception as ex:
 	futs = set()
 	futs.add(submit(reqs.delete, mp))
 	futs.add(submit(update_collections2))
-	futs.add(submit(DISP.close))
+	# futs.add(submit(DISP.close))
 	if restarting:
 		futs.add(submit(os.execl, sys.executable, "python", *sys.argv))
 	pygame.closed = True
 	if type(ex) is not StopIteration:
 		print_exc()
-	print("Exiting...")
 	if mixer.is_running():
 		try:
 			mixer.submit("~quit")
@@ -5110,7 +5141,9 @@ except Exception as ex:
 	if globals().get("last_save_fut"):
 		last_save_fut.result()
 	save_settings(closing=True)
-	pygame.quit()
-	if type(ex) is not StopIteration:
+	if not restarting and type(ex) is not StopIteration:
 		easygui.exceptionbox()
+	print("Exiting...")
+	DISP.close()
+	pygame.quit()
 	PROC.kill()

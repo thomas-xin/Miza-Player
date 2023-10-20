@@ -181,6 +181,7 @@ def load_pencil():
 	pencilb.fill((0, 0, 0), special_flags=BLEND_RGB_MULT)
 addp = submit(load_pencil)
 
+has_api = False
 lyrics_entry = None
 
 def settings_reset():

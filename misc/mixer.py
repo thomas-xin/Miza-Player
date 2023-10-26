@@ -830,6 +830,8 @@ def download(url, fn):
 			return
 		downloading.add(fn)
 		cmd = ffmpeg_start
+		if is_url(url):
+			cmd += ffmpeg_stream
 		# if is_youtube_stream(url) and (len(downloading) >= 3 or getattr(proc, "downloading", False)):
 			# fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 			# try:
@@ -2015,7 +2017,7 @@ def render_notes(i, notes):
 seen_urls = set()
 hwaccel = "d3d11va" if os.name == "nt" else "auto"
 ffmpeg_start = (ffmpeg, "-y", "-hide_banner", "-v", "error", "-fflags", "+discardcorrupt+genpts+igndts+flush_packets", "-err_detect", "ignore_err", "-hwaccel", hwaccel, "-vn")
-ffmpeg_stream = ("-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "60")
+ffmpeg_stream = ("-reconnect", "1", "-reconnect_at_eof", "0", "-reconnect_streamed", "1", "-reconnect_delay_max", "240")
 settings = cdict()
 alphakeys = prevkeys = ()
 buffoffs = 0

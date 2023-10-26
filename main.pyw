@@ -1354,7 +1354,7 @@ def save_project(fn=None):
 		print_exc()
 
 
-if len(sys.argv) > 1:
+if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
 	if len(sys.argv) == 2 and not is_url(sys.argv[1]) and os.path.exists(sys.argv[1]):
 		fi = sys.argv[1]
 		with open(fi, "rb") as f:
@@ -1379,6 +1379,8 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		print(cmd)
 		p = psutil.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y", "-hwaccel", hwaccel]
+		if is_url(url):
+			cmd2 += ["-reconnect", "1", "-reconnect_at_eof", "0", "-reconnect_streamed", "1", "-reconnect_delay_max", "240"]
 		if not iterations:
 			cmd2 += ["-ss", str(pos)]
 		cmd2 += ["-i", url, "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0"]

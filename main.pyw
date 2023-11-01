@@ -4564,8 +4564,8 @@ try:
 				globals()["last_sync"] = max(last_sync, t - 10)
 		if not (tick << 3) % (status_freq + (status_freq & 1)) or minimised and not tick + 1 & 7:
 			submit(send_status)
-		if not tick + 1 & 127 and pc() - globals().get("last_persist", 0) > 3600:
-			if queue and has_api:
+		if not tick + 1 & 127 and pc() - globals().get("last_persist", -inf) > 3600:
+			if queue and utc() - has_api < 60:
 				last_persist = pc()
 				submit(persist)
 			# print("UTC:", utc())

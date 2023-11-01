@@ -1680,7 +1680,7 @@ def start_display():
 				glDisable(mbi.target)
 		DISP.flip()
 		a = 0 if options.control.get("transparency") else 1
-		glClearColor(0, 0, 0, 0)
+		glClearColor(0, 0, 0, a)
 		if not random.randint(0, 15):
 			DISP.clear()
 			DISP.lastclear = True

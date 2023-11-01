@@ -2205,8 +2205,8 @@ def ecdc_compress(entry, stream, force=False):
 				b = f.read(5)
 			if len(b) < 5 or b[-1] < 192:
 				exists = False
-		if stream and force is not None:
-			if is_url(stream) and expired(stream):
+		if force is not None or not stream:
+			if not stream or is_url(stream) and expired(stream):
 				ytdl = downloader.result()
 				data = ytdl.extract(entry.url)
 				entry.name = data[0].name

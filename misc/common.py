@@ -312,7 +312,7 @@ if update_collections:
 
 	print("Verifying FFmpeg, SoX, and Org2XM installations...")
 	try:
-		if not os.path.exists("sndlib/ffmpeg.exe") or os.path.getsize("sndlib/ffmpeg.exe") != 381440:
+		if not os.path.exists("sndlib/ffmpeg.exe") or os.path.getsize("sndlib/ffmpeg.exe") <= 0:
 			raise FileNotFoundError
 		subprocess.Popen(ffmpeg, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 		subprocess.Popen(sox, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

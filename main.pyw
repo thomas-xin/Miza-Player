@@ -2313,7 +2313,11 @@ def persist():
 		qt = resp.json()
 		q3 = [e for i, e in enumerate(q2) if qt[i]]
 		print("SCAN:", f"{len(q3)}/{len(q2)}")
-		for i, entry in enumerate(q2):
+		if "-d" in sys.argv:
+			q4 = [t[1] for t in sorted(enumerate(q2), key=lambda t: qt[t[0]], reverse=True)]
+		else:
+			q4 = q2
+		for i, entry in enumerate(q4):
 			if is_url(entry.url) and qt[i] or "-d" in sys.argv:
 				ecdc_submit(entry, entry.get("stream") or "", force=None if qt[i] else False)
 			if not i + 1 & 511:
@@ -4570,7 +4574,7 @@ try:
 				submit(persist)
 			# print("UTC:", utc())
 		if not tick & 7 or minimised:
-			if ECDC_QUEUE and len(ECDC_RUNNING) < 3:
+			if ECDC_QUEUE and len(ECDC_RUNNING) < 5:
 				entry, stream, force = ECDC_QUEUE.pop(next(iter(ECDC_QUEUE)))
 				fut = submit(ecdc_compress, entry, stream, force=force)
 				if force is not None:

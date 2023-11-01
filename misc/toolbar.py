@@ -44,8 +44,16 @@ def spinnies():
 			x = min(progress.pos[0] - progress.width // 2 + progress.length, max(progress.pos[0] - progress.width // 2, x))
 			d = abs(pc() % 2 - 1)
 			r = progress.spread * toolbar.pause.radius
-			hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), min(1, r / 32)]
 			if r >= 2:
+				if not toolbar.colour:
+					hsv = [0.5, 0, 0]
+				else:
+					hsv = colorsys.rgb_to_hsv(*(i / 255 for i in toolbar.colour[:3]))
+				h = hsv[0] - 1 / 4
+				if hsv[1] <= 0 or hsv[2] <= 0:
+					hsv = [0, 0, min(1, r / 32)]
+				else:
+					hsv = [h + d / 4, 1 - 0.75 + abs(d - 0.75), min(1, r / 32)]
 				rx = progress.spread * toolbar.pause.radius
 				a = progress.angle
 				point = [cos(a) * r, sin(a) * r]
@@ -89,9 +97,19 @@ def render_spinnies():
 	if r < 2 and not progress.particles and not is_active():
 		return
 	ripple_f = globals().get("s-ripple", concentric_circle)
+	if not toolbar.colour:
+		hsv = [0.5, 0, 0]
+	else:
+		hsv = colorsys.rgb_to_hsv(*(i / 255 for i in toolbar.colour[:3]))
+	h = hsv[0] - 1 / 4
+	if hsv[1] <= 0 or hsv[2] <= 0:
+		hsv = [0, 0, 1]
+	else:
+		hsv = [h, 0.5, 1]
+	col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
 	ripple_f(
 		DISP,
-		colour=(127, 127, 255),
+		colour=col,
 		pos=(x, progress.pos[1]),
 		radius=r,
 		fill_ratio=0.5,
@@ -100,7 +118,10 @@ def render_spinnies():
 	if r < 2 and not is_active():
 		return
 	d = abs(pc() % 2 - 1)
-	hsv = [0.5 + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
+	if hsv[1] <= 0 or hsv[2] <= 0:
+		hsv = [0, 0, 1]
+	else:
+		hsv = [h + d / 4, 1 - 0.75 + abs(d - 0.75), 1]
 	col = [round_random(i * 255) for i in colorsys.hsv_to_rgb(*hsv)]
 	al = 159 if r else 255
 	ri = max(7, round_random(r ** 0.7 / 1.2 + 2))
@@ -153,7 +174,7 @@ def render_spinny_trails():
 				break
 			if not p:
 				continue
-			alpha = (p.life - 2.5) / 24
+			alpha = (p.life - 2) / 24
 			if alpha <= 0:
 				continue
 			colour = colorsys.hsv_to_rgb(*p.hsv)
@@ -426,7 +447,9 @@ DISP.batches[4.1] = render_spinny_trails
 pid = os.getpid()
 def render_toolbar():
 	global crosshair, hovertext
-	tc = toolbar.colour
+	tc = tuple(toolbar.colour)
+	if DISP.transparent:
+		tc += (223,)
 	highlighted = (progress.seeking or in_rect(mpos, progress.rect)) and not toolbar.editor
 	crosshair |= highlighted
 	tsize = toolbar.rect[2:]
@@ -553,7 +576,7 @@ def render_toolbar():
 				z=257,
 				cache=False,
 			)
-			rainbow = quadratic_gradient((256, 8), pc() / 2, curve=0.03125, unique=True)
+			rainbow = quadratic_gradient((256, 8), pc() / 2, curve=0.1, repetition=8, unique=True)
 			DISP.blit(
 				rainbow,
 				(pos[0] - width // 2 + xv, pos[1] - width // 2),
@@ -576,7 +599,7 @@ def render_toolbar():
 				z=259,
 				cache=False,
 			)
-			rainbow = quadratic_gradient((256, 8), pc(), curve=0.03125, unique=True)
+			rainbow = quadratic_gradient((256, 8), pc(), curve=0.1, repetition=8, unique=True)
 			DISP.blit(
 				rainbow,
 				(pos[0] - width // 2, pos[1] - width // 2),

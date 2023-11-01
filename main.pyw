@@ -62,6 +62,8 @@ player = cdict(
 	paused=False,
 	index=0,
 	pos=0,
+	offpos=-inf,
+	extpos=lambda: pc() + player.offpos if player.offpos > -inf else player.pos,
 	end=inf,
 	amp=0,
 	stats=cdict(
@@ -417,14 +419,52 @@ def setup_buttons():
 		reset_menu(full=False)
 		hyperlink = button_images.hyperlink.result()
 		plus = button_images.plus.result()
-		def enqueue_search(q=None):
+		def enqueue_search(q=""):
 			def enqueue_search_a(query):
+				def enqueue_search_b(query):
+					print(query)
+					if query and query in easygui2.tmap:
+						url = easygui2.tmap[query]
+						submit(_enqueue_search, url, index=sidebar.get("lastsel"))
 				if query:
 					if not is_url(query):
-						if q == "sc":
-							query = "scsearch:" + query.replace(":", "-")
+						if not q:
+							ytdl = downloader.result()
+							try:
+								q2 = "ytsearch:" + query.replace(":", "-")
+								entries = ytdl.search(q2, count=20)
+							except:
+								print_exc()
+								sidebar.particles.append(cdict(eparticle))
+								return
+							matches = [fuzzy_substring(query.upper(), e.name.upper()) for e in entries]
+							M = max(matches)
+							print(matches)
+							if M < 0.5:
+								futs = []
+								for mode in ("sc",):
+									q2 = query.replace(":", "-")
+									fut = submit(ytdl.search, q2, mode=mode, count=12)
+									futs.append(fut)
+								for fut in futs:
+									res = fut.result()
+									# print(fut, res)
+									entries.extend(res)
+							if len(entries) > 1:
+								nchoices = {e.name: e.url for e in entries}
+								easygui2.tmap = nchoices
+								cnames = sorted(nchoices, key=lambda n: fuzzy_substring(query.upper(), n.upper()), reverse=True)[:12]
+								if len(cnames) > 1:
+									easygui2.choicebox(
+										enqueue_search_b,
+										"Select a search result here!",
+										title="Miza Player",
+										choices=cnames,
+									)
+									return
+							query = entries[0].url
 						elif q:
-							query = q + "search:" + query
+							query = q + "search:" + query.replace(":", "-")
 					submit(_enqueue_search, query, index=sidebar.get("lastsel"))
 			easygui2.enterbox(
 				enqueue_search_a,
@@ -435,7 +475,7 @@ def setup_buttons():
 		def select_search():
 			sidebar.menu = cdict(
 				buttons=(
-					("YouTube", enqueue_search),
+					("YouTube", enqueue_search, "yt"),
 					("SoundCloud", enqueue_search, "sc"),
 					("Spotify", enqueue_search, "sp"),
 					("BandCamp", enqueue_search, "bc"),
@@ -1768,8 +1808,9 @@ def prepare(entry, force=False, download=False, delay=0):
 	if not entry.url:
 		return
 	url = entry.url
-	url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+	url = unyt(url)
 	fn = ofn = "cache/~" + shash(url) + ".webm"
+	# print(fn)
 	if delay:
 		time.sleep(delay)
 	if utc() - has_api < 60 and is_url(entry.url) and (entry.get("stream") or "").endswith(".ecdc"):
@@ -1802,7 +1843,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		if os.path.exists(fn) and os.path.getsize(fn):
 			if time.time() - os.path.getmtime(fn) > 60 and is_url(entry.url) and not fn.endswith(".ecdc"):
 				url = entry.url
-				url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+				url = unyt(url)
 				ofn = "persistent/~" + shash(url) + ".ecdc"
 				if not os.path.exists(ofn) or not os.path.getsize(ofn):
 					ecdc_submit(entry, fn)
@@ -1965,7 +2006,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		url = entry.url
 		if not url:
 			return
-		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+		url = unyt(url)
 		cfn = "persistent/~" + shash(url) + ".ecdc"
 		# out = "cache/~" + shash(url) + ".wav"
 		# if os.path.exists(out):
@@ -2001,7 +2042,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	elif stream and is_url(stream) and download:
 		es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
 		url = entry.url
-		url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+		url = unyt(url)
 		mixer.submit(f"~download {es} cache/~{shash(url)}.webm")
 	entry.duration = duration or entry.duration
 	if stream:
@@ -2032,17 +2073,18 @@ def start_player(pos=None, force=False):
 		if pos is None:
 			if audio.speed >= 0:
 				pos = 0
-		elif pos >= duration:
+		elif pos >= duration and not player.paused:
 			if audio.speed > 0:
 				return skip()
 			pos = duration
 		elif pos <= 0:
-			if audio.speed < 0:
+			if audio.speed < 0 and not player.paused:
 				return skip()
 			pos = 0
 		with player.waiting:
 			if pos is not None:
 				player.pos = pos
+				player.offpos = pos - pc() if pos > 0 else -inf
 				player.index = player.pos * 30
 			if force and queue and is_url(queue[0].url):
 				queue[0].stream = None
@@ -2086,12 +2128,12 @@ def start_player(pos=None, force=False):
 					pos = 0
 				else:
 					pos = duration
-			elif pos >= duration:
+			elif pos >= duration and not player.paused:
 				if audio.speed > 0:
 					return skip()
 				pos = duration
 			elif pos <= 0:
-				if audio.speed < 0:
+				if audio.speed < 0 and not player.paused:
 					return skip()
 				pos = 0
 			if control.shuffle == 2:
@@ -2110,11 +2152,12 @@ def start_player(pos=None, force=False):
 					ecdc_submit(entry, stream, force=True)
 			es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
 			url = entry.url
-			url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+			url = unyt(url)
 			s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(url)}\n"
 			print("SUBMIT:", s)
 			mixer.submit(s, force=False)
 			player.pos = pos
+			player.offpos = pos - pc() if pos > 0 else -inf
 			player.index = player.pos * 30
 			player.end = duration or inf
 			player.stream = stream
@@ -2135,7 +2178,7 @@ ECDC_TRIED = set()
 
 def ecdc_submit(entry, stream="", force=False):
 	url = entry.url
-	url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+	url = unyt(url)
 	ofn = "persistent/~" + shash(url) + ".ecdc"
 	if not force and os.path.exists(ofn) and os.path.getsize(ofn):
 		return
@@ -2150,7 +2193,7 @@ def ecdc_submit(entry, stream="", force=False):
 
 def ecdc_compress(entry, stream, force=False):
 	url = entry.url
-	url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+	url = unyt(url)
 	ofn = "persistent/~" + shash(url) + ".ecdc"
 	exists = os.path.exists(ofn) and os.path.getsize(ofn)
 	try:
@@ -2198,7 +2241,7 @@ def ecdc_compress(entry, stream, force=False):
 			name = entry.get("name") or ""
 			b = "auto" if i is None else br
 			query = f"bitrate={b}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
-			api = f"https://api.mizabot.xyz/encodec?{query}&inference={i}&url=https://api.mizabot.xyz/ytdl?d={url}"
+			api = f"https://api.mizabot.xyz/encodec?{query}&inference={i}&url={url}"
 			if i is not None:
 				print(api)
 			ifn = "cache/~" + shash(url) + ".webm"
@@ -2241,18 +2284,17 @@ def ecdc_compress(entry, stream, force=False):
 						os.rename(out, ofn)
 					finally:
 						ECDC_RUNNING.discard(ofn)
-				if isinstance(ex, EOFError) and i is None:
+				if os.path.exists(ofn) and os.path.getsize(ofn) and utc() - has_api < 60:
 					with open(ofn, "rb") as f:
 						b = f.read()
-					if utc() - has_api >= 60:
-						query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
-						api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url=https://api.mizabot.xyz/ytdl?d={url}"
-						# print(api)
-						with requests.post(api, data=b, stream=True) as resp:
-							print(resp)
-							if resp.status_code not in range(200, 400):
-								print(api, resp.content)
-								globals()["has_api"] = utc()
+					query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
+					api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url={url}"
+					# print(api)
+					with requests.post(api, data=b, stream=True) as resp:
+						print(resp)
+						if resp.status_code not in range(200, 400):
+							print(api, resp.content)
+							globals()["has_api"] = utc()
 				return ofn
 		finally:
 			ECDC_RUNNING.discard("!" + ofn)
@@ -2260,19 +2302,30 @@ def ecdc_compress(entry, stream, force=False):
 		print_exc()
 
 def persist():
-	q2 = list(queue)
-	random.shuffle(q2)
-	for i, entry in enumerate(q2):
-		if is_url(entry.url):
-			ecdc_submit(entry, entry.get("stream") or "", force=None)
-		if not i + 1 & 511:
-			time.sleep(0.5)
+	try:
+		q2 = list(queue)
+		random.shuffle(q2)
+		api = "https://api.mizabot.xyz/encodec"
+		urls = " ".join(e.url for e in q2)
+		with requests.post(api, data=dict(urls=urls)) as resp:
+			print(resp)
+		qt = resp.json()
+		q3 = [e for i, e in enumerate(q2) if qt[i]]
+		print("SCAN:", f"{len(q3)}/{len(q2)}")
+		for i, entry in enumerate(q2):
+			if is_url(entry.url) and qt[i]:
+				ecdc_submit(entry, entry.get("stream") or "", force=None if qt[i] else False)
+			if not i + 1 & 511:
+				time.sleep(0.5)
+	except:
+		print_exc()
 
 def start():
 	if queue:
 		return enqueue(queue[0])
 	player.last = 0
 	player.pos = 0
+	player.offpos = -inf
 	player.end = inf
 	return None, inf
 
@@ -2322,14 +2375,15 @@ def skip():
 	mixer.clear()
 	player.last = 0
 	player.pos = 0
+	player.offpos = -inf
 	player.end = inf
 	return None, inf
 
 def seek_abs(pos, force=False):
 	if not force:
-		if pos <= 0 and player.pos <= 0 and audio.speed > 0:
+		if pos <= 0 and player.pos <= 0 and audio.speed > 0 and not player.paused:
 			return (player.get("stream"), player.end)
-		if pos >= player.end and player.pos >= player.end and audio.speed < 0:
+		if pos >= player.end and player.pos >= player.end and audio.speed < 0 and not player.paused:
 			return (player.get("stream"), player.end)
 	return start_player(pos) if queue else (None, inf)
 
@@ -2338,18 +2392,18 @@ def seek_rel(pos):
 		return
 	player.last = 0
 	player.amp = 0
-	if pos + player.pos >= player.end:
+	if pos + player.extpos() >= player.end and not player.paused:
 		if audio.speed > 0:
 			return skip()
-		if player.pos >= player.end:
+		if player.extpos() >= player.end:
 			return
-		pos = player.end - player.pos
-	if pos + player.pos <= 0:
-		if audio.speed < 0:
+		pos = player.end - player.extpos()
+	if pos + player.extpos() <= 0:
+		if audio.speed < 0 and not player.paused:
 			return skip()
-		if player.pos <= 0:
+		if player.extpos() <= 0:
 			return
-		pos = -player.pos
+		pos = -player.extpos()
 	progress.num += pos
 	progress.alpha = 255
 	if audio.speed > 0 and pos > 0 and pos <= 180:
@@ -2359,8 +2413,8 @@ def seek_rel(pos):
 		with player.waiting:
 			mixer.drop(pos)
 	else:
-		seek_abs(max(0, player.pos + pos))
-	player.pos += pos
+		seek_abs(max(0, player.extpos() + pos))
+	player.pos = player.extpos() + pos
 
 def restart_mixer(devicename=None):
 	global mixer
@@ -2375,7 +2429,7 @@ def restart_mixer(devicename=None):
 		return
 	mixer.state(player.paused)
 	submit(transfer_instrument, *project.instruments.values())
-	return seek_abs(player.pos)
+	return seek_abs(player.extpos())
 
 reevaluating = False
 def reevaluate():
@@ -2401,7 +2455,7 @@ def reevaluate():
 					queue[0].update(resp.json()[0])
 				except:
 					url = queue[0].url
-					url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+					url = unyt(url)
 					cfn = "persistent/~" + shash(url) + ".ecdc"
 					if os.path.exists(cfn) and os.path.getsize(cfn):
 						queue[0].stream = cfn
@@ -2439,7 +2493,7 @@ def reevaluate_in(delay=0, mut=()):
 				queue[0].update(resp.json()[0])
 			except:
 				url = queue[0].url
-				url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+				url = unyt(url)
 				cfn = "persistent/~" + shash(url) + ".ecdc"
 				if os.path.exists(cfn) and os.path.getsize(cfn):
 					queue[0].stream = cfn
@@ -2863,7 +2917,8 @@ def mixer_stdout():
 			i, dur = map(float, s.split(" ", 1))
 			if not progress.seeking:
 				player.index = i
-				player.pos = round(player.index / 30, 4)
+				player.pos = pos = round(player.index / 30, 4)
+				player.offpos = pos - pc() if pos > 0 else -inf
 			if dur >= 0:
 				player.end = dur or inf
 	except:
@@ -2956,7 +3011,7 @@ def download(entries, fn, settings=False):
 						os.remove(p.fn)
 			st = prepare(entry, force=True)
 			url = entry.url
-			url = re.sub(r"https?:\/\/(?:www\.)?youtube\.com\/watch\?v=", "https://youtu.be/", url)
+			url = unyt(url)
 			sh = "cache/~" + shash(url) + ".pcm"
 			if os.path.exists(sh) and os.path.getsize(sh) >= (entry.duration - 1) * 48000 * 2 * 2:
 				st = sh
@@ -3037,7 +3092,7 @@ def update_menu():
 	player.flash_i = max(0, player.get("flash_i", 0) - duration * 60)
 	player.flash_o = max(0, player.get("flash_o", 0) - duration * 60)
 	toolbar.pause.timestamp = pc()
-	ratio = 1 + 1 / (duration * 12)
+	ratio = 1 + 1 / (duration * 16)
 	progress.alpha *= 0.998 ** (duration * 480)
 	if progress.alpha < 16:
 		progress.alpha = progress.num = 0
@@ -3112,16 +3167,17 @@ def update_menu():
 		reset_menu()
 		toolbar.resizing = True
 	if progress.seeking:
-		orig = player.pos
+		orig = player.extpos()
 		if player.end < inf:
-			player.pos = max(0, min(1, (mpos2[0] - progress.pos[0] + progress.width // 2) / progress.length) * player.end)
+			player.pos = pos = max(0, min(1, (mpos2[0] - progress.pos[0] + progress.width // 2) / progress.length) * player.end)
+			player.offpos =-inf
 			progress.num += (player.pos - orig)
 		progress.alpha = 255
 		player.index = player.pos * 30
 		if not mheld[0]:
 			progress.seeking = False
 			if queue and isfinite(e_dur(queue[0].duration)):
-				submit(seek_abs, player.pos, force=True)
+				submit(seek_abs, player.extpos(), force=True)
 	if sidebar.resizing:
 		sidebar_width = min(screensize[0] - 8, max(144, screensize[0] - mpos2[0] + 2))
 		if options.sidebar_width != sidebar_width:
@@ -3134,11 +3190,7 @@ def update_menu():
 		sidebar.resizing = True
 	if queue and not toolbar.editor and isfinite(e_dur(queue[0].duration)) and not kheld[K_LSUPER] and not kheld[K_RSUPER]:
 		if not player.get("seeking") or player.seeking.done():
-			if kspam[K_PAGEUP]:
-				player.seeking = submit(seek_rel, 300)
-			elif kspam[K_PAGEDOWN]:
-				player.seeking = submit(seek_rel, -300)
-			elif kspam[K_UP]:
+			if kspam[K_UP]:
 				player.seeking = submit(seek_rel, 30)
 			elif kspam[K_DOWN]:
 				player.seeking = submit(seek_rel, -30)
@@ -3200,7 +3252,7 @@ def update_menu():
 				seek_position_a,
 				"Seek to position",
 				title="Miza Player",
-				default=time_disp(player.pos),
+				default=time_disp(player.extpos()),
 			)
 	c = options.get("toolbar_colour", (64, 0, 96))
 	if toolbar.resizing or in_rect(mpos, toolbar.rect):
@@ -3222,7 +3274,6 @@ def update_menu():
 				button.flash = max(0, button.flash - duration * 64)
 			if in_rect(mpos, button.rect):
 				button.flash = 16
-				sidebar.menu = 0
 				clicked = i < maxb and any(mclick)
 			else:
 				clicked = False
@@ -3462,17 +3513,41 @@ def on_mouse_scroll(x, y, vx, vy):
 		player.editor.targ_y += vy * 3.5
 		player.editor.targ_x += vx * 3.5
 
+@DISP.event
+def on_file_dropped(x, y, paths):
+	print(paths)
+
+# event_logger = pyglet.window.event.WindowEventLogger()
+# DISP.push_handlers(event_logger)
+
 def render_settings(dur, ignore=False):
 	global crosshair, hovertext
 	offs = round(sidebar.setdefault("relpos", 0) * -sidebar_width)
-	sc = sidebar.colour or (64, 0, 96)
+	sc = tuple(sidebar.colour or (64, 0, 96))
+	if DISP.transparent:
+		sc += (223,)
 	sub = (sidebar.rect2[2], sidebar.rect2[3] - 52)
 	subp = (screensize[0] - sidebar_width, 52)
 	DISP2 = DISP.subsurf(subp + sub)
 	in_sidebar = in_rect(mpos, sidebar.rect)
 	offs2 = offs + sidebar_width
-	c = options.get("sidebar_colour", (64, 0, 96))
+	c = sc
 	hc = high_colour(c)
+	if sidebar.scroll.get("colour"):
+		rounded_bev_rect(
+			DISP2,
+			sidebar.scroll.background,
+			(sidebar.scroll.rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.rect[1]) + sidebar.scroll.rect[2:],
+			4,
+			z=129,
+		)
+		rounded_bev_rect(
+			DISP2,
+			sidebar.scroll.colour,
+			(sidebar.scroll.select_rect[0] + offs - screensize[0] + sidebar_width, sidebar.scroll.select_rect[1]) + sidebar.scroll.select_rect[2:],
+			4,
+			z=129,
+		)
 	for i, opt in enumerate(asettings):
 		message_display(
 			opt.capitalize(),
@@ -3621,11 +3696,12 @@ def render_settings(dur, ignore=False):
 	if sidebar.more_angle > 0.001:
 		more = (
 			("silenceremove", "Skip silence", "Skips over silent or extremely quiet frames of audio."),
-			("blur", "Motion blur", "Makes animations look smoother, but consume slightly more resources."),
 			("unfocus", "Reduce unfocus FPS", "Greatly reduces FPS of display when the window is left unfocused."),
 			("subprocess", "Subprocess", "Audio is transferred through subprocess. More stable and efficient, but difficult to record or stream using third party programs."),
 			("presearch", "Preemptive search", "Pre-emptively searches up and displays duration of songs in a playlist when applicable. Increases amount of requests being sent."),
 			("preserve", "Preserve sessions", "Preserves sessions and automatically reloads them when the program is restarted."),
+			("blur", "Motion blur", "Makes animations look smoother, but consume slightly more resources."),
+			("transparency", "Window transparency", "Makes the window see-through (Requires restart)."),
 			("ripples", "Ripples", "Clicking anywhere on the sidebar or toolbar produces a visual ripple effect."),
 			("autobackup", "Auto backup", "Automatically backs up and/or restores your playlist folder on mizabot.xyz."),
 			("autoupdate", "Auto update", "Automatically updates Miza Player in the background when an update is detected."),
@@ -3647,7 +3723,10 @@ def render_settings(dur, ignore=False):
 					align=2,
 				)
 				if mclick[0]:
-					options.control[s] ^= 1
+					try:
+						options.control[s] ^= 1
+					except KeyError:
+						options.control[s] = 1
 					if s in ("silenceremove", "unfocus", "subprocess"):
 						mixer.submit(f"~setting {s} {options.control[s]}")
 					elif options.control[s]:
@@ -3815,7 +3894,7 @@ def render_settings(dur, ignore=False):
 		z=129,
 	)
 	kwargs = {}
-	if not sidebar.ripples:
+	if not sidebar.ripples and not DISP.transparent:
 		kwargs["soft"] = sidebar.colour
 	pos = (offs2 + sidebar_width // 2 - 48 - 6, 357 + sidebar.more_angle * 6)
 	reg_polygon_complex(
@@ -3927,7 +4006,7 @@ def draw_menu():
 		if globals()["last-cond"] <= 0:
 			globals().pop("last-cond")
 		cond = True
-	elif tick < 3 or not tick % 15 - 1:
+	elif tick < 3 or DISP.lastclear or options.control.get("blur") and DISP.transparent:
 		cond = globals()["last-cond"] = True
 	if cond and sidebar.colour:
 		if toolbar.editor:
@@ -4337,7 +4416,7 @@ def save_settings(closing=False):
 			edi.pop(k, None)
 		data = dict(
 			queue=list(entries),
-			pos=player.pos,
+			pos=player.extpos(),
 			editor=edi,
 		)
 		if toolbar.editor:
@@ -4484,12 +4563,13 @@ try:
 				globals()["last_sync"] = max(last_sync, t - 10)
 		if not (tick << 3) % (status_freq + (status_freq & 1)) or minimised and not tick + 1 & 7:
 			submit(send_status)
-		if not tick + 1 & 127:
-			if queue:
+		if not tick + 1 & 127 and pc() - globals().get("last_persist", 0) > 3600:
+			if queue and has_api:
+				last_persist = pc()
 				submit(persist)
 			# print("UTC:", utc())
 		if not tick & 7 or minimised:
-			if ECDC_QUEUE and (not ECDC_CURR or ECDC_CURR.done()):
+			if ECDC_QUEUE and len(ECDC_RUNNING) < 3:
 				entry, stream, force = ECDC_QUEUE.pop(next(iter(ECDC_QUEUE)))
 				fut = submit(ecdc_compress, entry, stream, force=force)
 				if force is not None:
@@ -4525,7 +4605,7 @@ try:
 				colour = 2
 			else:
 				colour = 8
-			taskbar_progress_bar(player.pos / player.end, colour | (player.end >= inf))
+			taskbar_progress_bar(player.extpos() / player.end, colour | (player.end >= inf))
 		else:
 			pgr = os.path.exists(downloading.fn) and os.path.getsize(downloading.fn) / 192000 * 8
 			ratio = min(1, pgr / max(1, downloading.target))
@@ -4861,6 +4941,7 @@ try:
 			draw_menu()
 			if not queue and not is_active() and not any(kheld):
 				player.pos = 0
+				player.offpos = -inf
 				player.end = inf
 				player.last = 0
 				progress.num = 0
@@ -5063,11 +5144,11 @@ try:
 			DISP.update()
 			if tick < 2 or not tick % 15:
 				DISP.switch_to()
-				DISP.clear()
+				# DISP.clear()
 				DISP.update_keys()
 			elif options.spectrogram in (0, 1):
 				DISP.fill(
-					(0,) * 3,
+					(0,) * 4,
 					player.rect,
 				)
 		elif unfocused:
@@ -5099,6 +5180,8 @@ try:
 			last_played = t
 		delplay = t - last_played
 		delay = t - last_tick
+		if delay > 5 / fps:
+			DISP.lastclear = True
 		if delay >= 30 or delplay >= 3600 and common.OUTPUT_DEVICE:
 			restart_mixer()
 			last_tick = last_played = t = pc()

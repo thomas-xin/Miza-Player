@@ -83,7 +83,9 @@ globals()["em"] = getattr(np, "__builtins__", None).get("e" + fg.lower())
 def render_sidebar(dur=0):
 	global crosshair, hovertext, lq2
 	offs = round_random(sidebar.setdefault("relpos", 0) * -sidebar_width)
-	sc = sidebar.colour or (64, 0, 96)
+	sc = tuple(sidebar.colour or (64, 0, 96))
+	if DISP.transparent:
+		sc += (223,)
 	if sidebar.ripples or offs > -sidebar_width + 4:
 		DISP2 = DISP.subsurf(sidebar.rect)
 		bevel_rectangle(
@@ -346,12 +348,13 @@ def render_sidebar(dur=0):
 					val = min(1, val + flash / 16)
 					entry.flash = flash - 1
 			entry.colour = col = [round_random(x * 255) for x in colorsys.hsv_to_rgb(i / 12, sat, val)]
+			ma = 223 if DISP.transparent else 255
 			rounded_bev_rect(
 				DISP2,
 				col,
 				rect,
 				4,
-				alpha=255 if secondary else round_random(255 / (1 + abs(entry.get("pos", 0) - i) / 16)),
+				alpha=ma if secondary else round_random(ma / (1 + abs(entry.get("pos", 0) - i) / 16)),
 				filled=not secondary,
 				# background=sc,
 				z=129,

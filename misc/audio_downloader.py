@@ -1577,7 +1577,7 @@ class AudioDownloader:
 					return [cdict(name=e["name"], url=e["url"], duration=e.get("duration")) for e in q]
 			elif mode in (None, "yt"):
 				with suppress(NotImplementedError):
-					return self.search_yt(item)[:count]
+					return self.search_yt(item, skip=count > 1)[:count]
 			try:
 				# Otherwise call automatic extract_info function
 				resp = self.extract_info(item, count, search=search, mode=mode)
@@ -1589,7 +1589,7 @@ class AudioDownloader:
 				print_exc()
 				out = reqs.get(f"https://api.mizabot.xyz/ytdl?q={item}&count=1", timeout=12).json()
 				for e in out:
-					e.setdefault("stream", f"https://api.mizabot.xyz/ytdl?d={e.url}")
+					e.setdefault("stream", f"https://api.mizabot.xyz/ytdl?d={e.get('url')}")
 					output.append(cdict(e))
 				resp = {}
 			# Check if result is a playlist

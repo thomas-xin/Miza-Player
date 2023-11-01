@@ -126,12 +126,12 @@ def animate_bars(changed=False):
 		w = ssize[0] / barcount
 		x = (barcount - 2 - bar.x) * w
 		dark = False
-		colour = [i for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount) % 1, 1, 1)]
-		black = (0,) * 3
+		colour = [i for i in colorsys.hsv_to_rgb((pc_ / 3 + bar.x / barcount) % 1, 1, 1)] + [1]
+		empty = (0,) * 4
 		note = highest_note - bar.x + 9
 		if note % 12 in (1, 3, 6, 8, 10):
 			dark = True
-			colour = [i / 2 for i in colour]
+			colour = colour[:3] + [0.5]
 		verts.extend((
 			(x, 0),
 			(x + w, 0),
@@ -166,8 +166,8 @@ def animate_bars(changed=False):
 			cols.extend((
 				colour,
 				colour,
-				black,
-				black,
+				empty,
+				empty,
 			))
 		else:
 			verts.extend((
@@ -179,13 +179,13 @@ def animate_bars(changed=False):
 			cols.extend((
 				colour,
 				colour,
-				black,
-				black,
+				empty,
+				empty,
 			))
 	verts = np.array(verts, dtype=np.float32)
 	cols = np.array(cols, dtype=np.float32)
 	glVertexPointer(2, GL_FLOAT, 0, verts.ctypes)
-	glColorPointer(3, GL_FLOAT, 0, cols.ctypes)
+	glColorPointer(4, GL_FLOAT, 0, cols.ctypes)
 	glDrawArrays(GL_QUADS, 0, len(verts))
 
 	highbars = sorted(bars, key=lambda bar: bar.height, reverse=True)[:97]
@@ -918,7 +918,7 @@ last = None
 sp_changed = True
 def render_spectrogram(rect):
 	global sp_changed, last, pc_, vertices
-	pc_ = player.pos
+	pc_ = player.extpos() if player.offpos > -inf else 0
 	specs = options.get("spectrogram", 0)
 	if specs == 4:
 		vertices = options.control.get("gradient-vertices", (4, 3, 3))
@@ -927,7 +927,7 @@ def render_spectrogram(rect):
 	try:
 		glEnable(GL_SCISSOR_TEST)
 		glScissor(0, toolbar_height, screensize[0] - sidebar_width, screensize[1] - toolbar_height)
-		glClearColor(0, 0, 0, 1)
+		# glClearColor(0, 0, 0, 0)
 		if specs == 2:
 			func = animate_bars
 		elif specs == 3:

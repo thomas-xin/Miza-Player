@@ -28,7 +28,7 @@ def _worker(executor_reference, work_queue, initializer, initargs):
 				tup = (i, work_item.fn, work_item.args)
 				last_work[i] = tup
 				last_used[i] = t
-				print(tup)
+				# print(tup)
 				work_item.run()
 				# Delete references to object. See issue16284
 				del work_item
@@ -248,6 +248,43 @@ def as_str(s):
 	if type(s) in (bytes, bytearray, memoryview):
 		return bytes(s).decode("utf-8", "replace")
 	return str(s)
+
+def fuzzy_substring(sub, s, match_start=False, match_length=True):
+	if not match_length and s in sub:
+		return 1
+	if s.startswith(sub):
+		return len(sub) / len(s) * 2
+	match = 0
+	if not match_start or sub and s.startswith(sub[0]):
+		found = [0] * len(s)
+		x = 0
+		for i, c in enumerate(sub):
+			temp = s[x:]
+			if temp.startswith(c):
+				if found[x] < 1:
+					match += 1
+					found[x] = 1
+				x += 1
+			elif c in temp:
+				y = temp.index(c)
+				x += y
+				if found[x] < 1:
+					found[x] = 1
+					match += 1 - y / len(s)
+				x += 1
+			else:
+				temp = s[:x]
+				if c in temp:
+					y = temp.rindex(c)
+					if found[y] < 1:
+						match += 1 - (x - y) / len(s)
+						found[y] = 1
+					x = y + 1
+		if len(sub) > len(s) and match_length:
+			match *= len(s) / len(sub)
+	# ratio = match / len(s)
+	ratio = max(0, match / len(s))
+	return ratio
 
 def json_default(obj):
 	if isinstance(obj, (deque, alist, np.ndarray)):
@@ -568,11 +605,12 @@ control_default = cdict(
 	shuffle=1,
 	loop=1,
 	silenceremove=0,
-	blur=1,
 	unfocus=0,
 	subprocess=1,
 	presearch=0,
 	preserve=0,
+	blur=0,
+	transparency=0,
 	ripples=1,
 	autobackup=0,
 	autoupdate=0,
@@ -1053,7 +1091,7 @@ class GL_Lines(pyglet.shapes.Line):
 	_rotation = 0
 	_colours = ()
 
-	def __init__(self, *coordinates, width=1, color=(255, 255, 255), mode=GL_LINES, batch=None, group=None):
+	def __init__(self, *coordinates, width=1, color=(255, 255, 255), mode=GL_LINES, batch=None, group=None, transparent=False):
 		self._coordinates = coordinates
 		self._width = width
 		self._rgb = color
@@ -1061,13 +1099,13 @@ class GL_Lines(pyglet.shapes.Line):
 		self._mode = mode
 		self._batch = batch or pyglet.graphics.Batch()
 		self.group = group
-		self.init(width=True)
+		self.init(width=True, transparent=transparent)
 
-	def init(self, width=True):
+	def init(self, width=True, transparent=False):
 		if width:
 			self._group = WidthShapeGroup(
 				GL_SRC_ALPHA,
-				GL_ONE_MINUS_SRC_ALPHA,
+				GL_ONE_MINUS_SRC_ALPHA if transparent else GL_ZERO,
 				self._width,
 				self.group,
 			)
@@ -1159,19 +1197,37 @@ class GL_Triangles(GL_Lines):
 		)
 		self.init()
 
+class Rectangle(pyglet.shapes.Rectangle):
+	def __init__(self, x, y, width, height, color=(255, 255, 255), batch=None, group=None):
+		self._x = x
+		self._y = y
+		self._width = width
+		self._height = height
+		self._rotation = 0
+		self._rgb = color
+
+		self._batch = batch or pyglet.graphics.Batch()
+		self._group = pyglet.shapes._ShapeGroup(GL_SRC_ALPHA, GL_ZERO, group)
+		self._vertex_list = self._batch.add(6, GL_TRIANGLES, self._group, 'v2f', 'c4B')
+		self._update_position()
+		self._update_color()
+
 RAWS = weakref.WeakKeyDictionary()
 SUBSURFS = weakref.WeakKeyDictionary()
 
 def start_display():
 	config = pyglet.gl.Config(sample_buffers=0, samples=0)
 	globals()["FLAGS"] = 0
-	globals()["DISP"] = pyglet.window.Window(
+	cls = pyglet.window.win32.Win32Window if os.name == "nt" else pyglet.window.Window
+	transparent = options.control.get("transparency")
+	globals()["DISP"] = cls(
 		*screensize,
 		config=config,
 		resizable=True,
 		visible=True,
 		file_drops=True,
 		vsync=False,
+		style="transparent" if transparent else None,
 	)
 	DISP.groups = {}
 	DISP.batches = {}
@@ -1180,6 +1236,9 @@ def start_display():
 	DISP.shapes = {}
 	DISP.fonts = {}
 	DISP.active = set()
+	DISP.lastclear = True
+	DISP.transparent = transparent
+	print(DISP, DISP.event)
 
 	def get_batch(i):
 		try:
@@ -1406,7 +1465,7 @@ def start_display():
 		group = get_group(z)
 		t = (z, rect, colour)
 		if t not in DISP.shapes:
-			sp = pyglet.shapes.Rectangle(*rect, [round(i) for i in colour[:3]], batch=batch, group=group)
+			sp = Rectangle(*rect, [round(i) for i in colour[:3]], batch=batch, group=group)
 			if len(colour) > 3:
 				sp.opacity = colour[3]
 			DISP.shapes[t] = sp
@@ -1596,6 +1655,34 @@ def start_display():
 		globals()["NEW_SPRITES"].clear()
 		globals()["NEW_TEXTURES"].clear()
 		async_wait()
+		glFinish()
+		if options.control.get("blur"):
+			mbi = globals().get("-MBI-")
+			mbs = globals().get("-MBS-")
+			if mbi:
+				glEnable(GL_BLEND)
+				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+				glEnable(mbi.target)
+				glBindTexture(mbi.target, mbi.id)
+				glCopyTexImage2D(
+					mbi.target,
+					0,
+					GL_RGBA,
+					0,
+					0,
+					DISP.width,
+					DISP.height,
+					0,
+				)
+				glDisable(mbi.target)
+		DISP.flip()
+		a = 0 if options.control.get("transparency") else 1
+		glClearColor(0, 0, 0, 0)
+		if not random.randint(0, 15):
+			DISP.clear()
+			DISP.lastclear = True
+		else:
+			DISP.lastclear = False
 		if options.control.get("blur"):
 			mbi = globals().get("-MBI-")
 			mbs = globals().get("-MBS-")
@@ -1616,24 +1703,6 @@ def start_display():
 			mbs.ts = ts
 			if mbs.opacity > 0:
 				mbs.draw()
-			glFinish()
-			glEnable(GL_BLEND)
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-			glEnable(mbi.target)
-			glBindTexture(mbi.target, mbi.id)
-			glCopyTexImage2D(
-				mbi.target,
-				0,
-				GL_RGBA,
-				0,
-				0,
-				DISP.width,
-				DISP.height,
-				0,
-			)
-			glDisable(mbi.target)
-		DISP.flip()
-		glFinish()
 	DISP.update = display_update
 
 	class display_subsurface:
@@ -2159,13 +2228,13 @@ class cbfunc:
 		return fut
 
 	def done(self, fut):
+		easygui2.lock = False
 		try:
 			if callable(self.cb):
 				self.cb(fut.result(), *self.args)
 		except:
 			print_exc()
 		finally:
-			easygui2.lock = False
 			DISP.kclick.reset()
 
 easygui2 = cdict(lock=False)
@@ -2342,6 +2411,7 @@ def bytes2zip(data):
 	return b.getbuffer()
 
 shash = lambda s: base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).rstrip(b"=").decode("ascii")
+unyt = lambda s: re.sub(r"https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", s)
 
 def quote(s):
 	if s.isascii():
@@ -2972,7 +3042,7 @@ def draw_rect(dest, colour, rect, width=0, alpha=255, angle=0, z=0):
 					sp.color = colour
 				break
 		else:
-			sp = pyglet.shapes.Rectangle(
+			sp = Rectangle(
 				x, y,
 				width, height,
 				colour,
@@ -3060,13 +3130,13 @@ def bevel_rectangle(dest, colour, rect, bevel=0, alpha=255, angle=0, filled=True
 				colours.append(col1)
 				lines.append((q[0], p[1]))
 				colours.append(col2)
-				lines.append((q[0], q[1]))
+				lines.append((q[0], q[1] - 1))
 				colours.append(col2)
-				lines.append((q[0], q[1]))
+				lines.append((q[0], q[1] - 1))
 				colours.append(col2)
-				lines.append((p[0] - 1, q[1]))
+				lines.append((p[0] - 1, q[1] - 1))
 				colours.append(col2)
-				lines.append((p[0] - 1, q[1]))
+				lines.append((p[0] - 1, q[1] - 1))
 				# How to flex on people that you have a good monitor without telling people you have a good monitor: this bug fix actually means something to you
 				# Also hi Lou was here on the 17th of Spooky Month 2023 *dabs and eats Miza's cables*
 				colours.append(col1)

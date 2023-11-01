@@ -1394,9 +1394,10 @@ def save_project(fn=None):
 		print_exc()
 
 
-if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
-	if len(sys.argv) == 2 and not is_url(sys.argv[1]) and os.path.exists(sys.argv[1]):
-		fi = sys.argv[1]
+argv = [arg for arg in sys.argv if not arg.startswith("-")]
+if len(argv) > 1:
+	if len(argv) == 2 and not is_url(argv[1]) and os.path.exists(argv[1]):
+		fi = argv[1]
 		with open(fi, "rb") as f:
 			b = f.read(7)
 		if b == b">~MPP~>":
@@ -1404,7 +1405,7 @@ if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
 		else:
 			submit(enqueue_auto, fi)
 	else:
-		submit(enqueue_auto, *sys.argv[1:])
+		submit(enqueue_auto, *argv[1:])
 
 
 def load_video(url, pos=0, bak=None, sig=None, iterations=0):
@@ -2313,7 +2314,7 @@ def persist():
 		q3 = [e for i, e in enumerate(q2) if qt[i]]
 		print("SCAN:", f"{len(q3)}/{len(q2)}")
 		for i, entry in enumerate(q2):
-			if is_url(entry.url) and qt[i]:
+			if is_url(entry.url) and qt[i] or "-d" in sys.argv:
 				ecdc_submit(entry, entry.get("stream") or "", force=None if qt[i] else False)
 			if not i + 1 & 511:
 				time.sleep(0.5)

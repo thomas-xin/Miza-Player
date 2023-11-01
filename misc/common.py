@@ -874,7 +874,10 @@ class AreaGroup(pyglet.graphics.OrderedGroup):
 		if self.area:
 			area = [self.area[0], DISP.height - self.area[3] - self.area[1], self.area[2], self.area[3]]
 			glEnable(GL_SCISSOR_TEST)
-			glScissor(*area)
+			try:
+				glScissor(*area)
+			except pyglet.gl.lib.GLException:
+				glScissor(0, 0, 1, 1)
 		else:
 			glDisable(GL_SCISSOR_TEST)
 

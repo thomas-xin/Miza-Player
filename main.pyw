@@ -3711,7 +3711,7 @@ def render_settings(dur, ignore=False):
 			("autobackup", "Auto backup", "Automatically backs up and/or restores your playlist folder on mizabot.xyz."),
 			("autoupdate", "Auto update", "Automatically updates Miza Player in the background when an update is detected."),
 		)
-		mrect = (offs2 + 8, 376, sidebar_width - 16, 32 * 9)
+		mrect = (offs2 + 8, 376, sidebar_width - 16, 32 * 10)
 		surf = HWSurface.any(mrect[2:], FLAGS | pygame.SRCALPHA)
 		surf.fill((0, 0, 0, 0))
 		for i, t in enumerate(more):
@@ -3781,9 +3781,9 @@ def render_settings(dur, ignore=False):
 				cache=True,
 				z=129,
 			)
-		if sidebar_width >= 192 and screensize[1] - toolbar_height - mrect[1] >= 32 * 9:
-			r = (sidebar_width - 80, 224, 64, 32)
-			r2 = (screensize[0] - 68 + offs + sidebar_width, 653, 64, 32)
+		if sidebar_width >= 192 and screensize[1] - toolbar_height - mrect[1] >= 32 * 10:
+			r = (sidebar_width - 80, 256, 64, 32)
+			r2 = (screensize[0] - 68 + offs + sidebar_width, 685, 64, 32)
 			if in_rect(mpos, r2):
 				if mclick[0]:
 					def edit_sync_url_a(enter):
@@ -3820,9 +3820,9 @@ def render_settings(dur, ignore=False):
 				cache=True,
 				z=130,
 			)
-		if sidebar_width >= 192 and screensize[1] - toolbar_height - mrect[1] >= 32 * 10:
-			r = (sidebar_width - 80, 256, 64, 32)
-			r2 = (screensize[0] - 68 + offs + sidebar_width, 685, 64, 32)
+		if sidebar_width >= 192 and screensize[1] - toolbar_height - mrect[1] >= 32 * 11:
+			r = (sidebar_width - 80, 288, 64, 32)
+			r2 = (screensize[0] - 68 + offs + sidebar_width, 717, 64, 32)
 			if in_rect(mpos, r2):
 				if mclick[0]:
 					submit(update_collections2)

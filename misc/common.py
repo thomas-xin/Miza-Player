@@ -2559,14 +2559,16 @@ def pil2pyg(im, convert=None):
 		return HWSurface.copy(surf)
 	return surf
 
-def pyg2pgl(surf):
+def pyg2pgl(surf, flip=True):
 	mode = "RGBA" if surf.get_flags() & pygame.SRCALPHA else "RGB"
-	b = pygame.image.tostring(surf, mode, True)
+	b = pygame.image.tostring(surf, mode, flip)
 	return pyglet.image.ImageData(*surf.get_size(), mode, b)
 
-def pil2pgl(im):
+def pil2pgl(im, flip=True):
 	mode = im.mode
-	b = im.transpose(Transpose.FLIP_TOP_BOTTOM).tobytes()
+	if flip:
+		im = im.transpose(Transpose.FLIP_TOP_BOTTOM)
+	b = im.tobytes()
 	return pyglet.image.ImageData(*im.size, mode, b)
 
 class HWSurface:

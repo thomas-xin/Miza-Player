@@ -1502,7 +1502,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		player.video = proc
 		i = 0
 		im = None
-		while True:
+		while bcount:
 			b = proc.stdout.read(bcount)
 			while len(b) < bcount:
 				if not b or not proc.is_running():
@@ -1528,7 +1528,16 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			if not proc.is_running():
 				break
 			async_wait()
-		if pos >= dur - 1:
+		if not bcount:
+			with reqs.get(url, verify=False, stream=True) as resp:
+				if resp.headers.get("Content-Length", 1) <= 0:
+					raise EOFError(resp)
+				if resp.headers.get("Content-Type", "image").split("/", 1)[0] not in ("image", "video"):
+					raise TypeError(resp.headers["Content-Type"])
+				im = Image.open(resp.raw)
+				proc.im = pil2pgl(im, flip=False)
+				proc.im2 = None
+		if pos >= dur - 1 or not bcount:
 			while pos < player.pos + 1 and queue and proc.url == queue[0].url:
 				pos = player.pos
 				proc.pos = pos

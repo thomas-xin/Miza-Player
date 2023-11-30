@@ -1641,6 +1641,7 @@ def start_display():
 			DISP.active.difference_update(pops)
 		batches = 0
 		for i in sorted(DISP.batches):
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 			batch = DISP.batches[i]
 			flags = getattr(batch, "flags", 0)
 			if getattr(batch, "used", False):
@@ -1663,8 +1664,6 @@ def start_display():
 			mbi = globals().get("-MBI-")
 			mbs = globals().get("-MBS-")
 			if mbi:
-				glEnable(GL_BLEND)
-				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 				glEnable(mbi.target)
 				glBindTexture(mbi.target, mbi.id)
 				glCopyTexImage2D(
@@ -1705,6 +1704,8 @@ def start_display():
 			# print(mbs.opacity)
 			mbs.ts = ts
 			if mbs.opacity > 0:
+				glEnable(GL_BLEND)
+				glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 				mbs.draw()
 	DISP.update = display_update
 

@@ -20,6 +20,8 @@ def spinnies():
 			dur = max(0.001, min(t - ts, 0.125))
 			ts = t
 			ratio = 1 + 1 / (dur * 8)
+			if not isfinite(progress.vis):
+				progress.vis = 0
 			progress.vis = (progress.vis * (ratio - 1) + player.pos) / ratio
 			diff = 1 - abs(player.pos - progress.vis) / player.end
 			progress.spread = min(1, (progress.spread * (ratio - 1) + player.amp) / ratio * diff)

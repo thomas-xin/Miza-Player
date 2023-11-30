@@ -76,7 +76,7 @@ class MultiAutoImporter:
 			_globals.update(zip(args, futs))
 
 importer = MultiAutoImporter(
-	"contextlib, urllib, collections, math, traceback, requests, orjson",
+	"contextlib, urllib, collections, math, traceback, requests, orjson, functools",
 	"os, sys, yt_dlp, random, time, base64, hashlib, re, psutil, subprocess, itertools, zipfile",
 	pool=exc,
 	_globals=globals(),
@@ -93,6 +93,7 @@ traceback.force()
 from traceback import print_exc
 reqs = requests.Session()
 youtube_dl = yt_dlp.force()
+has_ytd = False
 
 
 class cdict(dict):
@@ -1254,6 +1255,49 @@ class AudioDownloader:
 
 	blocked_yt = False
 
+	@functools.lru_cache(maxsize=64)
+	def extract_audio_video(self, url):
+		with reqs.next().get(url, headers=Request.header(), stream=True) as resp:
+			resp.raise_for_status()
+			ct = resp.headers.get("Content-Type")
+			if ct == "text/html":
+				s = resp.text
+				out = []
+				matches = re.findall(r"""(?:audio|video)\.src ?= ?['"]https?:""", s)
+				t = s
+				for match in matches:
+					try:
+						t = t[t.index(match):]
+						t = t[t.index("http"):]
+						t2 = t[:re.search(r"""['"]""", t).start()]
+					except (IndexError, ValueError):
+						continue
+					if is_url(t2):
+						title = t2.split("?", 1)[0].rsplit("/", 1)[-1]
+						temp = dict(url=t2, webpage_url=url, title=title, direct=True)
+						out.append(temp)
+				matches = re.findall(r"""<(?:audio|video) """, s)
+				t = s
+				for match in matches:
+					try:
+						t = t[t.index(match):]
+						t = t[t.index("src="):]
+						t = t[t.index("http"):]
+						t2 = t[:re.search(r"""['"]""", t).start()]
+					except (IndexError, ValueError):
+						continue
+					if is_url(t2):
+						title = t2.split("?", 1)[0].rsplit("/", 1)[-1]
+						temp = dict(url=t2, webpage_url=url, title=title, direct=True)
+						out.append(temp)
+				if len(out) > 1:
+					return {"_type": "playlist", "entries": out}
+				elif out:
+					return out[0]
+			elif ct.split("/", 1)[0] in ("audio", "video", "image"):
+				title = url.split("?", 1)[0].rsplit("/", 1)[-1]
+				return dict(url=url, webpage_url=url, title=title, direct=True)
+
 	# Repeatedly makes calls to youtube-dl until there is no more data to be collected.
 	def extract_true(self, url):
 		while not is_url(url):
@@ -1297,13 +1341,21 @@ class AudioDownloader:
 			entries = self.downloader.extract_info(url, download=False, process=True)
 		except Exception as ex:
 			s = str(ex).casefold()
-			if type(ex) is not youtube_dl.DownloadError or self.ydl_errors(s):
+			if "unsupported url:" in s:
+				out = self.extract_audio_video(url)
+				if out:
+					return out
+				raise
+			elif not isinstance(ex, youtube_dl.DownloadError) or self.ydl_errors(s):
 				if "429" in s:
 					self.blocked_yt = utc() + 3600
-				try:
-					entries = self.extract_backup(url)
-				except youtube_dl.DownloadError:
-					raise FileNotFoundError("Unable to fetch audio data.")
+				if has_ytd:
+					try:
+						entries = self.extract_backup(url)
+					except (TypeError, youtube_dl.DownloadError):
+						raise FileNotFoundError(f"Unable to fetch audio data: {repr(ex)}")
+				else:
+					raise
 			else:
 				raise
 		if "entries" in entries:
@@ -1339,15 +1391,23 @@ class AudioDownloader:
 			return self.downloader.extract_info(url, download=False, process=False)
 		except Exception as ex:
 			s = str(ex).casefold()
-			if type(ex) is not youtube_dl.DownloadError or self.ydl_errors(s):
+			if "unsupported url:" in s:
+				out = self.extract_audio_video(url)
+				if out:
+					return out
+				raise
+			elif not isinstance(ex, youtube_dl.DownloadError) or self.ydl_errors(s):
 				if "429" in s:
 					self.blocked_yt = utc() + 3600
-				if is_url(url):
+				if has_ytd:
 					try:
-						return self.extract_backup(url)
-					except youtube_dl.DownloadError:
-						raise FileNotFoundError("Unable to fetch audio data.")
-			raise
+						entries = self.extract_backup(url)
+					except (TypeError, youtube_dl.DownloadError):
+						raise FileNotFoundError(f"Unable to fetch audio data: {repr(ex)}")
+				else:
+					raise
+			else:
+				raise
 
 	# Extracts info from a URL or search, adjusting accordingly.
 	def extract_info(self, item, count=1, search=False, mode=None):

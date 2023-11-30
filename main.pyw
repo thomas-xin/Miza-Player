@@ -63,7 +63,7 @@ player = cdict(
 	index=0,
 	pos=0,
 	offpos=-inf,
-	extpos=lambda: pc() + player.offpos if player.offpos > -inf else player.pos,
+	extpos=lambda: pc() + player.offpos if player.offpos > -inf or is_active() else player.pos,
 	end=inf,
 	amp=0,
 	stats=cdict(
@@ -2311,6 +2311,9 @@ def persist():
 		with requests.post(api, data=dict(urls=urls)) as resp:
 			print(resp)
 		qt = resp.json()
+		if len(qt) != len(q2):
+			print("Persist Mismatch:", len(qt), len(q2))
+			q2 = q2[:len(qt)]
 		q3 = [e for i, e in enumerate(q2) if qt[i]]
 		print("SCAN:", f"{len(q3)}/{len(q2)}")
 		if "-d" in sys.argv:
@@ -2923,7 +2926,9 @@ def mixer_stdout():
 			if not progress.seeking:
 				player.index = i
 				player.pos = pos = round(player.index / 30, 4)
-				player.offpos = pos - pc() if pos > 0 else -inf
+				offpos = pos - pc() if pos > 0 else -inf
+				if abs(offpos - player.get("offpos", 0)) > 0.25:
+					player.offpos = offpos
 			if dur >= 0:
 				player.end = dur or inf
 	except:
@@ -4761,49 +4766,50 @@ try:
 					if video_sourced:
 						if player.video and (player.video.is_running() or abs(player.video.pos - player.pos) < 1) and player.video.im:
 							im = player.video.im
-							if not player.video.tex:
-								# player.video.tex = None
-								# tex = pyglet.image.Texture.create(im.width, im.height, rectangle=True)
-								tex = im.get_texture()
-								player.video.tex = tex = tex.get_transform(flip_y=True)
-								tex.anchor_y = 0
-							tex = player.video.tex
-							if player.video.im2 != player.video.im:
-								# tex = im.get_texture()
-								# player.video.tex = tex = tex.get_transform(flip_y=True)
-								try:
-									tex.blit_into(player.video.im, 0, 0, 0)
-								except:
-									print_exc()
-								# print(tex)
-								player.video.im2 = player.video.im
-							size = limit_size(im.width, im.height, *player.rect[2:])
-							x = player.rect[2] - size[0] >> 1
-							y = (player.rect[3] - size[1] >> 1) + toolbar_height
-							scale = size[0] / tex.width
-							batch = DISP.get_batch(0)
-							if not player.sprite:
-								player.sprite = sp = pyglet.sprite.Sprite(
-									tex,
-									x=x,
-									y=y,
-									batch=batch,
-									group=DISP.get_group(2),
-								)
-								sp.scale = scale
-								sp.changed = 1
-							else:
-								sp = player.sprite
-								if sp.image != tex:
-									sp.image = tex
-								if sp.x != x:
-									sp.x = x
-								if sp.y != y:
-									sp.y = y
-								if sp.scale != scale:
+							if im.width > 0 and im.height > 0:
+								if not player.video.tex:
+									# player.video.tex = None
+									# tex = pyglet.image.Texture.create(im.width, im.height, rectangle=True)
+									tex = im.get_texture()
+									player.video.tex = tex = tex.get_transform(flip_y=True)
+									tex.anchor_y = 0
+								tex = player.video.tex
+								if player.video.im2 != player.video.im:
+									# tex = im.get_texture()
+									# player.video.tex = tex = tex.get_transform(flip_y=True)
+									try:
+										tex.blit_into(player.video.im, 0, 0, 0)
+									except:
+										print_exc()
+									# print(tex)
+									player.video.im2 = player.video.im
+								size = limit_size(im.width, im.height, *player.rect[2:])
+								x = player.rect[2] - size[0] >> 1
+								y = (player.rect[3] - size[1] >> 1) + toolbar_height
+								scale = size[0] / tex.width
+								batch = DISP.get_batch(0)
+								if not player.sprite:
+									player.sprite = sp = pyglet.sprite.Sprite(
+										tex,
+										x=x,
+										y=y,
+										batch=batch,
+										group=DISP.get_group(2),
+									)
 									sp.scale = scale
-							batch.used = True
-							sp.changed = max(0, sp.changed - 1)
+									sp.changed = 1
+								else:
+									sp = player.sprite
+									if sp.image != tex:
+										sp.image = tex
+									if sp.x != x:
+										sp.x = x
+									if sp.y != y:
+										sp.y = y
+									if sp.scale != scale:
+										sp.scale = scale
+								batch.used = True
+								sp.changed = max(0, sp.changed - 1)
 						else:
 							if (not player.video or not player.video.is_running() and not abs(player.video.pos - player.pos) < 1) and not player.get("video_loading"):
 								url = queue[0].get("video") or queue[0].get("icon")

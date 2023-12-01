@@ -671,6 +671,7 @@ synth_default = cdict(
 aediting = dict.fromkeys(asettings)
 syediting = dict.fromkeys(sysettings)
 config = "config.json"
+config2 = "config2.json"
 options = None
 if os.path.exists(config):
 	try:
@@ -2074,6 +2075,11 @@ else:
 	mixer = cdict()
 
 PROC = psutil.Process()
+
+def terminate_in(delay):
+	if delay > 0:
+		time.sleep(delay)
+	return PROC.kill()
 
 
 in_rect = lambda point, rect: point[0] >= rect[0] and point[0] < rect[0] + rect[2] and point[1] >= rect[1] and point[1] < rect[1] + rect[3]

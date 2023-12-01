@@ -4405,8 +4405,11 @@ def save_settings(closing=False):
 	temp = options.screensize
 	options.screensize = screensize2
 	if options != orig_options:
-		with open(config, "w", encoding="utf-8") as f:
+		with open(config2, "w", encoding="utf-8") as f:
 			json.dump(dict(options), f, indent="\t", default=json_default)
+		if os.path.exists(config):
+			os.remove(config)
+		os.rename(config2, config)
 	if options.control.preserve:
 		if not pdata:
 			b = io.BytesIO()
@@ -5247,9 +5250,11 @@ except Exception as ex:
 	if globals().get("last_save_fut"):
 		last_save_fut.result()
 	save_settings(closing=True)
+	submit(terminate_in, 5)
 	if not restarting and type(ex) is not StopIteration:
-		easygui.exceptionbox()
-	print("Exiting...")
-	DISP.close()
-	pygame.quit()
-	PROC.kill()
+		try:
+			easygui.exceptionbox()
+		except:
+			print_exc()
+print("Exiting...")
+PROC.kill()

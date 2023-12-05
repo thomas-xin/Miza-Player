@@ -256,7 +256,7 @@ def playlist_sync():
 		except ValueError:
 			t1 = 0
 		if control.playlist_sync and is_url(control.playlist_sync):
-			url = control.playlist_sync.replace("/p/", "/fileinfo/")
+			url = control.playlist_sync.replace("/p/", "/fi/")
 			try:
 				resp = requests.get(url)
 				resp.raise_for_status()
@@ -582,6 +582,7 @@ def setup_buttons():
 									futm[len(entries)] = fut
 								if not name:
 									name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+									ytdl.searched.pop(url, None)
 								entries.append(dict(name=name, url=url))
 								if duration:
 									entries[-1]["duration"] = duration
@@ -621,7 +622,7 @@ def setup_buttons():
 									fn = "playlists/" + quote(text)[:244] + ".json"
 									if len(entries) > 1024:
 										fn = fn[:-5] + ".zip"
-										b = bytes2zip(orjson.dumps(data))
+										b = bytes2zip(orjson.dumps(data), name=fn.rsplit("/", 1)[-1])
 										with open(fn, "wb") as f:
 											f.write(b)
 									else:
@@ -712,6 +713,7 @@ def setup_buttons():
 												futm[len(entries)] = fut
 											if not name:
 												name = url.rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+												ytdl.searched.pop(url, None)
 											entries.append(dict(name=name, url=url))
 											if duration:
 												entries[-1]["duration"] = duration
@@ -731,7 +733,7 @@ def setup_buttons():
 										out = "playlists/" + quote(choice)[:244] + ".json"
 										if len(entries) > 1024:
 											out = out[:-5] + ".zip"
-											b = bytes2zip(orjson.dumps(data))
+											b = bytes2zip(orjson.dumps(data), name=out.rsplit("/", 1)[-1])
 											with open(out, "wb") as f:
 												f.write(b)
 										else:
@@ -4522,7 +4524,7 @@ try:
 				e.pop("video", None)
 			if e.get("url"):
 				url = e["url"]
-				if url not in ytdl.searched:
+				if url not in ytdl.searched and e.get("duration"):
 					ytdl.searched[url] = cdict(t=time.time(), data=[astype(cdict, e)])
 		entries = [cdict(e, duration=e.get("duration")) for e in data.get("queue", ())]
 		queue.extend(entries)

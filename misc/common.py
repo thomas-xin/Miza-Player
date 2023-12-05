@@ -2414,10 +2414,10 @@ def zip2bytes(data):
 		b = z.read(z.namelist()[0])
 	return b
 
-def bytes2zip(data):
+def bytes2zip(data, name="D"):
 	b = io.BytesIO()
 	with zipfile.ZipFile(b, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=7, allowZip64=True) as z:
-		z.writestr("D", data=data)
+		z.writestr(name, data=data)
 	return b.getbuffer()
 
 shash = lambda s: base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).rstrip(b"=").decode("ascii")

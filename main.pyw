@@ -3085,7 +3085,7 @@ def pause_toggle(state=None):
 		player.paused ^= True
 	else:
 		player.paused = state
-	if player.paused:
+	if player.paused or control.subprocess:
 		player.channel.pause()
 	else:
 		player.channel.resume()
@@ -3750,6 +3750,11 @@ def render_settings(dur, ignore=False):
 						options.control[s] = 1
 					if s in ("silenceremove", "unfocus", "subprocess"):
 						mixer.submit(f"~setting {s} {options.control[s]}")
+						if s == "subprocess":
+							if options.control[s]:
+								player.channel.pause()
+							else:
+								player.channel.resume()
 					elif options.control[s]:
 						if s == "autobackup":
 							globals()["last_sync"] = -inf

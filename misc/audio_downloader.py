@@ -524,6 +524,7 @@ verify_search = lambda f: strip_acc(single_space(f.strip().translate(__strans)))
 find_urls = lambda url: regexp("(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+").findall(url)
 is_url = lambda url: regexp("^(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+$").fullmatch(url)
 is_discord_url = lambda url: regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/").findall(url) + regexp("https:\\/\\/images-ext-[0-9]+\\.discordapp\\.net\\/external\\/").findall(url)
+is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/attachments\\/").search(url)
 is_tenor_url = lambda url: regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
 is_imgur_url = lambda url: regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
 is_giphy_url = lambda url: regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
@@ -531,7 +532,20 @@ is_youtube_url = lambda url: regexp("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\
 is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r+[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
 is_deviantart_url = lambda url: regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
 
+def discord_expired(url):
+	if is_discord_attachment(url):
+		if "?ex=" not in url and "&ex=" not in url:
+			return True
+		temp = url.replace("?ex=", "&ex=").split("&ex=", 1)[-1].split("&", 1)[0]
+		try:
+			ts = int(temp, 16)
+		except ValueError:
+			return True
+		return ts < utc() + 60
+
 def expired(stream):
+	if discord_expired(stream):
+		return True
 	if is_youtube_url(stream):
 		return True
 	if stream.startswith("https://www.yt-download.org/download/"):
@@ -1290,6 +1304,14 @@ class AudioDownloader:
 						title = t2.split("?", 1)[0].rsplit("/", 1)[-1]
 						temp = dict(url=t2, webpage_url=url, title=title, direct=True)
 						out.append(temp)
+				t = s
+				spl = t.split('<meta itemprop="contentURL" content="', 1)
+				if len(spl) > 1:
+					t2 = spl[1].split('">', 1)[0]
+					if is_url(t2):
+						title = t2.split("?", 1)[0].rsplit("/", 1)[-1]
+						temp = dict(url=t2, webpage_url=url, title=title, direct=True)
+						out.append(temp)
 				if len(out) > 1:
 					return {"_type": "playlist", "entries": out}
 				elif out:
@@ -1483,6 +1505,9 @@ class AudioDownloader:
 	def extract(self, item, force=False, count=1, mode=None, search=True):
 		page = None
 		output = deque()
+		if discord_expired(item):
+			title = item.rsplit("/", 1)[-1].split("?", 1)[0]
+			return [dict(url=f"https://mizabot.xyz/u?url={item}", name=title, research=True)]
 		if "youtube.com" in item or "youtu.be/" in item:
 			p_id = None
 			for x in ("?list=", "&list="):
@@ -1637,7 +1662,13 @@ class AudioDownloader:
 					return [cdict(name=e["name"], url=e["url"], duration=e.get("duration")) for e in q]
 			elif mode in (None, "yt"):
 				with suppress(NotImplementedError):
-					resp = self.search_yt(item, skip=count > 1)[:count]
+					resp = t = s
+				spl = t.split('<meta itemprop="contentURL" content="', 1)
+				if len(spl) > 1:
+					t2 = spl[1].split('">', 1)[0]
+					if is_url(t2):
+						title = t2.split("?", 1)[0].rsplit("/", 1)[-1]
+						temp = dict(url=t2, webpage_url=url, title=title, direct=True)
 					if resp:
 						return resp
 			try:

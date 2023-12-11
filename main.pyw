@@ -619,10 +619,10 @@ def setup_buttons():
 								text = (text or "").strip()
 								if text:
 									data = dict(queue=entries, stats={})
-									fn = "playlists/" + quote(text)[:244] + ".json"
+									fn = ofn = "playlists/" + quote(text)[:244] + ".json"
 									if len(entries) > 1024:
 										fn = fn[:-5] + ".zip"
-										b = bytes2zip(orjson.dumps(data), name=fn.rsplit("/", 1)[-1])
+										b = bytes2zip(orjson.dumps(data), name=ofn.rsplit("/", 1)[-1])
 										with open(fn, "wb") as f:
 											f.write(b)
 									else:
@@ -730,10 +730,10 @@ def setup_buttons():
 												# entries[k]["url"] = entry["url"]
 										entries = list(entries)
 										data = dict(queue=entries, stats={})
-										out = "playlists/" + quote(choice)[:244] + ".json"
+										out = ofn = "playlists/" + quote(choice)[:244] + ".json"
 										if len(entries) > 1024:
 											out = out[:-5] + ".zip"
-											b = bytes2zip(orjson.dumps(data), name=out.rsplit("/", 1)[-1])
+											b = bytes2zip(orjson.dumps(data), name=ofn.rsplit("/", 1)[-1])
 											with open(out, "wb") as f:
 												f.write(b)
 										else:

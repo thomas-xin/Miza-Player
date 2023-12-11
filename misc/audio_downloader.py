@@ -1637,7 +1637,9 @@ class AudioDownloader:
 					return [cdict(name=e["name"], url=e["url"], duration=e.get("duration")) for e in q]
 			elif mode in (None, "yt"):
 				with suppress(NotImplementedError):
-					return self.search_yt(item, skip=count > 1)[:count]
+					resp = self.search_yt(item, skip=count > 1)[:count]
+					if resp:
+						return resp
 			try:
 				# Otherwise call automatic extract_info function
 				resp = self.extract_info(item, count, search=search, mode=mode)

@@ -1617,34 +1617,6 @@ class AudioDownloader:
 						if v_id == e.get("id"):
 							output.rotate(-i)
 							break
-		if is_url(item) and tuple(reversed(item.split("/", 3)[2].encode("utf-8"))) == (109, 111, 99, 46, 117, 109, 105, 110, 97, 120):
-			b = reqs.get(item, headers=self.youtube_header()).content
-			search = b'itemprop="name" content="'
-			try:
-				i = b.index(search)
-			except ValueError:
-				pass
-			else:
-				s, b = b[i + len(search):].split(b'"', 1)
-				name = s.decode("utf-8", "replace")
-				search = b'itemprop="duration" content="'
-				s, b = b.split(search, 1)[-1].split(b'"', 1)
-				duration = time_parse(s.decode("utf-8", "replace").lstrip("P").rstrip("S").replace("DT", ":").replace("H", ":").replace("M", ":"))
-				search = b'itemprop="thumbnailUrl" content="'
-				s, b = b.split(search, 1)[-1].split(b'"', 1)
-				thumbnail = s.decode("utf-8", "replace")
-				search = b'itemprop="embedURL" content="'
-				with requests.head(b.split(search, 1)[-1].split(b'"', 1)[0].decode("utf-8", "replace"), headers=self.youtube_header(), allow_redirects=True) as resp:
-					stream = resp.url
-				temp = cdict(
-					name=name,
-					url=item,
-					duration=duration,
-					stream=stream,
-					icon=thumbnail,
-					video=stream,
-				)
-				output.append(temp)
 		# Only proceed if no items have already been found (from playlists in this case)
 		if not len(output):
 			# Allow loading of files output by ~dump
@@ -1662,15 +1634,10 @@ class AudioDownloader:
 					return [cdict(name=e["name"], url=e["url"], duration=e.get("duration")) for e in q]
 			elif mode in (None, "yt"):
 				with suppress(NotImplementedError):
-					resp = t = s
-				spl = t.split('<meta itemprop="contentURL" content="', 1)
-				if len(spl) > 1:
-					t2 = spl[1].split('">', 1)[0]
-					if is_url(t2):
-						title = t2.split("?", 1)[0].rsplit("/", 1)[-1]
-						temp = dict(url=t2, webpage_url=url, title=title, direct=True)
-					if resp:
-						return resp
+					res = self.search_yt(item, count=count)
+					res = [cdict(**e, webpage_url=e.get("url"), title=e.get("name")) for e in res]
+					if res:
+						resp = cdict(_type="playlist", entries=res, url=res[0].webpage_url)
 			try:
 				# Otherwise call automatic extract_info function
 				resp = self.extract_info(item, count, search=search, mode=mode)
@@ -1830,49 +1797,44 @@ class AudioDownloader:
 						results.append(entry)
 		return sorted(results, key=lambda entry: entry.views, reverse=True)
 
-	def search_yt(self, query, skip=False):
-		out = None
+	def search_yt(self, query, skip=False, count=1):
+		out = []
 		if not skip:
 			try:
-				resp = self.extract_info(query)
+				resp = self.extract_info(query, search=True, count=count)
 				if resp.get("_type", None) == "url":
 					resp = self.extract_from(resp["url"])
 				if resp.get("_type", None) == "playlist":
 					entries = list(resp["entries"])
 				else:
 					entries = [resp]
-				out = []
 				for entry in entries:
-					try:
-						found = True
-						if "title" in entry:
-							title = entry["title"]
-						else:
-							title = entry["url"].rsplit("/", 1)[-1]
-							if "." in title:
-								title = title[:title.rindex(".")]
-							found = False
-						if "duration" in entry:
-							dur = float(entry["duration"])
-						else:
-							dur = None
-						url = entry.get("webpage_url", entry.get("url", entry.get("id")))
-						if not url:
-							continue
-						temp = cdict(name=title, url=url, duration=dur)
-						if not is_url(url):
-							if entry.get("ie_key", "").casefold() == "youtube":
-								temp["url"] = f"https://www.youtube.com/watch?v={url}"
-						temp["research"] = True
-						out.append(temp)
-					except:
-						print_exc()
+					found = True
+					if "title" in entry:
+						title = entry["title"]
+					else:
+						title = entry["url"].rsplit("/", 1)[-1]
+						if "." in title:
+							title = title[:title.rindex(".")]
+						found = False
+					url = entry.get("webpage_url", entry.get("url", entry.get("id")))
+					if not url:
+						continue
+					if entry.get("duration"):
+						dur = float(entry["duration"])
+					else:
+						dur = None
+					temp = cdict(name=title, url=url, duration=dur)
+					if not is_url(url):
+						if entry.get("ie_key", "").casefold() == "youtube":
+							temp["url"] = f"https://www.youtube.com/watch?v={url}"
+					out.append(temp)
 			except:
 				print_exc()
 		if not out:
 			url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
 			self.youtube_x += 1
-			resp = reqs.get(url, headers=self.youtube_header()).content
+			resp = Request(url, headers=self.youtube_header(), timeout=12)
 			result = None
 			s = resp
 			with suppress(ValueError):
@@ -1886,29 +1848,33 @@ class AudioDownloader:
 				s = s[:s.index(b'window["ytInitialPlayerResponse"] = null;')]
 				s = s[:s.rindex(b";")]
 				result = self.parse_yt(s)
-			if result is None:
-				raise NotImplementedError("Unable to read json response.")
-			q = to_alphanumeric(full_prune(query))
-			high = deque()
-			low = deque()
-			for entry in result:
-				if entry.duration:
-					name = full_prune(entry.name)
-					aname = to_alphanumeric(name)
-					spl = aname.split()
-					if entry.duration < 960 or "extended" in q or "hour" in q or "extended" not in spl and "hour" not in spl and "hours" not in spl:
-						if fuzzy_substring(aname, q, match_length=False) >= 0.5:
-							high.append(entry)
-							continue
-				low.append(entry)
-			def key(entry):
-				coeff = fuzzy_substring(to_alphanumeric(full_prune(entry.name)), q, match_length=False)
-				if coeff < 0.5:
-					coeff = 0
-				return coeff
-			out = sorted(high, key=key, reverse=True)
-			out.extend(sorted(low, key=key, reverse=True))
-		return out
+			if result is not None:
+				q = to_alphanumeric(full_prune(query))
+				high = []
+				low = []
+				for entry in result:
+					if entry.duration:
+						name = full_prune(entry.name)
+						aname = to_alphanumeric(name)
+						spl = aname.split()
+						if entry.duration < 960 or "extended" in q or "hour" in q or "extended" not in spl and "hour" not in spl and "hours" not in spl:
+							if fuzzy_substring(aname, q, match_length=False) >= 0.5:
+								high.append(entry)
+								continue
+					low.append(entry)
+
+				def key(entry):
+					coeff = fuzzy_substring(to_alphanumeric(full_prune(entry.name)), q, match_length=False)
+					if coeff < 0.5:
+						coeff = 0
+					return coeff
+
+				out = sorted(high, key=key, reverse=True)
+				out.extend(sorted(low, key=key, reverse=True))
+			if not out and len(query) < 16:
+				self.failed_yt = utc() + 180
+				print(query)
+		return out[:count]
 
 	# Performs a search, storing and using cached search results for efficiency.
 	def search(self, item, force=False, mode=None, count=1):

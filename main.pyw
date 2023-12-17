@@ -426,30 +426,34 @@ def setup_buttons():
 					if query and query in easygui2.tmap:
 						url = easygui2.tmap[query]
 						submit(_enqueue_search, url, index=sidebar.get("lastsel"))
+					else:
+						sidebar.loading = False
 				if query:
 					if not is_url(query):
 						if not q:
+							sidebar.loading = True
 							ytdl = downloader.result()
-							try:
-								q2 = "ytsearch:" + query.replace(":", "-")
-								entries = ytdl.search(q2, count=20)
-							except:
-								print_exc()
-								sidebar.particles.append(cdict(eparticle))
-								return
-							matches = [fuzzy_substring(query.upper(), e.name.upper()) for e in entries]
-							M = max(matches)
-							print(matches)
-							if M < 0.5:
-								futs = []
-								for mode in ("sc",):
-									q2 = query.replace(":", "-")
-									fut = submit(ytdl.search, q2, mode=mode, count=12)
-									futs.append(fut)
-								for fut in futs:
-									res = fut.result()
-									# print(fut, res)
-									entries.extend(res)
+							entries = []
+							# try:
+								# q2 = "ytsearch:" + query.replace(":", "-")
+								# entries = ytdl.search(q2, count=20)
+							# except:
+								# print_exc()
+								# sidebar.particles.append(cdict(eparticle))
+								# return
+							# matches = [fuzzy_substring(query.upper(), e.name.upper()) for e in entries]
+							# M = max(matches)
+							# print(matches)
+							# if M < 0.5:
+							futs = []
+							for mode in ("yt", "sc"):
+								q2 = query.replace(":", "-")
+								fut = submit(ytdl.search, q2, mode=mode, count=12)
+								futs.append(fut)
+							for fut in futs:
+								res = fut.result()
+								# print(fut, res)
+								entries.extend(res)
 							if len(entries) > 1:
 								nchoices = {e.name: e.url for e in entries}
 								easygui2.tmap = nchoices
@@ -4015,7 +4019,7 @@ def draw_menu():
 					paste_queue = lambda: submit(enqueue_auto, *p.splitlines())
 					sidebar.menu.buttons = (("Paste", paste_queue),) + sidebar.menu.buttons
 	cond = False
-	if sidebar.particles or sidebar.ripples or sidebar.get("dragging") or sidebar.scroll.pos != sidebar.scroll.target or sidebar.abspos or sidebar.menu:
+	if sidebar.particles or sidebar.ripples or sidebar.get("loading") or sidebar.get("dragging") or sidebar.scroll.pos != sidebar.scroll.target or sidebar.abspos or sidebar.menu:
 		cond = True
 	elif not is_unfocused() and in_rect(mpos2, sidebar.rect) and (mpos != mpprev or CTRL(kheld) and (kclick[K_a] or kclick[K_s] or mclick[0])) or sidebar.get("last_selected") is not None:
 		cond = True

@@ -63,7 +63,8 @@ player = cdict(
 	index=0,
 	pos=0,
 	offpos=-inf,
-	extpos=lambda: pc() + player.offpos if player.offpos > -inf or is_active() else player.pos,
+	extpos=lambda: pc() * player.speed() + player.offpos if player.offpos > -inf or is_active() else player.pos,
+	speed=lambda: audio.speed * 2 ** (audio.nightcore / 12),
 	end=inf,
 	amp=0,
 	stats=cdict(
@@ -2100,7 +2101,7 @@ def start_player(pos=None, force=False):
 		with player.waiting:
 			if pos is not None:
 				player.pos = pos
-				player.offpos = pos - pc() if pos > 0 else -inf
+				player.offpos = pos - pc() * player.speed() if pos > 0 else -inf
 				player.index = player.pos * 30
 			if force and queue and is_url(queue[0].url):
 				queue[0].stream = None
@@ -2173,7 +2174,7 @@ def start_player(pos=None, force=False):
 			print("SUBMIT:", s)
 			mixer.submit(s, force=False)
 			player.pos = pos
-			player.offpos = pos - pc() if pos > 0 else -inf
+			player.offpos = pos - pc() * player.speed() if pos > 0 else -inf
 			player.index = player.pos * 30
 			player.end = duration or inf
 			player.stream = stream
@@ -2941,7 +2942,7 @@ def mixer_stdout():
 			if not progress.seeking:
 				player.index = i
 				player.pos = pos = round(player.index / 30, 4)
-				offpos = pos - pc() if pos > 0 else -inf
+				offpos = pos - pc() * player.speed() if pos > 0 else -inf
 				if abs(offpos - player.get("offpos", 0)) > 0.25:
 					player.offpos = offpos
 			if dur >= 0:
@@ -3051,7 +3052,7 @@ def download(entries, fn, settings=False):
 			if settings:
 				cmd += tuple(construct_options())
 			if settings and control.silenceremove:
-				srf = "silenceremove=start_periods=1:start_duration=1:start_threshold=-50dB:start_silence=0.5:stop_periods=-9000:stop_threshold=-50dB:window=0.015625"
+				srf = "silenceremove=start_periods=1:start_duration=1:start_threshold=-50dB:start_silence=1:stop_periods=-9000:stop_threshold=-50dB:window=0.015625"
 				if "-filter_complex" in cmd:
 					i = cmd.index("-filter_complex") + 1
 					cmd = cmd[:i] + (cmd[i] + "," + srf,) + cmd[i + 1:]

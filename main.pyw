@@ -4519,8 +4519,8 @@ lp = None
 addp.result()
 
 try:
-	if "-nd" not in sys.argv:
-		submit(distribute_in, 0 if "-d" in sys.argv else 300)
+	if "-d" in sys.argv:
+		submit(distribute_in, 30)
 	if options.control.preserve and os.path.exists("dump.json"):
 		ytdl = downloader.result()
 		with open("dump.json", "rb") as f:

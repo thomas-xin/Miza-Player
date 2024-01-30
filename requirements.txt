@@ -14,4 +14,4 @@ samplerate>=0.1.0
 scipy>=1.10.1
 soundcard>=0.4.2
 soundfile>=0.12.1
-yt-dlp>=2023.10.13
+yt-dlp>=2023.12.30

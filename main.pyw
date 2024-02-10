@@ -1940,6 +1940,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		elif stream.startswith("https://api.mizabot.xyz/ytdl"):
 			if download:
 				with reqs.get(stream, stream=True) as resp:
+					resp.raise_for_status()
 					it = resp.iter_content(65536)
 					with open(ofn, "wb") as f:
 						try:
@@ -2474,9 +2475,9 @@ def reevaluate():
 				force = False
 				try:
 					url = f"https://api.mizabot.xyz/ytdl?q={url}&count=1"
-					resp = reqs.get(url)
-					resp.raise_for_status()
-					queue[0].update(resp.json()[0])
+					with reqs.get(url, stream=True) as resp:
+						resp.raise_for_status()
+						queue[0].update(resp.json()[0])
 				except:
 					url = queue[0].url
 					url = unyt(url)
@@ -2512,9 +2513,9 @@ def reevaluate_in(delay=0, mut=()):
 			force = False
 			try:
 				url = f"https://api.mizabot.xyz/ytdl?q={url}&count=1"
-				resp = reqs.get(url)
-				resp.raise_for_status()
-				queue[0].update(resp.json()[0])
+				with reqs.get(url, stream=True) as resp:
+					resp.raise_for_status()
+					queue[0].update(resp.json()[0])
 			except:
 				url = queue[0].url
 				url = unyt(url)

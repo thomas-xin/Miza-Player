@@ -1986,7 +1986,8 @@ def prepare(entry, force=False, download=False, delay=0):
 				# print_exc()
 				globals()["has_api"] = 0
 		if is_url(entry.url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
-			stream = f"https://api.mizabot.xyz/ytdl?d={entry.url}&fmt=webm"
+			in_url = urllib.parse.quote_plus(entry.url)
+			stream = f"https://api.mizabot.xyz/ytdl?d={in_url}&fmt=webm"
 			if not download:
 				return stream
 			if os.path.exists(ofn) and os.path.getsize(ofn):
@@ -2259,7 +2260,7 @@ def ecdc_compress(entry, stream, force=False):
 			name = entry.get("name") or ""
 			b = "auto" if i is None else br
 			query = f"bitrate={b}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
-			api = f"https://api.mizabot.xyz/encodec?{query}&inference={i}&url={url}"
+			api = f"https://api.mizabot.xyz/encodec?{query}&inference={i}&url={urllib.parse.quote_plus(url)}"
 			if i is not None:
 				print(api)
 			ifn = "cache/~" + shash(url) + ".webm"
@@ -2306,7 +2307,7 @@ def ecdc_compress(entry, stream, force=False):
 					with open(ofn, "rb") as f:
 						b = f.read()
 					query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
-					api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url={url}"
+					api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url={urllib.parse.quote_plus(url)}"
 					# print(api)
 					with requests.post(api, data=b, stream=True) as resp:
 						print(resp)
@@ -2471,10 +2472,10 @@ def reevaluate():
 				ytdl = downloader.result()
 				ytdl.cache.pop(url, None)
 			else:
-				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm&asap=1"
+				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={urllib.parse.quote_plus(url)}&fmt=webm&asap=1"
 				force = False
 				try:
-					url = f"https://api.mizabot.xyz/ytdl?q={url}&count=1"
+					url = f"https://api.mizabot.xyz/ytdl?q={urllib.parse.quote_plus(url)}&count=1"
 					with reqs.get(url, stream=True) as resp:
 						resp.raise_for_status()
 						queue[0].update(resp.json()[0])
@@ -2509,10 +2510,10 @@ def reevaluate_in(delay=0, mut=()):
 			ytdl = downloader.result()
 			ytdl.cache.pop(url, None)
 		else:
-			queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={url}&fmt=webm&asap=1"
+			queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={urllib.parse.quote_plus(url)}&fmt=webm&asap=1"
 			force = False
 			try:
-				url = f"https://api.mizabot.xyz/ytdl?q={url}&count=1"
+				url = f"https://api.mizabot.xyz/ytdl?q={urllib.parse.quote_plus(url)}&count=1"
 				with reqs.get(url, stream=True) as resp:
 					resp.raise_for_status()
 					queue[0].update(resp.json()[0])
@@ -2940,7 +2941,7 @@ def mixer_stdout():
 			if player.waiting:
 				continue
 			i, dur = map(float, s.split(" ", 1))
-			if not progress.seeking:
+			if not progress.seeking or not any(mheld):
 				player.index = i
 				player.pos = pos = round(player.index / 30, 4)
 				offpos = pos - pc() * player.speed() if pos > 0 else -inf

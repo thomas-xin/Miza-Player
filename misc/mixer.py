@@ -866,9 +866,9 @@ def download(url, fn):
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".webm") and is_url(url) and url.rsplit(".", 1)[-1] not in ("mp4", "mov", "avi", "mkv"):
 			if url.rsplit(".", 1)[-1] in ("webm", "opus") or is_youtube_stream(url):
-				cmd += ("-f", "webm", "-vn", "-c:a", "copy", fi)
+				cmd += ("-f", "webm", "-c:a", "copy", fi)
 			else:
-				cmd += ("-f", "webm", "-vn", "-ar", "48k", "-ac", "2", "-b:a", "192k", fi)
+				cmd += ("-f", "webm", "-ar", "48k", "-ac", "2", "-b:a", "192k", fi)
 		else:
 			if fn.endswith(".pcm"):
 				cmd += ("-f", "s16le")

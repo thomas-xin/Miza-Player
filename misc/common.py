@@ -2276,24 +2276,42 @@ reqs = requests.Session()
 def update_repo(force=False):
 	# print("Checking for updates...")
 	try:
-		resp = reqs.get("https://github.com/thomas-xin/Miza-Player")
-		s = resp.text
+		commit = None
 		try:
-			search = '<include-fragment src="/thomas-xin/Miza-Player/'
-			s = s[s.index(search) + len(search):].split('"', 1)[0].rstrip("/").rsplit("/", 1)[-1]
-		except ValueError:
-			search = '<a data-pjax="true" data-test-selector="commit-tease-commit-message"'
-			s = s[s.index(search) + len(search):]
-			search = 'href="/thomas-xin/Miza-Player/commit/'
-			s = s[s.index(search) + len(search):]
-		commit = s.split('"', 1)[0]
-		try:
+			s = subprocess.check_output(["git", "ls-remote", "https://github.com/thomas-xin/Miza-Player"]).strip().decode("ascii")
+			spl = s.splitlines()
+			for s in spl:
+				s = s.strip()
+				if s.endswith("HEAD"):
+					commit = s.split(None, 1)[0]
+					break
+		except FileNotFoundError:
+			pass
+		except:
+			print_exc()
+		if not commit:
+			resp = reqs.get("https://github.com/thomas-xin/Miza-Player")
+			s = resp.text
 			try:
-				with open(commitf, "r") as f:
-					s = f.read().strip()
-			except FileNotFoundError:
-				print("First run, treating as latest update...")
-				raise EOFError
+				search = '<include-fragment src="/thomas-xin/Miza-Player/'
+				s = s[s.index(search) + len(search):].split('"', 1)[0].rstrip("/").rsplit("/", 1)[-1]
+			except ValueError:
+				search = '<a data-pjax="true" data-test-selector="commit-tease-commit-message"'
+				s = s[s.index(search) + len(search):]
+				search = 'href="/thomas-xin/Miza-Player/commit/'
+				s = s[s.index(search) + len(search):]
+			commit = s.split('"', 1)[0]
+		try:
+			s = None
+			if os.path.exists(".git"):
+				s = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip().decode("ascii")
+			if not s:
+				try:
+					with open(commitf, "r") as f:
+						s = f.read().strip()
+				except FileNotFoundError:
+					print("First run, treating as latest update...")
+					raise EOFError
 			if commit != s:
 				print("Update found!")
 				if not options.control.autoupdate:

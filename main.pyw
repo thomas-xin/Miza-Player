@@ -1426,7 +1426,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		cmd = ("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate,duration", "-of", "csv=s=x:p=0", url)
 		print(cmd)
 		p = psutil.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y", "-hwaccel", hwaccel]
+		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y", "-hwaccel", hwaccel, "-an"]
 		if is_url(url):
 			cmd2 += ["-reconnect", "1", "-reconnect_at_eof", "0", "-reconnect_streamed", "1", "-reconnect_delay_max", "240"]
 		if not iterations:
@@ -1705,6 +1705,8 @@ def render_lyrics(entry):
 			y = 0
 			z = lyrics_size // 2 + 1
 			for para in lyrics[1].split("\n\n"):
+				if mx > player.rect[2]:
+					break
 				lines = para.splitlines()
 				if mx and y + z * 3 > render[1].get_height():
 					y = 0

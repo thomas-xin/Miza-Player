@@ -2279,8 +2279,8 @@ def update_repo(force=False):
 		resp = reqs.get("https://github.com/thomas-xin/Miza-Player")
 		s = resp.text
 		try:
-			search = '<include-fragment src="/thomas-xin/Miza-Player/tree-commit/'
-			s = s[s.index(search) + len(search):]
+			search = '<include-fragment src="/thomas-xin/Miza-Player/'
+			s = s[s.index(search) + len(search):].split('"', 1)[0].rstrip("/").rsplit("/", 1)[-1]
 		except ValueError:
 			search = '<a data-pjax="true" data-test-selector="commit-tease-commit-message"'
 			s = s[s.index(search) + len(search):]

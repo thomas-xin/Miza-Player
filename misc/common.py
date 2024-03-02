@@ -198,7 +198,7 @@ lyrics_scraper = concurrent.futures.Future()
 def import_audio_downloader():
 	try:
 		audio_downloader = __import__("audio_downloader")
-		globals()["ytdl"] = ytdl = audio_downloader.AudioDownloader()
+		globals()["ytdl"] = ytdl = audio_downloader.ytdl = audio_downloader.AudioDownloader()
 		downloader.set_result(ytdl)
 		lyrics_scraper.set_result(audio_downloader.get_lyrics)
 	except Exception as ex:

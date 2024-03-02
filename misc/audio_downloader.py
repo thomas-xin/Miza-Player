@@ -94,6 +94,7 @@ from traceback import print_exc
 reqs = requests.Session()
 youtube_dl = yt_dlp.force()
 has_ytd = False
+as_str = str
 
 
 class cdict(dict):
@@ -681,10 +682,13 @@ def get_duration(filename):
 
 # Gets the best icon/thumbnail for a queue entry.
 def get_best_icon(entry):
-	with suppress(KeyError):
+	try:
 		return entry["thumbnail"]
-	with suppress(KeyError):
-		return entry["icon"]
+	except KeyError:
+		try:
+			return entry["icon"]
+		except KeyError:
+			pass
 	try:
 		thumbnails = entry["thumbnails"]
 	except KeyError:
@@ -704,22 +708,26 @@ def get_best_icon(entry):
 				vid = url.rsplit("/", 1)[-1].split("?", 1)[0]
 			entry["thumbnail"] = f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg"
 			return entry["thumbnail"]
+		if url.startswith("https://mizabot.xyz/"):
+			return "https://mizabot.xyz/static/mizaleaf.png"
 		return url
 	return sorted(thumbnails, key=lambda x: float(x.get("width", x.get("preference", 0) * 4096)), reverse=True)[0]["url"]
 
 # Gets the best audio file download link for a queue entry.
 def get_best_audio(entry):
-	with suppress(KeyError):
+	try:
 		return entry["stream"]
+	except KeyError:
+		pass
 	best = -inf
 	try:
 		fmts = entry["formats"]
 	except KeyError:
 		fmts = ()
 	try:
-		url = entry["webpage_url"]
-	except KeyError:
 		url = entry["url"]
+	except KeyError:
+		url = entry["webpage_url"]
 	replace = True
 	for fmt in fmts:
 		q = fmt.get("abr", 0)
@@ -733,9 +741,11 @@ def get_best_audio(entry):
 		vcodec = fmt.get("vcodec", "none")
 		if vcodec not in (None, "none"):
 			q -= 1
-		if not fmt["url"].startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
+		else:
+			q = fmt.get("tbr", 0) or q
+		u = as_str(fmt["url"])
+		if not u.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
 			replace = False
-		# print(fmt["url"], q)
 		if q > best or replace:
 			best = q
 			url = fmt["url"]
@@ -743,16 +753,16 @@ def get_best_audio(entry):
 		if "?dl=0" in url:
 			url = url.replace("?dl=0", "?dl=1")
 	if url.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
-		resp = reqs.get(url).content
-		fmts = deque()
+		resp = Request(url)
+		fmts = alist()
 		with suppress(ValueError, KeyError):
 			while True:
 				search = b'<Representation id="'
 				resp = resp[resp.index(search) + len(search):]
-				f_id = resp[:resp.index(b'"')].decode("utf-8")
+				f_id = as_str(resp[:resp.index(b'"')])
 				search = b"><BaseURL>"
 				resp = resp[resp.index(search) + len(search):]
-				stream = resp[:resp.index(b'</BaseURL>')].decode("utf-8")
+				stream = as_str(resp[:resp.index(b'</BaseURL>')])
 				fmt = cdict(youtube_dl.extractor.youtube.YoutubeIE._formats[f_id])
 				fmt.url = stream
 				fmts.append(fmt)
@@ -764,26 +774,28 @@ def get_best_audio(entry):
 
 # Gets the best video file download link for a queue entry.
 def get_best_video(entry):
-	with suppress(KeyError):
-		return entry["stream"]
+	try:
+		return entry["video"]
+	except KeyError:
+		pass
 	best = -inf
 	try:
 		fmts = entry["formats"]
 	except KeyError:
 		fmts = ()
 	try:
-		url = entry["webpage_url"]
+		url = entry["url"]
 	except KeyError:
-		url = entry.get("url")
+		url = entry["webpage_url"]
 	replace = True
 	for fmt in fmts:
-		q = 720 - abs(720 - (fmt.get("height") or 0))
+		q = fmt.get("height", 0)
 		if not isinstance(q, (int, float)):
 			q = 0
 		vcodec = fmt.get("vcodec", "none")
 		if vcodec in (None, "none"):
-			q -= inf
-		u = fmt["url"]
+			q -= 1
+		u = as_str(fmt["url"])
 		if not u.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
 			replace = False
 		if q > best or replace:
@@ -793,16 +805,16 @@ def get_best_video(entry):
 		if "?dl=0" in url:
 			url = url.replace("?dl=0", "?dl=1")
 	if url.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
-		resp = reqs.get(url).content
-		fmts = deque()
+		resp = Request(url)
+		fmts = alist()
 		with suppress(ValueError, KeyError):
 			while True:
 				search = b'<Representation id="'
 				resp = resp[resp.index(search) + len(search):]
-				f_id = resp[:resp.index(b'"')].decode("utf-8")
+				f_id = as_str(resp[:resp.index(b'"')])
 				search = b"><BaseURL>"
 				resp = resp[resp.index(search) + len(search):]
-				stream = resp[:resp.index(b'</BaseURL>')].decode("utf-8")
+				stream = as_str(resp[:resp.index(b'</BaseURL>')])
 				fmt = cdict(youtube_dl.extractor.youtube.YoutubeIE._formats[f_id])
 				fmt.url = stream
 				fmts.append(fmt)
@@ -1271,6 +1283,7 @@ class AudioDownloader:
 
 	@functools.lru_cache(maxsize=64)
 	def extract_audio_video(self, url):
+		title = url.split("?", 1)[0].rsplit("/", 1)[-1].split("#", 1)[0]
 		with reqs.next().get(url, headers=Request.header(), stream=True) as resp:
 			resp.raise_for_status()
 			ct = resp.headers.get("Content-Type")
@@ -1317,7 +1330,6 @@ class AudioDownloader:
 				elif out:
 					return out[0]
 			elif ct.split("/", 1)[0] in ("audio", "video", "image"):
-				title = url.split("?", 1)[0].rsplit("/", 1)[-1]
 				return dict(url=url, webpage_url=url, title=title, direct=True)
 
 	# Repeatedly makes calls to youtube-dl until there is no more data to be collected.
@@ -1370,7 +1382,7 @@ class AudioDownloader:
 				raise
 			elif not isinstance(ex, youtube_dl.DownloadError) or self.ydl_errors(s):
 				if "429" in s:
-					self.blocked_yt = utc() + 3600
+					self.blocked_yt = utc() + 60
 				if has_ytd:
 					try:
 						entries = self.extract_backup(url)
@@ -1397,39 +1409,134 @@ class AudioDownloader:
 			out.append(temp)
 		return out
 
+	def extract_alt(self, url):
+		if "dropbox.com" in url and "?dl=0" in url:
+			return url.replace("?dl=0", "?dl=1")
+		if is_imgur_url(url):
+			first = url.split("#", 1)[0].split("?", 1)[0]
+			if not first.endswith(".jpg"):
+				first += ".jpg"
+			return first
+		if is_giphy_url(url):
+			first = url.split("#", 1)[0].split("?", 1)[0]
+			item = first[first.rindex("/") + 1:]
+			return f"https://media2.giphy.com/media/{item}/giphy.gif"
+		if is_youtube_url(url):
+			if "?v=" in url:
+				vid = url.split("?v=", 1)[-1]
+			else:
+				vid = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+			return f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg"
+		if is_redgifs_url(url):
+			vid = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+			return f"https://api.redgifs.com/v2/gifs/{vid}/sd.m3u8"
+		if any(maps((is_discord_url, is_emoji_url, is_youtube_url, is_youtube_stream), url)):
+			return url
+		if is_reddit_url(url):
+			url = url.replace("www.reddit.com", "vxreddit.com")
+		try:
+			resp = reqs.next().get(url, headers=Request.header(), stream=True)
+			resp.raise_for_status()
+		except:
+			print_exc()
+			return
+		url = as_str(resp.url)
+		head = fcdict(resp.headers)
+		ctype = [t.strip() for t in head.get("Content-Type", "").split(";")]
+		if is_redgifs_url(url):
+			vid = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+			return f"https://api.redgifs.com/v2/gifs/{vid}/sd.m3u8"
+		elif "text/html" in ctype:
+			rit = resp.iter_content(65536)
+			data = next(rit)
+			s = as_str(data)
+			res = None
+			try:
+				s = s[s.index("<meta") + 5:]
+				if 'property="og:video" content="' in s:
+					try:
+						search = 'property="og:video" content="'
+						s = s[s.index(search) + len(search):]
+						res = s[:s.index('"')]
+					except ValueError:
+						pass
+				if not res and 'property="og:image" content="' in s:
+					try:
+						search = 'property="og:image" content="'
+						s = s[s.index(search) + len(search):]
+						res = s[:s.index('"')]
+					except ValueError:
+						pass
+				if not res:
+					search = 'http-equiv="refresh" content="'
+					s = s[s.index(search) + len(search):]
+					s = s[:s.index('"')]
+					res = None
+					for k in s.split(";"):
+						temp = k.strip()
+						if temp.casefold().startswith("url="):
+							res = temp[4:]
+							break
+					if not res:
+						raise ValueError
+			except ValueError:
+				pass
+			else:
+				if res.startswith("/"):
+					res = url.split("://", 1)[0] + ":/" + res
+				print(res)
+				return res
+
 	# Extracts audio information from a single URL.
 	def extract_from(self, url):
-		if is_discord_url(url):
+		if is_discord_attachment(url):
 			title = url.split("?", 1)[0].rsplit("/", 1)[-1]
+			if title.rsplit(".", 1)[-1] in ("ogg", "ts", "webm", "mp4", "avi", "mov"):
+				url2 = url.replace("/cdn.discordapp.com/", "/media.discordapp.net/")
+				with reqs.next().get(url2, headers=Request.header(), stream=True) as resp:
+					if resp.status_code in range(200, 400):
+						url = url2
 			if "." in title:
 				title = title[:title.rindex(".")]
 			return dict(url=url, webpage_url=url, title=title, direct=True)
+		ex = None
 		try:
 			if self.blocked_yt > utc():
 				raise PermissionError
 			if url.startswith("https://www.youtube.com/search") or url.startswith("https://www.youtube.com/results"):
 				url = url.split("=", 1)[1].split("&", 1)[0]
 			self.youtube_dl_x += 1
-			return self.downloader.extract_info(url, download=False, process=False)
-		except Exception as ex:
+			resp = self.downloader.extract_info(url, download=False, process=False)
+		except Exception as exc:
+			ex = exc
+			resp = None
 			s = str(ex).casefold()
-			if "unsupported url:" in s:
-				out = self.extract_audio_video(url)
-				if out:
-					return out
-				raise
-			elif not isinstance(ex, youtube_dl.DownloadError) or self.ydl_errors(s):
+			if isinstance(ex, PermissionError) or self.ydl_errors(s):
 				if "429" in s:
-					self.blocked_yt = utc() + 3600
+					self.blocked_yt = utc() + 60
 				if has_ytd:
 					try:
-						entries = self.extract_backup(url)
+						resp = self.extract_backup(url)
 					except (TypeError, youtube_dl.DownloadError):
 						raise FileNotFoundError(f"Unable to fetch audio data: {repr(ex)}")
-				else:
-					raise
-			else:
-				raise
+		if resp and not resp.get("direct", False):
+			return resp
+		title = url.split("?", 1)[0].rsplit("/", 1)[-1].split("#", 1)[0]
+		fut2 = create_future_ex(self.extract_alt, url)
+		fut3 = create_future_ex(self.extract_audio_video, url)
+		if not resp:
+			resp3 = fut3.result()
+			if resp3:
+				return resp3
+			url2 = fut2.result() or url
+			return dict(url=url2, webpage_url=url, title=title, direct=True)
+		resp3 = fut3.result()
+		if resp3:
+			return resp3
+		url = fut2.result()
+		if url:
+			resp["url"] = url
+		return resp
 
 	# Extracts info from a URL or search, adjusting accordingly.
 	def extract_info(self, item, count=1, search=False, mode=None):
@@ -2106,7 +2213,56 @@ def extract_lyrics(s):
 				lyrics = line["children"] + lyrics
 	return output
 
-def get_lyrics(search):
+def get_lyrics(search, url=None):
+	header = {"User-Agent": "Mozilla/6.0"}
+	name = None
+	description = None
+	if url:
+		resp = globals().get("ytdl", AudioDownloader()).extract_from(url)
+		name = resp.get("title") or resp["webpage_url"].rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
+		if "description" in resp:
+			description = resp["description"]
+			lyr = []
+			spl = resp["description"].splitlines()
+			for i, line in enumerate(spl):
+				if to_alphanumeric(full_prune(line)).strip() == "lyrics":
+					para = []
+					for j, line in enumerate(spl[i + 1:]):
+						line = line.strip()
+						if line and not to_alphanumeric(line).strip():
+							break
+						if find_urls(line):
+							if para and para[-1].endswith(":") or para[-1].startswith("#"):
+								para.pop(-1)
+							break
+						para.append(line)
+					if len(para) >= 3:
+						lyr.extend(para)
+			lyrics = "\n".join(lyr).strip()
+			if lyrics:
+				print("lyrics_raw", lyrics)
+				return name, lyrics
+		if resp.get("automatic_captions"):
+			lang = "en"
+			if "formats" in resp:
+				lang = None
+				for fmt in resp["formats"]:
+					if fmt.get("language"):
+						lang = fmt["language"]
+						break
+			for cap in shuffle(resp["automatic_captions"][lang]):
+				if "json" in cap["ext"]:
+					break
+			with tracebacksuppressor:
+				data = reqs.get(url, headers=header, timeout=18).json()
+				lyr = []
+				for event in data["events"]:
+					para = "".join(seg.get("utf8", "") for seg in event.get("segs", ()))
+					lyr.append(para)
+				lyrics = "".join(lyr).strip()
+				if lyrics:
+					print("lyrics_captions", lyrics)
+					return name, lyrics
 	search = search.translate(mtrans)
 	item = verify_search(to_alphanumeric(lyric_trans.sub("", search)))
 	ic = item.casefold()
@@ -2123,11 +2279,9 @@ def get_lyrics(search):
 			item = search
 	url = f"https://genius.com/api/search/multi?q={item}"
 	for i in range(2):
-		header = {"User-Agent": "Mozilla/6.0"}
 		data = {"q": item}
 		rdata = reqs.get(url, data=data, headers=header, timeout=18).json()
 		hits = itertools.chain(*(sect["hits"] for sect in rdata["response"]["sections"]))
-		name = None
 		path = None
 		for h in hits:
 			try:
@@ -2154,4 +2308,7 @@ def get_lyrics(search):
 			except:
 				if i:
 					raise
+	if description:
+		print("lyrics_description", description)
+		return name, description
 	raise LookupError(f"No results for {item}.")

@@ -1663,8 +1663,9 @@ def render_lyrics(entry):
 			lyrics = lyrics_cache[name]
 		except KeyError:
 			try:
-				lyrics = lyrics_scraper.result()(name)
+				lyrics = lyrics_scraper.result()(name, url=url)
 			except:
+				print_exc()
 				lyrics = ""
 			if lyrics:
 				lyrics_cache[name] = lyrics

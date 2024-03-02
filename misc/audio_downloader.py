@@ -1284,7 +1284,7 @@ class AudioDownloader:
 	@functools.lru_cache(maxsize=64)
 	def extract_audio_video(self, url):
 		title = url.split("?", 1)[0].rsplit("/", 1)[-1].split("#", 1)[0]
-		with reqs.next().get(url, headers=Request.header(), stream=True) as resp:
+		with reqs.get(url, headers=Request.header(), stream=True) as resp:
 			resp.raise_for_status()
 			ct = resp.headers.get("Content-Type")
 			if ct == "text/html":
@@ -1435,7 +1435,7 @@ class AudioDownloader:
 		if is_reddit_url(url):
 			url = url.replace("www.reddit.com", "vxreddit.com")
 		try:
-			resp = reqs.next().get(url, headers=Request.header(), stream=True)
+			resp = reqs.get(url, headers=Request.header(), stream=True)
 			resp.raise_for_status()
 		except:
 			print_exc()
@@ -1493,7 +1493,7 @@ class AudioDownloader:
 			title = url.split("?", 1)[0].rsplit("/", 1)[-1]
 			if title.rsplit(".", 1)[-1] in ("ogg", "ts", "webm", "mp4", "avi", "mov"):
 				url2 = url.replace("/cdn.discordapp.com/", "/media.discordapp.net/")
-				with reqs.next().get(url2, headers=Request.header(), stream=True) as resp:
+				with reqs.get(url2, headers=Request.header(), stream=True) as resp:
 					if resp.status_code in range(200, 400):
 						url = url2
 			if "." in title:
@@ -1614,7 +1614,7 @@ class AudioDownloader:
 		output = deque()
 		if discord_expired(item):
 			title = item.rsplit("/", 1)[-1].split("?", 1)[0]
-			return [dict(url=f"https://mizabot.xyz/u?url={item}", name=title, research=True)]
+			return [dict(url=f"https://api.mizabot.xyz/u?url={url_parse(item)}", name=title, research=True, duration=None)]
 		if "youtube.com" in item or "youtu.be/" in item:
 			p_id = None
 			for x in ("?list=", "&list="):
@@ -1642,7 +1642,7 @@ class AudioDownloader:
 					output.clear()
 					print_exc()
 				try:
-					entries = list(map(cdict, reqs.get("https://api.mizabot.xyz/ytdl?q=" + item).json()))
+					entries = list(map(cdict, reqs.get("https://api.mizabot.xyz/ytdl?q=" + url_parse(item)).json()))
 					if not entries:
 						raise IndexError
 				except:
@@ -1754,9 +1754,9 @@ class AudioDownloader:
 					raise LookupError(f"No results for {item}")
 			except:
 				print_exc()
-				out = reqs.get(f"https://api.mizabot.xyz/ytdl?q={item}&count=1", timeout=12).json()
+				out = reqs.get(f"https://api.mizabot.xyz/ytdl?q={url_parse(item)}&count=1", timeout=12).json()
 				for e in out:
-					e.setdefault("stream", f"https://api.mizabot.xyz/ytdl?d={e.get('url')}")
+					e.setdefault("stream", f"https://api.mizabot.xyz/ytdl?d={url_parse(e.get('url'))}")
 					output.append(cdict(e))
 				resp = {}
 			# Check if result is a playlist

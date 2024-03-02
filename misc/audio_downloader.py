@@ -1284,7 +1284,7 @@ class AudioDownloader:
 	@functools.lru_cache(maxsize=64)
 	def extract_audio_video(self, url):
 		title = url.split("?", 1)[0].rsplit("/", 1)[-1].split("#", 1)[0]
-		with reqs.get(url, headers=Request.header(), stream=True) as resp:
+		with reqs.get(url, headers=self.youtube_header(), stream=True) as resp:
 			resp.raise_for_status()
 			ct = resp.headers.get("Content-Type")
 			if ct == "text/html":
@@ -1435,7 +1435,7 @@ class AudioDownloader:
 		if is_reddit_url(url):
 			url = url.replace("www.reddit.com", "vxreddit.com")
 		try:
-			resp = reqs.get(url, headers=Request.header(), stream=True)
+			resp = reqs.get(url, headers=self.youtube_header(), stream=True)
 			resp.raise_for_status()
 		except:
 			print_exc()
@@ -1493,7 +1493,7 @@ class AudioDownloader:
 			title = url.split("?", 1)[0].rsplit("/", 1)[-1]
 			if title.rsplit(".", 1)[-1] in ("ogg", "ts", "webm", "mp4", "avi", "mov"):
 				url2 = url.replace("/cdn.discordapp.com/", "/media.discordapp.net/")
-				with reqs.get(url2, headers=Request.header(), stream=True) as resp:
+				with reqs.get(url2, headers=self.youtube_header(), stream=True) as resp:
 					if resp.status_code in range(200, 400):
 						url = url2
 			if "." in title:

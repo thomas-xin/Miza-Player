@@ -854,7 +854,7 @@ def download(url, fn):
 						# os.remove(fi)
 					# except:
 						# pass
-		if (fn.endswith(".webm") or url.endswith(".pcm") and fn.endswith(".pcm")) and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
+		if (fn.endswith(".ts") or fn.endswith(".webm") or url.endswith(".pcm") and fn.endswith(".pcm")) and not is_url(url) and os.path.exists(url) and os.path.getsize(url):
 			if url != fn:
 				os.rename(url, fn)
 			downloading.discard(fn)
@@ -865,7 +865,7 @@ def download(url, fn):
 			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".webm") and is_url(url) and url.rsplit(".", 1)[-1] not in ("mp4", "mov", "avi", "mkv"):
-			if url.rsplit(".", 1)[-1] in ("webm", "opus") or is_youtube_stream(url):
+			if url.rsplit(".", 1)[-1] in ("webm", "opus", "ts") or is_youtube_stream(url):
 				cmd += ("-f", "webm", "-c:a", "copy", fi)
 			else:
 				cmd += ("-f", "webm", "-ar", "48k", "-ac", "2", "-b:a", "192k", fi)
@@ -2279,7 +2279,7 @@ while not sys.stdin.closed and failed < 8:
 			reading = None
 		ext = construct_options()
 		if is_url(stream):
-			for fmt in ("webm", "pcm"):
+			for fmt in ("ts", "webm", "pcm"):
 				fn = "cache/~" + sh + "." + fmt
 				if os.path.exists(fn) and abs(os.path.getsize(fn) / 48000 / 2 / 2 - duration) < 1:
 					stream = fn
@@ -2373,13 +2373,13 @@ while not sys.stdin.closed and failed < 8:
 					pcm = True
 				elif cdc == "mp3":
 					cmd.extend(("-c:a", "mp3"))
-				elif cdc == "webm":
+				elif cdc in ("ts", "webm"):
 					cmd.extend(("-c:a", "copy"))
 			cmd.extend(("-nostdin", "-i", "-" if f else stream))
 			cmd.extend(ext)
 			if fn and stream.rsplit(".", 1)[-1] in ("mp4", "mov", "avi", "mkv"):
 				fn = fn.rsplit(".", 1) + ".pcm"
-			if fn and fn.endswith(".webm"):
+			if fn and (fn.endswith(".webm") or fn.endswith(".ts")):
 				cmd.extend(("-f", "webm", "-c:a", "copy", fn or "-"))
 			else:
 				cmd.extend(("-f", "s16le", "-ar", "48k", "-ac", "2", fn or "-"))

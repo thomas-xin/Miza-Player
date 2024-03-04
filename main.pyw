@@ -2091,6 +2091,8 @@ def start_player(pos=None, force=False):
 			for i, e in enumerate(queue[1:min(len(queue), thresh + 1)]):
 				# print("EN", e, i)
 				ensure_next(e, delay=i + 1)
+		if control.loop == 2 and queue or control.loop >= 1 and len(queue) == 1:
+			ensure_next(queue[0], delay=1)
 		duration = entry.duration or 300
 		if pos is None:
 			if audio.speed >= 0:

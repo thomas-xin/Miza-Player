@@ -719,7 +719,7 @@ def get_best_audio(entry):
 		return entry["stream"]
 	except KeyError:
 		pass
-	best = -inf
+	best = (-inf,)
 	try:
 		fmts = entry["formats"]
 	except KeyError:
@@ -738,11 +738,7 @@ def get_best_audio(entry):
 				q = fmt["asr"] / 1000
 			elif fmt.get("audio_channels"):
 				q = fmt["audio_channels"]
-		vcodec = fmt.get("vcodec", "none")
-		if vcodec not in (None, "none"):
-			q -= 1
-		else:
-			q = fmt.get("tbr", 0) or q
+		q = (fmt.get("acodec") in ("opus", "vorbis"), fmt.get("vcodec") in (None, "none"), fmt.get("tbr", 0) or q)
 		u = as_str(fmt["url"])
 		if not u.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
 			replace = False
@@ -772,13 +768,14 @@ def get_best_audio(entry):
 		raise KeyError("URL not found.")
 	return url
 
+
 # Gets the best video file download link for a queue entry.
 def get_best_video(entry):
 	try:
 		return entry["video"]
 	except KeyError:
 		pass
-	best = -inf
+	best = (-inf,)
 	try:
 		fmts = entry["formats"]
 	except KeyError:
@@ -792,9 +789,7 @@ def get_best_video(entry):
 		q = fmt.get("height", 0)
 		if not isinstance(q, (int, float)):
 			q = 0
-		vcodec = fmt.get("vcodec", "none")
-		if vcodec in (None, "none"):
-			q -= 1
+		q = (fmt.get("vcodec") not in (None, "none"), fmt.get("tbr", 0) or q)
 		u = as_str(fmt["url"])
 		if not u.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
 			replace = False

@@ -3955,7 +3955,7 @@ def _get_duration_2(filename, _timeout=12):
 	if filename.startswith("https://api.mizabot.xyz/ytdl"):
 		url = filename.replace("?v=", "?q=").replace("?d=", "?q=")
 		resp = reqs.get(url)
-		return resp.json()[0].get("duration"), None, "webm"
+		return resp.json()[0].get("duration"), None, "ts"
 	command = (
 		ffprobe,
 		"-v",

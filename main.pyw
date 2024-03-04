@@ -2825,136 +2825,141 @@ player.channel = get_channel()
 print(player.channel)
 
 def mixer_audio():
-	try:
-		while mixer and mixer.is_running():
-			mixer.client.sendall(b"\x7f")
-			async_wait()
-			player.channel.wait()
-			if not mixer:
-				break
-			try:
-				b = mixer.client.recv(262144)
-			except ConnectionResetError:
-				continue
-			a = np.frombuffer(b, dtype=np.int16)
-			player.channel.write(a)
-	except:
-		print_exc()
-threading.Thread(target=mixer_audio).start()
+	while mixer:
+		try:
+			while mixer and mixer.is_running():
+				mixer.client.sendall(b"\x7f")
+				async_wait()
+				player.channel.wait()
+				if not mixer:
+					break
+				try:
+					b = mixer.client.recv(262144)
+				except ConnectionResetError:
+					continue
+				a = np.frombuffer(b, dtype=np.int16)
+				player.channel.write(a)
+		except:
+			print_exc()
+		time.sleep(0.5)
+maudio = threading.Thread(target=mixer_audio)
+maudio.start()
 
 def mixer_stdout():
-	try:
-		while mixer:
-			s = None
-			try:
-				while not s and mixer and mixer.is_running():
-					s = as_str(mixer.stdout.readline())
-					if s:
-						if s[0] != "~":
-							if s[0] in "'\"":
-								s = ast.literal_eval(s)
-							sys.stdout.write(s)
-							s = ""
-						else:
-							s = s.rstrip()
-							break
-					elif mixer and not mixer.is_running():
-						time.sleep(2)
-						if mixer and not mixer.is_running():
-							print("Mixer has crashed.")
-							restart_mixer()
-					async_wait()
-				else:
+	while mixer:
+		try:
+			while mixer:
+				s = None
+				try:
+					while not s and mixer and mixer.is_running():
+						s = as_str(mixer.stdout.readline())
+						if s:
+							if s[0] != "~":
+								if s[0] in "'\"":
+									s = ast.literal_eval(s)
+								sys.stdout.write(s)
+								s = ""
+							else:
+								s = s.rstrip()
+								break
+						elif mixer and not mixer.is_running():
+							time.sleep(2)
+							if mixer and not mixer.is_running():
+								print("Mixer has crashed.")
+								restart_mixer()
+						async_wait()
 					if not mixer or not mixer.is_running():
 						time.sleep(2)
 						if mixer and not mixer.is_running():
 							print("Mixer has crashed.")
 							restart_mixer()
-			except:
-				print_exc()
-			if not s:
-				time.sleep(0.05)
-				continue
-			if not mixer:
-				break
-			if mixer.new:
-				submit(reset_menu, reset=True)
-			player.last = pc()
-			# print(s)
-			s = s[1:]
-			if s == "s":
-				print("ENTERED ~S")
-				submit(skip)
-				player.last = 0
-				continue
-			if s[0] == "o":
-				common.OUTPUT_DEVICE = s[2:]
-				continue
-			if s[0] == "w":
-				common.OUTPUT_DEVICE = s[2:]
-				if not device_waiting:
-					globals()["device_waiting"] = common.OUTPUT_DEVICE
-					print(f"Waiting on {common.OUTPUT_DEVICE}...")
-					submit(wait_on)
-				continue
-			if s == "W":
-				globals()["device_waiting"] = None
-				continue
-			if s[0] == "n":
-				player.note = float(s[2:])
-				continue
-			if s == "r":
-				submit(start_player, 0, True)
-				print("Re-evaluating file stream...")
-				if reevaluating:
-					reevaluating.mut.append(None)
-					reevaluating.cancel()
-				mut = []
-				globals()["reevaluating"] = submit(reevaluate, mut=mut)
-				reevaluating.mut = mut
-				continue
-			if s[0] == "R":
-				url = s[2:]
-				for e in queue:
-					if e.url == url or e.get("stream") == url:
-						break
-				else:
+				except:
+					print_exc()
+				if not s:
+					time.sleep(0.05)
 					continue
-				submit(prepare, e, force=2, download=True)
-				print("Re-evaluating file download...")
-				continue
-			if s == "V":
-				globals()["video-render"].set_result(None)
-				continue
-			if s[0] == "x":
-				spl = s[2:].split()
-				player.stats.peak = spl[0]
-				player.stats.amplitude = spl[1]
-				player.stats.velocity = spl[2]
-				player.amp = float(spl[-1])
-				continue
-			elif s[0] == "y":
-				player.amp = float(s[2:])
-				continue
-			elif s[0] == "t":
-				i = int(s[2:])
-				transfer_instrument(i)
-				select_instrument(i)
-				continue
-			if player.waiting:
-				continue
-			i, dur = map(float, s.split(" ", 1))
-			if not progress.seeking or not any(mheld):
-				player.index = i
-				player.pos = pos = round(player.index / 30, 4)
-				offpos = pos - pc() * player.speed() if pos > 0 else -inf
-				if abs(offpos - player.get("offpos", 0)) > 0.25:
-					player.offpos = offpos
-			if dur >= 0:
-				player.end = dur or inf
-	except:
-		print_exc()
-threading.Thread(target=mixer_stdout).start()
+				if not mixer:
+					break
+				if mixer.new:
+					submit(reset_menu, reset=True)
+				player.last = pc()
+				# print(s)
+				s = s[1:]
+				if s == "s":
+					print("ENTERED ~S")
+					submit(skip)
+					player.last = 0
+					continue
+				if s[0] == "o":
+					common.OUTPUT_DEVICE = s[2:]
+					continue
+				if s[0] == "w":
+					common.OUTPUT_DEVICE = s[2:]
+					if not device_waiting:
+						globals()["device_waiting"] = common.OUTPUT_DEVICE
+						print(f"Waiting on {common.OUTPUT_DEVICE}...")
+						submit(wait_on)
+					continue
+				if s == "W":
+					globals()["device_waiting"] = None
+					continue
+				if s[0] == "n":
+					player.note = float(s[2:])
+					continue
+				if s == "r":
+					submit(start_player, 0, True)
+					print("Re-evaluating file stream...")
+					if reevaluating:
+						reevaluating.mut.append(None)
+						reevaluating.cancel()
+					mut = []
+					globals()["reevaluating"] = submit(reevaluate, mut=mut)
+					reevaluating.mut = mut
+					continue
+				if s[0] == "R":
+					url = s[2:]
+					for e in queue:
+						if e.url == url or e.get("stream") == url:
+							break
+					else:
+						continue
+					submit(prepare, e, force=2, download=True)
+					print("Re-evaluating file download...")
+					continue
+				if s == "V":
+					globals()["video-render"].set_result(None)
+					continue
+				if s[0] == "x":
+					spl = s[2:].split()
+					player.stats.peak = spl[0]
+					player.stats.amplitude = spl[1]
+					player.stats.velocity = spl[2]
+					player.amp = float(spl[-1])
+					continue
+				elif s[0] == "y":
+					player.amp = float(s[2:])
+					continue
+				elif s[0] == "t":
+					i = int(s[2:])
+					transfer_instrument(i)
+					select_instrument(i)
+					continue
+				if player.waiting:
+					continue
+				i, dur = map(float, s.split(" ", 1))
+				if not progress.seeking or not any(mheld):
+					player.index = i
+					player.pos = pos = round(player.index / 30, 4)
+					offpos = pos - pc() * player.speed() if pos > 0 else -inf
+					if abs(offpos - player.get("offpos", 0)) > 0.25:
+						player.offpos = offpos
+				if dur >= 0:
+					player.end = dur or inf
+		except:
+			print_exc()
+		time.sleep(0.5)
+mstdout = threading.Thread(target=mixer_stdout)
+mstdout.start()
 
 CACHE_LIMITS = cdict(
 	md_font=32768,

@@ -1383,7 +1383,7 @@ class AudioDownloader:
 			elif not isinstance(ex, youtube_dl.DownloadError) or self.ydl_errors(s):
 				if "429" in s:
 					self.blocked_yt = utc() + 60
-				if has_ytd:
+				if has_ytd and "unsupported url" not in s:
 					try:
 						entries = self.extract_backup(url)
 					except (TypeError, youtube_dl.DownloadError):

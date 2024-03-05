@@ -1525,7 +1525,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			if not im:
 				im = pyglet.image.ImageData(*size, "RGB", b)
 				player.video_loading = None
-			elif curr + 1 / fps + pos > player.pos:
+			elif curr + 2 / fps + pos > player.pos:
 				im.set_data("RGB", size[0] * 3, b)
 			proc.im = im
 			proc.im2 = None

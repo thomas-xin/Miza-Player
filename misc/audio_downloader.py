@@ -730,6 +730,14 @@ def get_best_audio(entry):
 		url = entry["webpage_url"]
 	replace = True
 	for fmt in fmts:
+		q = (
+			fmt.get("acodec") in ("opus", "vorbis"),
+			fmt.get("vcodec") in (None, "none"),
+			-abs(fmt["audio_channels"] - 2) if isinstance(fmt.get("audio_channels"), (int, float)) else -inf,
+			fmt["abr"] if isinstance(fmt.get("abr"), (int, float)) else -inf,
+			fmt["tbr"] if not isinstance(fmt.get("abr"), (int, float)) and isinstance(fmt.get("tbr"), (int, float)) else -inf,
+			fmt["asr"] if isinstance(fmt.get("asr"), (int, float)) else -inf,
+		)
 		q = fmt.get("abr", 0)
 		if not isinstance(q, (int, float)):
 			q = 0
@@ -770,7 +778,7 @@ def get_best_audio(entry):
 
 
 # Gets the best video file download link for a queue entry.
-def get_best_video(entry):
+def get_best_video(entry, hq=False):
 	try:
 		return entry["video"]
 	except KeyError:
@@ -786,10 +794,13 @@ def get_best_video(entry):
 		url = entry["webpage_url"]
 	replace = True
 	for fmt in fmts:
-		q = fmt.get("height", 0)
-		if not isinstance(q, (int, float)):
-			q = 0
-		q = (fmt.get("vcodec") not in (None, "none"), fmt.get("tbr", 0) or q)
+		q = (
+			fmt.get("vcodec") not in (None, "none"),
+			fmt.get("protocol") != "m3u8_native" if not hq else False,
+			-abs(fmt["fps"] - (90 if hq else 42)) if isinstance(fmt.get("fps"), (int, float)) else -inf,
+			-abs(fmt["height"] - (1600 if hq else 720)) if isinstance(fmt.get("height"), (int, float)) else -inf,
+			fmt["tbr"] if isinstance(fmt.get("tbr"), (int, float)) else -inf,
+		)
 		u = as_str(fmt["url"])
 		if not u.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
 			replace = False
@@ -2245,11 +2256,13 @@ def get_lyrics(search, url=None):
 					if fmt.get("language"):
 						lang = fmt["language"]
 						break
-			for cap in shuffle(resp["automatic_captions"][lang]):
+			for cap in sorted(resp["automatic_captions"][lang], key=lambda x: random.random()):
 				if "json" in cap["ext"]:
 					break
-			with tracebacksuppressor:
-				data = reqs.get(url, headers=header, timeout=18).json()
+			try:
+				resp = reqs.get(cap["url"], headers=header, timeout=18)
+				resp.raise_for_status()
+				data = resp.json()
 				lyr = []
 				for event in data["events"]:
 					para = "".join(seg.get("utf8", "") for seg in event.get("segs", ()))
@@ -2258,6 +2271,8 @@ def get_lyrics(search, url=None):
 				if lyrics:
 					print("lyrics_captions", lyrics)
 					return name, lyrics
+			except:
+				print_exc()
 	search = search.translate(mtrans)
 	item = verify_search(to_alphanumeric(lyric_trans.sub("", search)))
 	ic = item.casefold()

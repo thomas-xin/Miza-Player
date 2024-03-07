@@ -537,12 +537,12 @@ def drop(i):
 	submit(mixer_verify, fut)
 
 laststart = set()
-def mixer_submit(s, force, debug):
+def mixer_submit(s, force, debug, timeout=60):
 	if not mixer.is_running():
 		raise RuntimeError(mixer.stdout.read())
 	if force < 2:
 		while mixer.lock:
-			mixer.lock.result()
+			mixer.lock.result(timeout=timeout)
 	if not force:
 		# A special rate limit system that will skip requests spammed too fast, but will allow the last one after a delay
 		ts = pc()
@@ -769,7 +769,7 @@ def start_mixer(devicename=None):
 		(sys.executable, "-O", "misc/mixer.py"),
 		stdin=subprocess.PIPE,
 		stdout=subprocess.PIPE,
-		stderr=subprocess.PIPE,
+		stderr=None,
 		bufsize=65536,
 	)
 	mixer.state = lambda i=0: state(i)
@@ -781,18 +781,18 @@ def start_mixer(devicename=None):
 		mixer.stdin.write(b"~init\n")
 		mixer.stdin.flush()
 		while True:
-			fut = submit(mixer.stderr.readline)
+			fut = submit(mixer.stdout.readline)
 			temp = fut.result(timeout=8).strip().decode("ascii")
+			print("Mixer start:", temp)
 			if temp.startswith("~"):
 				if temp == "~I":
 					break
-				print(temp)
 			else:
 				raise RuntimeError(temp)
 		if temp != "~I":
 			print(temp)
 			mixer.kill()
-			raise RuntimeError(f"Unexpected response from mixer {mixer.stderr.read()}")
+			raise RuntimeError(f"Unexpected response from mixer {mixer.stdout.read()}")
 		mixer.client, mixer.addr = mixer_server.accept()
 		# mixer.client = mixer_server
 		if hasmisc:
@@ -809,11 +809,7 @@ def start_mixer(devicename=None):
 			else:
 				s.append(f"~output {OUTPUT_DEVICE}\n")
 			mixer.stdin.write("".join(s).encode("utf-8"))
-			try:
-				mixer.stdin.flush()
-			except OSError:
-				print(mixer.stderr.read(), end="")
-				raise
+			mixer.stdin.flush()
 			while mixer.lock:
 				mixer.lock.result()
 			mixer.new = True

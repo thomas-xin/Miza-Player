@@ -259,7 +259,7 @@ def playlist_sync():
 		if control.playlist_sync and is_url(control.playlist_sync):
 			url = control.playlist_sync.replace("/p/", "/fi/")
 			try:
-				resp = requests.get(url)
+				resp = reqs.get(url, timeout=60)
 				resp.raise_for_status()
 			except requests.exceptions.HTTPError as ex:
 				print_exc()
@@ -289,7 +289,7 @@ def playlist_sync():
 					# print(control.playlist_sync, t1, t2)
 					if t2 >= t1 + 20 and info.size != control.playlist_size:
 						print(f"Downloading playlists from {url}...")
-						resp = requests.get(control.playlist_sync.replace("/p/", "/d/"))
+						resp = reqs.get(control.playlist_sync.replace("/p/", "/d/"), timeout=60)
 						b = io.BytesIO(resp.content)
 						with zipfile.ZipFile(b) as z:
 							for fn in os.listdir("playlists"):
@@ -310,18 +310,20 @@ def playlist_sync():
 			for fn in os.listdir("playlists"):
 				z.write("playlists/" + fn)
 		b.seek(0)
-		resp = requests.post(
+		resp = reqs.post(
 			"https://api.mizabot.xyz/upload_chunk",
 			headers={"X-File-Name": "playlists.zip", "X-File-Size": str(b.getbuffer().nbytes)},
 			data=b,
+			timeout=720,
 		)
 		resp.raise_for_status()
 		url = "https://api.mizabot.xyz/merge"
 		if is_url(control.playlist_sync) and "?key=" in control.playlist_sync:
 			url = url.rsplit("/", 1)[0] + "/edit/" + control.playlist_sync.split("/p/", 1)[-1]
-		resp = requests.patch(
+		resp = reqs.patch(
 			url,
 			data={"x-file-name": "playlists.zip", "index": "0"},
+			timeout=720,
 		)
 		resp.raise_for_status()
 		url = "https://api.mizabot.xyz" + resp.text
@@ -1942,7 +1944,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			# print("STREAM2:", stream, entry, resp)
 		elif stream.startswith("https://api.mizabot.xyz/ytdl"):
 			if download:
-				with reqs.get(stream, stream=True) as resp:
+				with reqs.get(stream, stream=True, timeout=20) as resp:
 					resp.raise_for_status()
 					it = resp.iter_content(65536)
 					with open(ofn, "wb") as f:
@@ -1983,7 +1985,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	except:
 		if force and is_url(entry.url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
 			try:
-				resp = requests.head("https://api.mizabot.xyz/ip")
+				resp = reqs.head("https://api.mizabot.xyz/ip", timeout=5)
 				resp.raise_for_status()
 			except:
 				# print_exc()
@@ -2006,7 +2008,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			entry["tried_api"] = utc()
 			try:
 				print("API:", stream)
-				with reqs.get(stream, stream=True) as resp:
+				with reqs.get(stream, stream=True, timeout=20) as resp:
 					resp.raise_for_status()
 					it = resp.iter_content(65536)
 					with open(ofn, "wb") as f:
@@ -2283,7 +2285,7 @@ def ecdc_compress(entry, stream, force=False):
 				# print(api)
 				if utc() - has_api >= 60:
 					raise EOFError
-				with requests.post(api, data=b, stream=True) as resp:
+				with reqs.post(api, data=b, stream=True, timeout=720) as resp:
 					resp.raise_for_status()
 					b = resp.content
 				if not b:
@@ -2314,7 +2316,7 @@ def ecdc_compress(entry, stream, force=False):
 					query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
 					api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url={urllib.parse.quote_plus(url)}"
 					# print(api)
-					with requests.post(api, data=b, stream=True) as resp:
+					with reqs.post(api, data=b, stream=True, timeout=720) as resp:
 						print(resp)
 						if resp.status_code not in range(200, 400):
 							print(api, resp.content)
@@ -2331,7 +2333,7 @@ def persist():
 		random.shuffle(q2)
 		api = "https://api.mizabot.xyz/encodec"
 		urls = " ".join(e.url for e in q2)
-		with requests.post(api, data=dict(urls=urls)) as resp:
+		with reqs.post(api, data=dict(urls=urls), timeout=720) as resp:
 			print(resp)
 		qt = resp.json()
 		if len(qt) != len(q2):
@@ -2369,46 +2371,49 @@ def delete_entry(e):
 last_save = -inf
 last_sync = -inf
 def skip():
-	import inspect
-	curframe = inspect.currentframe()
-	calframe = inspect.getouterframes(curframe, 2)
-	print('Skipped:', calframe)
-	if player.video:
-		player.video.url = None
-	if queue:
-		e = queue.popleft()
-		if control.shuffle > 1:
-			queue[1:].shuffle()
-		elif control.shuffle:
-			thresh = min(8, max(2, len(queue) / 8))
-			if player.shuffler >= thresh:
-				queue[thresh:].shuffle()
-				player.shuffler = 0
-			else:
-				player.shuffler += 1
-		if control.loop == 2:
-			player.previous = None
-			queue.appendleft(e)
-		elif control.loop == 1:
-			player.previous = None
-			queue.append(e)
-		else:
-			player.previous = e
-			if len(queue) > sidebar.maxitems - 1:
-				queue[sidebar.maxitems - 1].pos = sidebar.maxitems - 1
-			sidebar.particles.append(e)
-		t = pc()
-		if t >= last_save + 10:
-			globals()["last_save_fut"] = submit(save_settings)
-			globals()["last_save"] = t
+	try:
+		import inspect
+		curframe = inspect.currentframe()
+		calframe = inspect.getouterframes(curframe, 2)
+		print('Skipped:', calframe)
+		if player.video:
+			player.video.url = None
 		if queue:
-			return enqueue(queue[0])
-	mixer.clear()
-	player.last = 0
-	player.pos = 0
-	player.offpos = -inf
-	player.end = inf
-	return None, inf
+			e = queue.popleft()
+			if control.shuffle > 1:
+				queue[1:].shuffle()
+			elif control.shuffle:
+				thresh = min(8, max(2, len(queue) / 8))
+				if player.shuffler >= thresh:
+					queue[thresh:].shuffle()
+					player.shuffler = 0
+				else:
+					player.shuffler += 1
+			if control.loop == 2:
+				player.previous = None
+				queue.appendleft(e)
+			elif control.loop == 1:
+				player.previous = None
+				queue.append(e)
+			else:
+				player.previous = e
+				if len(queue) > sidebar.maxitems - 1:
+					queue[sidebar.maxitems - 1].pos = sidebar.maxitems - 1
+				sidebar.particles.append(e)
+			t = pc()
+			if t >= last_save + 10:
+				globals()["last_save_fut"] = submit(save_settings)
+				globals()["last_save"] = t
+			if queue:
+				return enqueue(queue[0])
+		mixer.clear()
+		player.last = 0
+		player.pos = 0
+		player.offpos = -inf
+		player.end = inf
+		return None, inf
+	except:
+		print_exc()
 
 def seek_abs(pos, force=False):
 	if not force:
@@ -2471,7 +2476,10 @@ def reevaluate():
 			break
 		url = queue[0]["url"]
 		force = True
-		if is_url(url):
+		if is_url(url) and utc() - queue[0].get("reev", 0) < 120:
+			prepare(queue[0], force=True)
+		elif is_url(url):
+			queue[0]["reev"] = utc() + 120
 			if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
 				queue[0].pop("stream", None)
 				ytdl = downloader.result()
@@ -2481,7 +2489,7 @@ def reevaluate():
 				force = False
 				try:
 					url = f"https://api.mizabot.xyz/ytdl?q={urllib.parse.quote_plus(url)}&count=1"
-					with reqs.get(url, stream=True) as resp:
+					with reqs.get(url, stream=True, timeout=20) as resp:
 						resp.raise_for_status()
 						queue[0].update(resp.json()[0])
 				except:
@@ -2509,7 +2517,10 @@ def reevaluate_in(delay=0, mut=()):
 		return
 	url = queue[0]["url"]
 	force = True
-	if is_url(url):
+	if is_url(url) and utc() - queue[0].get("reev", 0) < 120:
+		prepare(queue[0], force=True)
+	elif is_url(url):
+		queue[0]["reev"] = utc() + 120
 		if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
 			queue[0].pop("stream", None)
 			ytdl = downloader.result()
@@ -2519,7 +2530,7 @@ def reevaluate_in(delay=0, mut=()):
 			force = False
 			try:
 				url = f"https://api.mizabot.xyz/ytdl?q={urllib.parse.quote_plus(url)}&count=1"
-				with reqs.get(url, stream=True) as resp:
+				with reqs.get(url, stream=True, timeout=20) as resp:
 					resp.raise_for_status()
 					queue[0].update(resp.json()[0])
 			except:
@@ -2541,7 +2552,7 @@ def distribute_in(delay):
 		while utc() - has_api > 60:
 			time.sleep(600)
 	if os.name == "nt":
-		resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Miza/master/x-distribute.py")
+		resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Miza/master/x-distribute.py", timeout=20)
 		with open("x-distribute.py", "wb") as f:
 			f.write(resp.content)
 		args = [sys.executable, "x-distribute.py"]
@@ -5249,8 +5260,9 @@ try:
 			DISP.update_held()
 		tick += 1
 except Exception as ex:
+	print("Main loop exited.")
 	futs = set()
-	futs.add(submit(reqs.delete, mp))
+	futs.add(submit(reqs.delete, mp, timeout=5))
 	futs.add(submit(update_collections2))
 	# futs.add(submit(DISP.close))
 	if restarting:
@@ -5260,7 +5272,7 @@ except Exception as ex:
 		print_exc()
 	if mixer.is_running():
 		try:
-			mixer.submit("~quit")
+			mixer.submit("~quit", timeout=2)
 		except:
 			pass
 	for c in PROC.children(recursive=True):

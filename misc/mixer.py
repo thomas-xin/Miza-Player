@@ -2,6 +2,8 @@
 
 import os, sys, traceback
 
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
+
 # c = sys.stdin.readline()
 # if c == "~init\n":
 	# sys.stderr.write("~I\n")
@@ -9,56 +11,10 @@ import os, sys, traceback
 
 pid = os.getppid()
 
-sys.stdout.write = lambda *args, **kwargs: None
 import concurrent.futures
-
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=24)
 
-class MultiAutoImporter:
-
-	class ImportedModule:
-
-		def __init__(self, module, pool, _globals):
-			object.__setattr__(self, "__module", module)
-			object.__setattr__(self, "__fut", pool.submit(__import__, module))
-			object.__setattr__(self, "__globals", _globals)
-
-		def __getattr__(self, k):
-			m = self.force()
-			return getattr(m, k)
-
-		def __setattr__(self, k, v):
-			m = self.force()
-			return setattr(m, k, v)
-
-		def force(self):
-			module = object.__getattribute__(self, "__module")
-			_globals = object.__getattribute__(self, "__globals")
-			_globals[module] = m = object.__getattribute__(self, "__fut").result()
-			return m
-
-	def __init__(self, *args, pool=None, _globals=None):
-		self.pool = pool
-		if not _globals:
-			_globals = globals()
-		args = " ".join(args).replace(",", " ").split()
-		if not pool:
-			_globals.update((k, __import__(k)) for k in args)
-		else:
-			futs = []
-			for arg in args:
-				futs.append(self.ImportedModule(arg, pool, _globals))
-			_globals.update(zip(args, futs))
-
-# importer = MultiAutoImporter(
-	# "numpy, pygame, pyglet, random, hashlib, orjson, traceback, base64",
-	# "requests, ctypes, weakref, samplerate, itertools, io, zipfile",
-	# "psutil", "subprocess, multiprocessing, re",
-	# pool=exc,
-	# _globals=globals(),
-# )
-# sys.stderr.write("~IMPORTING\n")
-import numpy, pygame, pyglet, random, hashlib, orjson, traceback, base64
+import numpy, pyglet, random, hashlib, orjson, traceback, base64
 import requests, ctypes, weakref, samplerate, itertools, io, zipfile, socket
 import psutil, subprocess, multiprocessing, re
 import soundcard as sc
@@ -78,7 +34,8 @@ is_minimised = lambda: globals()["stat-mem"].buf[0] & 1
 
 reqs = requests.Session()
 sys.stdin.readline()
-sys.stderr.write("~I\n")
+sys.stdout.write("~I\n")
+sys.stdout.flush()
 mixer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 mixer_server.connect(("127.0.0.1", pid & 32767 | 32768))
 
@@ -253,8 +210,8 @@ def point(s):
 def bsend(*args):
 	for b in args:
 		# b = str(s).encode("utf-8") if type(s) is not bytes else s
-		sys.__stderr__.buffer.write(b)
-	sys.__stderr__.flush()
+		sys.__stdout__.buffer.write(b)
+	sys.__stdout__.flush()
 
 print = lambda *args, sep=" ", end="\n": point(repr(str(sep).join(map(str, args)) + end))
 print_exc = lambda: point(repr(traceback.format_exc()))

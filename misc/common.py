@@ -92,7 +92,15 @@ def _adjust_thread_count(self):
 concurrent.futures.ThreadPoolExecutor._adjust_thread_count = _adjust_thread_count
 
 exc = concurrent.futures.ThreadPoolExecutor(max_workers=96)
-submit = exc.submit
+exc.current = []
+def submit(*args, **kwargs):
+	fut = exc.submit(*args, **kwargs)
+	fut.task = (args, kwargs)
+	current = [fut for fut in exc.current if not fut.done()]
+	current.append(fut)
+	exc.current = current
+	return fut
+# submit = exc.submit
 def _settimeout(*args, timeout=0, **kwargs):
 	if timeout > 0:
 		time.sleep(timeout)
@@ -167,6 +175,7 @@ importer = MultiAutoImporter(
 import requests, psutil, ctypes, struct, io
 import soundcard as sc
 
+reqs = requests.Session()
 async_wait = lambda: time.sleep(0.005)
 sys.setswitchinterval(0.008)
 utc = time.time
@@ -2267,7 +2276,6 @@ if not os.path.exists(commitf):
 elif os.path.exists(commitr):
 	os.remove(commitr)
 
-reqs = requests.Session()
 
 def update_repo(force=False):
 	# print("Checking for updates...")
@@ -2286,7 +2294,7 @@ def update_repo(force=False):
 		except:
 			print_exc()
 		if not commit:
-			resp = reqs.get("https://github.com/thomas-xin/Miza-Player")
+			resp = reqs.get("https://github.com/thomas-xin/Miza-Player", timeout=5)
 			s = resp.text
 			try:
 				search = '<include-fragment src="/thomas-xin/Miza-Player/'
@@ -2322,7 +2330,7 @@ def update_repo(force=False):
 					subprocess.run(["git"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 					b = None
 				except FileNotFoundError:
-					resp = reqs.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main")
+					resp = reqs.get("https://codeload.github.com/thomas-xin/Miza-Player/zip/refs/heads/main", timeout=720)
 					b = resp.content
 				if not options.control.autoupdate:
 					r = fut.result()
@@ -2378,7 +2386,7 @@ def update_repo(force=False):
 
 def update_collections2():
 	try:
-		resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py")
+		resp = reqs.get("https://raw.githubusercontent.com/thomas-xin/Python-Extra-Classes/main/full.py", timeout=5)
 		resp.raise_for_status()
 	except:
 		# print_exc()
@@ -3950,7 +3958,7 @@ class PipedProcess:
 def _get_duration_2(filename, _timeout=12):
 	if filename.startswith("https://api.mizabot.xyz/ytdl"):
 		url = filename.replace("?v=", "?q=").replace("?d=", "?q=")
-		resp = reqs.get(url)
+		resp = reqs.get(url, timeout=20)
 		return resp.json()[0].get("duration"), None, "ts"
 	command = (
 		ffprobe,
@@ -4001,7 +4009,7 @@ def get_duration_2(filename):
 	if filename:
 		dur, bps, cdc = _get_duration_2(filename, 4)
 		if not dur and is_url(filename):
-			resp = reqs.head(filename)
+			resp = reqs.head(filename, timeout=20)
 			head = fcdict(resp.headers)
 			if "content-length" not in head:
 				dur, bps, cdc = _get_duration_2(filename, 20)
@@ -4160,7 +4168,7 @@ def org2xm(org, dat=None):
 	r_org = None
 	if not org or type(org) is not bytes:
 		if is_url(org):
-			r = reqs.get(org)
+			r = reqs.get(org, timeout=5)
 			data = r.content
 		else:
 			r_org = org
@@ -4185,7 +4193,7 @@ def org2xm(org, dat=None):
 	# Load custom sample bank if specified
 	if dat is not None and is_url(dat):
 		with open(r_dat, "wb") as f:
-			r = reqs.get(dat)
+			r = reqs.get(dat, timeout=5)
 			f.write(r.content)
 	else:
 		if type(dat) is bytes and dat:
@@ -4195,7 +4203,7 @@ def org2xm(org, dat=None):
 			r_dat = "sndlib/ORG210EN.DAT"
 			orig = True
 			if not os.path.exists(r_dat):
-				resp = reqs.get("https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true")
+				resp = reqs.get("https://github.com/Clownacy/org2xm/blob/master/ORG210EN.DAT?raw=true", timeout=5)
 				with open(r_dat, "wb") as f:
 					f.write(resp.content)
 	args = ["org2xm.exe", r_org, r_dat]
@@ -4224,11 +4232,12 @@ def mid2mp3(mid):
 			"file": mid,
 			"audio_quality": (None, "192"),
 		},
+		timeout=720,
 	).text
 	fn = url.rsplit("/", 1)[-1].strip("\x00")
 	for i in range(360):
 		t = utc()
-		test = reqs.get(f"https://hostfast.onlineconverter.com/file/{fn}").content
+		test = reqs.get(f"https://hostfast.onlineconverter.com/file/{fn}", timeout=5).content
 		if test == b"d":
 			break
 		delay = utc() - t
@@ -4237,7 +4246,7 @@ def mid2mp3(mid):
 	ts = ts_us()
 	r_mp3 = f"cache/{ts}.mp3"
 	with open(r_mp3, "wb") as f:
-		f.write(reqs.get(f"https://hostfast.onlineconverter.com/file/{fn}/download").content)
+		f.write(reqs.get(f"https://hostfast.onlineconverter.com/file/{fn}/download", timeout=720).content)
 	return r_mp3
 
 def png2wav(png):

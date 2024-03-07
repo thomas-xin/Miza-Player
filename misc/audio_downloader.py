@@ -665,7 +665,7 @@ def get_duration(filename):
 	if filename:
 		dur, bps = _get_duration(filename, 4)
 		if not dur and is_url(filename):
-			with reqs.head(filename) as resp:
+			with reqs.head(filename, timeout=10) as resp:
 				head = {k.casefold(): v for k, v in resp.headers.items()}
 				if "content-length" not in head:
 					return _get_duration(filename, 20)[0]
@@ -865,7 +865,7 @@ class AudioDownloader:
 		self.downloader = youtube_dl.YoutubeDL(self.ydl_opts)
 
 	def set_cookie(self):
-		resp = reqs.get("https://www.youtube.com").text
+		resp = reqs.get("https://www.youtube.com", timeout=5).text
 		if "<title>Before you continue to YouTube</title>" in resp:
 			resp = resp.split('<input type="hidden" name="v" value="', 1)[-1]
 			resp = resp[:resp.index('">')].rsplit("+", 1)[0]
@@ -885,7 +885,7 @@ class AudioDownloader:
 		try:
 			self.youtube_dl_x += 1
 			self.spotify_x += 1
-			token = reqs.get("https://open.spotify.com/get_access_token").content
+			token = reqs.get("https://open.spotify.com/get_access_token", timeout=5).content
 			self.spotify_header = {"authorization": f"Bearer {orjson.loads(token[:512])['accessToken']}"}
 			self.other_x += 1
 		except:
@@ -895,7 +895,7 @@ class AudioDownloader:
 	def extract_backup(self, url):
 		url = verify_url(url)
 		if is_url(url) and not is_youtube_url(url):
-			with reqs.head(url) as resp:
+			with reqs.head(url, timeout=20) as resp:
 				url = resp.url
 				name = url.rsplit("/", 1)[-1].rsplit(".", 1)[0]
 				ctype = resp.headers.get("Content-Type")
@@ -976,7 +976,7 @@ class AudioDownloader:
 		out = deque()
 		self.spotify_x += 1
 		self.waiting.result()
-		resp = reqs.get(url, headers=self.spotify_header).content
+		resp = reqs.get(url, headers=self.spotify_header, timeout=5).content
 		d = orjson.loads(resp)
 		with suppress(KeyError):
 			d = d["tracks"]
@@ -1062,6 +1062,7 @@ class AudioDownloader:
 						context=ctx,
 						continuation=token,
 					)),
+					timeout=10,
 				)
 				if resp.status_code not in range(200, 400):
 					raise
@@ -1110,7 +1111,7 @@ class AudioDownloader:
 	# Returns a full youtube playlist.
 	def get_youtube_playlist(self, p_id):
 		self.youtube_x += 1
-		resp = reqs.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header()).content
+		resp = reqs.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header(), timeout=20).content
 		client = {}
 		try:
 			ytcfg = resp[resp.index(b"ytcfg.set"):]
@@ -1174,7 +1175,7 @@ class AudioDownloader:
 			return self.get_soundcloud_likes(url)
 		api = "https://api-v2.soundcloud.com/"
 
-		resp = requests.get(url, headers=self.youtube_header())
+		resp = reqs.get(url, headers=self.youtube_header(), timeout=10)
 		resp.raise_for_status()
 		s = resp.text
 		if s[0] == "{" and s[-1] == "}":
@@ -1213,7 +1214,7 @@ class AudioDownloader:
 		if emap:
 			ids = ",".join(map(str, emap))
 			url = f"{api}tracks?ids={ids}&client_id={self.soundcloud_token}"
-			resp = requests.get(url, headers=self.youtube_header())
+			resp = reqs.get(url, headers=self.youtube_header(), timeout=10)
 			if not resp.content:
 				resp.raise_for_status()
 			for t, p in zip(resp.json(), emap.values()):
@@ -1234,7 +1235,7 @@ class AudioDownloader:
 		if url.startswith(uapi):
 			uid = url[len(uapi):].split("?", 1)[0]
 		else:
-			resp = requests.get(url, headers=self.youtube_header())
+			resp = reqs.get(url, headers=self.youtube_header(), timeout=20)
 			resp.raise_for_status()
 			s = resp.text
 			search = 'content="soundcloud://users:'
@@ -1245,7 +1246,7 @@ class AudioDownloader:
 		entries = []
 		while True:
 			url = f"{api}users/{uid}/likes?client_id={self.soundcloud_token}&limit={lim}"
-			resp = requests.get(url, headers=self.youtube_header())
+			resp = reqs.get(url, headers=self.youtube_header(), timeout=20)
 			if not resp.content:
 				resp.raise_for_status()
 			data = resp.json()
@@ -1290,7 +1291,7 @@ class AudioDownloader:
 	@functools.lru_cache(maxsize=64)
 	def extract_audio_video(self, url):
 		title = url.split("?", 1)[0].rsplit("/", 1)[-1].split("#", 1)[0]
-		with reqs.get(url, headers=self.youtube_header(), stream=True) as resp:
+		with reqs.get(url, headers=self.youtube_header(), stream=True, timeout=20) as resp:
 			resp.raise_for_status()
 			ct = resp.headers.get("Content-Type")
 			if ct == "text/html":
@@ -1441,7 +1442,7 @@ class AudioDownloader:
 		if is_reddit_url(url):
 			url = url.replace("www.reddit.com", "vxreddit.com")
 		try:
-			resp = reqs.get(url, headers=self.youtube_header(), stream=True)
+			resp = reqs.get(url, headers=self.youtube_header(), stream=True, timeout=20)
 			resp.raise_for_status()
 		except:
 			print_exc()
@@ -1499,7 +1500,7 @@ class AudioDownloader:
 			title = url.split("?", 1)[0].rsplit("/", 1)[-1]
 			if title.rsplit(".", 1)[-1] in ("ogg", "ts", "webm", "mp4", "avi", "mov"):
 				url2 = url.replace("/cdn.discordapp.com/", "/media.discordapp.net/")
-				with reqs.get(url2, headers=self.youtube_header(), stream=True) as resp:
+				with reqs.get(url2, headers=self.youtube_header(), stream=True, timeout=20) as resp:
 					if resp.status_code in range(200, 400):
 						url = url2
 			if "." in title:
@@ -1570,7 +1571,7 @@ class AudioDownloader:
 			return self.extract_from(item)
 		if item[:9] == "spsearch:":
 			query = "https://api.spotify.com/v1/search?type=track%2Cshow_audio%2Cepisode_audio&include_external=audio&limit=1&q=" + url_parse(item[9:])
-			resp = reqs.get(query, headers=self.spotify_header).json()
+			resp = reqs.get(query, headers=self.spotify_header, timeout=5).json()
 			try:
 				track = resp["tracks"]["items"][0]
 				name = track.get("name", track["id"])
@@ -1583,7 +1584,7 @@ class AudioDownloader:
 				self.spotify_x += 1
 		elif item[:9] == "bcsearch:":
 			query = "https://bandcamp.com/search?q=" + url_parse(item[9:])
-			resp = reqs.get(query, headers=self.spotify_header).content
+			resp = reqs.get(query, headers=self.spotify_header, timeout=5).content
 			try:
 				resp = resp.split(b'<ul class="result-items">', 1)[1]
 				tracks = resp.split(b"<!-- search result type=")
@@ -1648,7 +1649,7 @@ class AudioDownloader:
 					output.clear()
 					print_exc()
 				try:
-					entries = list(map(cdict, reqs.get("https://api.mizabot.xyz/ytdl?q=" + url_parse(item)).json()))
+					entries = list(map(cdict, reqs.get("https://api.mizabot.xyz/ytdl?q=" + url_parse(item), timeout=10).json()))
 					if not entries:
 						raise IndexError
 				except:
@@ -1737,7 +1738,7 @@ class AudioDownloader:
 				url = verify_url(item)
 				utest = url.split("?", 1)[0]
 				if utest[-5:] == ".json" or utest[-4:] in (".txt", ".bin", ".zip"):
-					s = reqs.get(url).content
+					s = reqs.get(url, timeout=20).content
 					if not s.startswith(b"{"):
 						b = io.BytesIO(s)
 						with zipfile.ZipFile(data, allowZip64=True, strict_timestamps=False) as z:
@@ -2302,7 +2303,7 @@ def get_lyrics(search, url=None):
 				pass
 		if path and name:
 			s = "https://genius.com" + path
-			page = reqs.get(s, headers=header)
+			page = reqs.get(s, headers=header, timeout=10)
 			text = page.text
 			if "BeautifulSoup" not in globals():
 				bs4 = __import__("bs4")

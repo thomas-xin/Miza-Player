@@ -2383,7 +2383,7 @@ def skip():
 			if control.shuffle > 1:
 				queue[1:].shuffle()
 			elif control.shuffle:
-				thresh = min(8, max(2, len(queue) / 8))
+				thresh = min(8, max(2, len(queue) // 8))
 				if player.shuffler >= thresh:
 					queue[thresh:].shuffle()
 					player.shuffler = 0

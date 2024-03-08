@@ -2257,23 +2257,24 @@ def get_lyrics(search, url=None):
 					if fmt.get("language"):
 						lang = fmt["language"]
 						break
-			for cap in sorted(resp["automatic_captions"][lang], key=lambda x: random.random()):
-				if "json" in cap["ext"]:
-					break
-			try:
-				resp = reqs.get(cap["url"], headers=header, timeout=18)
-				resp.raise_for_status()
-				data = resp.json()
-				lyr = []
-				for event in data["events"]:
-					para = "".join(seg.get("utf8", "") for seg in event.get("segs", ()))
-					lyr.append(para)
-				lyrics = "".join(lyr).strip()
-				if lyrics:
-					print("lyrics_captions", lyrics)
-					return name, lyrics
-			except:
-				print_exc()
+			if lang in resp["automatic_captions"]:
+				for cap in sorted(resp["automatic_captions"][lang], key=lambda x: random.random()):
+					if "json" in cap["ext"]:
+						break
+				try:
+					resp = reqs.get(cap["url"], headers=header, timeout=18)
+					resp.raise_for_status()
+					data = resp.json()
+					lyr = []
+					for event in data["events"]:
+						para = "".join(seg.get("utf8", "") for seg in event.get("segs", ()))
+						lyr.append(para)
+					lyrics = "".join(lyr).strip()
+					if lyrics:
+						print("lyrics_captions", lyrics)
+						return name, lyrics
+				except:
+					print_exc()
 	search = search.translate(mtrans)
 	item = verify_search(to_alphanumeric(lyric_trans.sub("", search)))
 	ic = item.casefold()

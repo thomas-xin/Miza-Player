@@ -2376,10 +2376,10 @@ while not sys.stdin.closed and failed < 8:
 					args2 = ffmpeg_start + ("-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "-") + tuple(cmd[i + 2:])
 					print(args1)
 					print(args2)
-					proc = PipedProcess(args1, args2, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE)
+					proc = PipedProcess(args1, args2, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, bufsize=FR)
 			else:
 				print(cmd)
-				proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, bufsize=65536)
+				proc = psutil.Popen(cmd, stdin=subprocess.PIPE if f else subprocess.DEVNULL, stdout=subprocess.DEVNULL if fn else subprocess.PIPE, bufsize=FR)
 			if fn and not pos:
 				proc.kill = lambda: None
 			elif f:

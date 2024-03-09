@@ -1438,7 +1438,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			cmd2 += ["-vframes", "1"]
 		cmd2 += ["-"]
 		print(cmd2)
-		proc = psutil.Popen(cmd2, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=128 * 1048576)
+		proc = psutil.Popen(cmd2, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=None)
 		proc.url = sig
 		proc.pos = pos
 		bcount = 3
@@ -1529,6 +1529,8 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 				player.video_loading = None
 			elif curr + 2 / fps + pos > player.pos:
 				im.set_data("RGB", size[0] * 3, b)
+			else:
+				continue
 			proc.im = im
 			proc.im2 = None
 			if player.sprite:

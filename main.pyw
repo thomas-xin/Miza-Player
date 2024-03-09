@@ -1560,15 +1560,19 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			proc.pos = curr
 			while player.video and im and proc.is_running() and is_minimised():
 				time.sleep(0.1)
+				bufpos += sum(map(len, buffer))
+				buffer.clear()
 			while player.video and im and proc.is_running() and curr > player.pos:
 				async_wait()
 			# print(curr, len(b), i, fps)
 			if not im:
 				im = pyglet.image.ImageData(*size, "RGB", b)
 				player.video_loading = None
-			elif curr + 2 / fps + pos > player.pos:
+			elif curr + 2 / fps > player.pos:
 				im.set_data("RGB", size[0] * 3, b)
 			else:
+				del b
+				print("Skipping frame @", curr)
 				continue
 			proc.im = im
 			proc.im2 = None

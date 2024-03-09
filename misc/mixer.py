@@ -298,7 +298,7 @@ class Player(pyglet.media.Player):
 	def write(self, data):
 		self.wait()
 		data = data.data
-		if len(self.entry.buffer) >= 3:
+		if sum(map(len, self.entry.buffer)) >= 3 * req:
 			ts = max(0.004, len(data) / (audio_format.sample_rate * audio_format.sample_size * audio_format.channels / 8)) - 0.004
 			time.sleep(ts)
 		self.re_paused = False
@@ -306,7 +306,7 @@ class Player(pyglet.media.Player):
 			self.entry.buffer.append(data)
 
 	def wait(self):
-		while self.playing and not self.paused and self.source and len(self.entry.buffer) >= 4:
+		while self.playing and not self.paused and self.source and sum(map(len, self.entry.buffer)) >= 4 * req:
 			async_wait()
 		if not self.entry.buffer:
 			if not self.re_paused:
@@ -1820,8 +1820,12 @@ def piano_player():
 				if settings.get("insights") != 0 or settings.spectrogram > 0:
 					if ssize[0] and ssize[1] and not is_minimised():
 						if spec_fut:
-							spec_fut.result()
-						spec_fut = submit(spectrogram)
+							try:
+								spec_fut.result(timeout=1 / FPS / 2)
+							except concurrent.futures.TimeoutError:
+								pass
+						if not spec_fut:
+							spec_fut = submit(spectrogram)
 				while waiting:
 					waiting.result()
 				for i in range(2147483648):

@@ -523,7 +523,7 @@ __smap = {"|": "", "*": ""}
 __strans = "".maketrans(__smap)
 verify_search = lambda f: strip_acc(single_space(f.strip().translate(__strans)))
 find_urls = lambda url: regexp("(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+").findall(url)
-is_url = lambda url: regexp("^(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+$").fullmatch(url)
+is_url = lambda url: url and regexp("^(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+$").fullmatch(url)
 is_discord_url = lambda url: regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/").findall(url) + regexp("https:\\/\\/images-ext-[0-9]+\\.discordapp\\.net\\/external\\/").findall(url)
 is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/attachments\\/").search(url)
 is_tenor_url = lambda url: regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
@@ -2224,7 +2224,7 @@ def get_lyrics(search, url=None):
 	header = {"User-Agent": "Mozilla/6.0"}
 	name = None
 	description = None
-	if url:
+	if is_url(url):
 		resp = globals().get("ytdl", AudioDownloader()).extract_from(url)
 		name = resp.get("title") or resp["webpage_url"].rsplit("/", 1)[-1].split("?", 1)[0].rsplit(".", 1)[0]
 		if "description" in resp:

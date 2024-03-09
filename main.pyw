@@ -2687,7 +2687,7 @@ class Player(pyglet.media.Player):
 	def write(self, data):
 		self.wait()
 		data = data.data
-		if len(self.entry.buffer) >= 3:
+		if sum(map(len, self.entry.buffer)) >= 3 * 3200:
 			ts = max(0.004, len(data) / (audio_format.sample_rate * audio_format.sample_size * audio_format.channels / 8)) - 0.004
 			time.sleep(ts)
 		self.re_paused = 0
@@ -2695,7 +2695,7 @@ class Player(pyglet.media.Player):
 			self.entry.buffer.append(data)
 
 	def wait(self):
-		while self.playing and not self.paused and self.source and len(self.entry.buffer) >= 4:
+		while self.playing and not self.paused and self.source and sum(map(len, self.entry.buffer)) >= 4 * 3200:
 			async_wait()
 		if not self.entry.buffer:
 			if not self.re_paused:

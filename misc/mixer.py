@@ -110,7 +110,8 @@ def supersample(a, size, hq=False, in_place=False):
 	return np.mean(a.reshape(-1, x), 1, dtype=dtype)
 
 SR = 48000
-FR = 1600
+FPS = 120
+FR = SR // FPS
 
 
 from concurrent.futures import thread
@@ -892,7 +893,9 @@ def stdclose(p):
 
 shuffling = False
 transfer = False
-BSIZE = 1600
+breq = FR * 2
+req = breq * 2
+BSIZE = breq
 RSIZE = BSIZE << 2
 TSIZE = BSIZE // 3
 def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
@@ -950,7 +953,7 @@ def reader(f, pos=None, reverse=False, shuffling=False, pcm=False):
 							f.seek(pos)
 							break
 					globals()["pos"] = pos / fsize * duration
-					globals()["frame"] = globals()["pos"] * 30
+					globals()["frame"] = globals()["pos"] * FPS
 					print(f"Autoshuffle {pos}/{fsize}")
 					shuffling = False
 					p = proc
@@ -1203,7 +1206,7 @@ globals()["stat-mem"] = multiprocessing.shared_memory.SharedMemory(
 )
 globals()["osize"] = np.frombuffer(globals()["stat-mem"].buf[8:16], dtype=np.uint32)
 globals()["ssize"] = np.frombuffer(globals()["stat-mem"].buf[16:24], dtype=np.uint32)
-sbuff2 = np.empty(3200, dtype=np.float32)
+sbuff2 = np.empty(FR, dtype=np.float32)
 
 stderr_lock = None
 def oscilloscope(buffer):
@@ -1216,14 +1219,15 @@ def oscilloscope(buffer):
 				name=f"Miza-Player-{pid}-osci-mem",
 				create=False,
 			)
-		temp = np.clip(sbuffer[:3200], -1, 1, out=sbuff2, casting="unsafe")
+		temp = np.clip(sbuffer[:FR], -1, 1, out=sbuff2, casting="unsafe")
 		# temp = np.asanyarray(sbuffer[:3200], dtype=np.float32)
 		globals()["osci-mem"].buf[0] = 1
-		globals()["osci-mem"].buf[1:12801] = temp.view(np.uint8).data
+		globals()["osci-mem"].buf[1:12801 - FR * 4] = globals()["osci-mem"].buf[FR * 4 + 1:12801]
+		globals()["osci-mem"].buf[12801 - FR * 4:12801] = temp.view(np.uint8).data
 		globals()["osci-mem"].buf[0] = 0
 	except:
 		print_exc()
-osci_clear = b"\x00" * 12801
+osci_clear = b"\x00" * (FR * 4 + 1)
 def clear_osci():
 	globals()["osci-mem"].buf[:12801] = osci_clear
 
@@ -1350,9 +1354,9 @@ def render():
 			if lastpacket != id(packet) and sbuffer is not None and not sblock:
 				lastpacket = id(packet)
 				sblock = True
-				if len(sbuffer) > 3200:
-					buffer = sbuffer[:3200]
-					sbuffer = sbuffer[3200:]
+				if len(sbuffer) > breq:
+					buffer = sbuffer[:breq]
+					sbuffer = sbuffer[breq:]
 					sleep = 1 / 30
 				else:
 					buffer = sbuffer.copy()
@@ -1399,7 +1403,7 @@ def play(pos):
 	global file, fn, proc, drop, quiet, frame, packet, lastpacket, sample, transfer, point_fut, spec_fut, sbuffer, sblock, packet_advanced, packet_advanced2, packet_advanced3, sfut, video_write
 	skipzeros = False
 	try:
-		frame = pos * 30
+		frame = pos * FPS
 		while not stopped:
 			if paused and drop <= 0:
 				paused.result()
@@ -1998,7 +2002,6 @@ proc = None
 fn = None
 file = None
 paused = None
-req = FR * 2 * 2
 frame = 0
 drop = 0
 quiet = 0
@@ -2023,7 +2026,7 @@ while not sys.stdin.closed and failed < 8:
 			continue
 		failed = 0
 		command = command.rstrip().rstrip("\x00")
-		pos = frame / 30
+		pos = frame / FPS
 		# if command.startswith("~l1"):
 			# if stream_locked:
 				# stream_locked.set_result(None)
@@ -2175,10 +2178,10 @@ while not sys.stdin.closed and failed < 8:
 			if nostart or not stream:
 				continue
 		elif command.startswith("~drop"):
-			drop += float(command[5:]) * 30
-			if drop <= 60 * 30:
+			drop += float(command[5:]) * FPS
+			if drop <= 60 * FPS:
 				continue
-			pos = (frame + drop) / 30
+			pos = (frame + drop) / FPS
 			drop = 0
 		elif command == "~quit":
 			if proc:

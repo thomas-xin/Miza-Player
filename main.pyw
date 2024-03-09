@@ -1428,7 +1428,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		cmd = ("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,avg_frame_rate,duration", "-of", "csv=s=x:p=0", url)
 		print(cmd)
 		p = psutil.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y", "-hwaccel", hwaccel, "-an"]
+		cmd2 = ["ffmpeg", "-hide_banner", "-v", "error", "-y", "-hwaccel", hwaccel, "-an", "-fflags", "+discardcorrupt+igndts+flush_packets"]
 		if is_url(url):
 			cmd2 += ["-reconnect", "1", "-reconnect_at_eof", "0", "-reconnect_streamed", "1", "-reconnect_delay_max", "240"]
 		if not iterations:
@@ -1436,7 +1436,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		cmd2 += ["-i", url, "-f", "rawvideo", "-pix_fmt", "rgb24", "-vsync", "0"]
 		if iterations:
 			cmd2 += ["-vframes", "1"]
-		cmd2 += ["-"]
+		cmd2 += ["-preset", "slow", "-"]
 		print(cmd2)
 		proc = psutil.Popen(cmd2, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=None)
 		proc.url = sig
@@ -1509,20 +1509,59 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 		print(size, bcount, fps, pos, dur)
 		proc.tex = proc.im = proc.im2 = None
 		player.video = proc
-		i = 0
+		maxframes = 120
+		bfut = None
+		buffer = []
+		bufpos = 0
 		im = None
+		t = utc()
 		while bcount:
-			b = proc.stdout.read(bcount)
-			while len(b) < bcount:
-				if not b or not proc.is_running():
-					break
-				b += proc.stdout.read(bcount - len(b))
-			if len(b) < bcount:
+			t2 = utc()
+			if t2 - t < 1 / fps / 2 or sum(map(len, buffer)) < bcount:
+				if bfut:
+					b = bfut.result()
+					bfut = None
+					buffer.append(b)
+				t4 = utc()
+				while True:
+					t4 = utc()
+					bsize = sum(map(len, buffer))
+					if bsize >= bcount * maxframes or bsize >= bcount and t4 - t > 1 / fps / 2:
+						break
+					bfut = submit(proc.stdout.read, bcount)
+					try:
+						to = 1 / fps / 2 - t4 + t if bsize >= bcount else None
+						b = bfut.result(timeout=to)
+					except concurrent.futures.TimeoutError:
+						break
+					else:
+						bfut = None
+						if not b:
+							break
+						buffer.append(b)
+			bsize = sum(map(len, buffer))
+			if bsize < bcount:
+				print(bsize, bcount)
 				break
-			curr = i / fps + pos
+			b = b""
+			while len(b) < bcount:
+				b2 = buffer.pop(0)
+				if len(b) + len(b2) > bcount:
+					i = bcount - len(b)
+					b, b2 = b + b2[:bcount], b2[bcount:]
+					buffer.insert(0, b2)
+				else:
+					b += b2
+			bufpos += bcount
+			t3 = utc()
+			# print(round(bsize / bcount), round(t3 - t, 4), round(t3 - t2, 4))
+			t = t3
+			curr = bufpos / bcount / fps + pos
 			proc.pos = curr
-			while im and proc.is_running() and curr > player.pos or is_minimised():
-				time.sleep(0.04)
+			while player.video and im and proc.is_running() and is_minimised():
+				time.sleep(0.1)
+			while player.video and im and proc.is_running() and curr > player.pos:
+				async_wait()
 			# print(curr, len(b), i, fps)
 			if not im:
 				im = pyglet.image.ImageData(*size, "RGB", b)
@@ -1535,7 +1574,6 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			proc.im2 = None
 			if player.sprite:
 				player.sprite.changed += 1
-			i += 1
 			if not proc.is_running():
 				break
 			async_wait()
@@ -2839,6 +2877,8 @@ get_channel = lambda: sc_player(get_device(common.OUTPUT_DEVICE))
 player.channel = get_channel()
 print(player.channel)
 
+M_FPS = 120
+
 def mixer_audio():
 	while mixer:
 		try:
@@ -2964,7 +3004,7 @@ def mixer_stdout():
 				i, dur = map(float, s.split(" ", 1))
 				if not progress.seeking or not any(mheld):
 					player.index = i
-					player.pos = pos = round(player.index / 30, 4)
+					player.pos = pos = round(player.index / M_FPS, 4)
 					offpos = pos - pc() * player.speed() if pos > 0 else -inf
 					if abs(offpos - player.get("offpos", 0)) > 0.25:
 						player.offpos = offpos

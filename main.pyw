@@ -63,7 +63,7 @@ player = cdict(
 	index=0,
 	pos=0,
 	offpos=-inf,
-	extpos=lambda: pc() * player.speed() + player.offpos if player.offpos > -inf or is_active() else player.pos,
+	extpos=lambda: pc() * player.speed() + player.offpos if isfinite(player.offpos) else player.pos,
 	speed=lambda: audio.speed * 2 ** (audio.nightcore / 12),
 	end=inf,
 	amp=0,
@@ -3272,6 +3272,7 @@ def update_menu():
 		if not mheld[0]:
 			progress.seeking = False
 			if queue and isfinite(e_dur(queue[0].duration)):
+				print(player.extpos())
 				submit(seek_abs, player.extpos(), force=True)
 	if sidebar.resizing:
 		sidebar_width = min(screensize[0] - 8, max(144, screensize[0] - mpos2[0] + 2))

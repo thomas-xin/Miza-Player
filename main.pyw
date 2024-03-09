@@ -4147,7 +4147,24 @@ def draw_menu():
 		elif in_rect(mpos, player.rect):
 			if mclick[1]:
 				s = options.get("spectrogram")
-				if s == 1:
+				if s == 0:
+					def sync_screen():
+						if not player.video or not player.video.im:
+							return
+						w, h = (player.video.im.width, player.video.im.height)
+						print(w, h)
+						if not w * h:
+							return
+						if abs(w / h - player.rect[2] / player.rect[3]) > 0.01:
+							w, h = max_size(w, h, maxsize=sqrt(player.rect[2] * player.rect[3]), force=True)
+							screensize = (w + sidebar_width, h + toolbar_height)
+							DISP.set_size(*screensize)
+					sidebar.menu = cdict(
+						buttons=(
+							("Sync screen size", sync_screen),
+						),
+					)
+				elif s == 1:
 					def change_font_size():
 						def change_font_size_a(enter):
 							if enter:

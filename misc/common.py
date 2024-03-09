@@ -3883,6 +3883,16 @@ def char_display(char, size, font="OpenSansEmoji"):
 	return f
 
 
+def max_size(w, h, maxsize, force=False):
+	s = w * h
+	m = maxsize * maxsize
+	if s > m or force:
+		r = (m / s) ** 0.5
+		w = round(w * r)
+		h = round(h * r)
+	return w, h
+
+
 class PipedProcess:
 
 	procs = ()

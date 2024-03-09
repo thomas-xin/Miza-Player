@@ -1438,7 +1438,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 			cmd2 += ["-vframes", "1"]
 		cmd2 += ["-"]
 		print(cmd2)
-		proc = psutil.Popen(cmd2, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=1048576)
+		proc = psutil.Popen(cmd2, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=128 * 1048576)
 		proc.url = sig
 		proc.pos = pos
 		bcount = 3

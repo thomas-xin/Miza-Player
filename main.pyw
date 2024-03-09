@@ -1590,7 +1590,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 				im = Image.open(resp.raw)
 				proc.im = pil2pgl(im, flip=False)
 				proc.im2 = None
-		if pos >= dur - 1 or not bcount:
+		if pos >= dur - 2 or not bcount:
 			while pos < player.pos + 1 and queue and proc.url == queue[0].url:
 				pos = player.pos
 				proc.pos = pos

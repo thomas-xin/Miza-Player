@@ -4420,16 +4420,63 @@ def time_parse(ts):
 	mults = (1, 60, 3600, 86400)
 	return round_min(sum(float(count) * mult for count, mult in zip(data, reversed(mults[:len(data)]))))
 
+def discord_expired(url):
+	if is_discord_attachment(url):
+		if "?ex=" not in url and "&ex=" not in url:
+			return True
+		temp = url.replace("?ex=", "&ex=").split("&ex=", 1)[-1].split("&", 1)[0]
+		try:
+			ts = int(temp, 16)
+		except ValueError:
+			return True
+		return ts < utc() + 60
+
 def expired(stream):
+	if not stream:
+		return True
+	if discord_expired(stream):
+		return True
 	if is_youtube_url(stream):
+		return True
+	if stream.startswith("ytsearch:"):
+		return True
+	if stream.startswith("https://open.spotify.com/track/"):
 		return True
 	if stream.startswith("https://www.yt-download.org/download/"):
 		if int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60:
+			return True
+	elif re.match(r"https?:\/\/cdn[0-9]*\.tik\.live\/api\/stream", stream):
+		if float(stream.replace("/", "=").replace("&e=", "?e=").split("?e=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) / 1000 < utc() + 60:
 			return True
 	elif is_youtube_stream(stream):
 		if int(stream.replace("/", "=").split("expire=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) < utc() + 60:
 			return True
 
-is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r+[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
-is_youtube_url = lambda url: url and re.findall("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+", url)
+RE = cdict()
+def regexp(s, flags=0):
+	global RE
+	if issubclass(type(s), re.Pattern):
+		return s
+	elif type(s) is not str:
+		s = s.decode("utf-8", "replace")
+	t = (s, flags)
+	try:
+		return RE[t]
+	except KeyError:
+		RE[t] = re.compile(s, flags)
+		return RE[t]
+
+is_url = lambda url: url and regexp("^(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+$").fullmatch(url)
+is_discord_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/").findall(url) + regexp("https:\\/\\/images-ext-[0-9]+\\.discordapp\\.net\\/external\\/").findall(url)
+is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/attachments\\/").search(str(url))
+is_tenor_url = lambda url: url and regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
+is_imgur_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
+is_giphy_url = lambda url: url and regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
+is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
+is_youtube_stream = lambda url: url and regexp("^https?:\\/\\/r+[0-9]+---.{2}-[A-Za-z0-9\\-_]{4,}\\.googlevideo\\.com").findall(url)
+is_deviantart_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
+is_reddit_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?reddit.com\\/r\\/[^/\\W]+\\/").findall(url)
+is_redgifs_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?redgifs.com\\/[A-Za-z]{2,6}\\/[^/\\W]+").findall(url)
+is_emoji_url = lambda url: url and url.startswith("https://raw.githubusercontent.com/twitter/twemoji/master/assets/svg/")
+unyt = lambda s: re.sub(r"https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"\?si=[A-Fa-f0-9]+", "", s))
 # Regex moment - Lou

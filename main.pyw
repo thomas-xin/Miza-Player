@@ -1933,7 +1933,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
 			entry.pop("stream", None)
 			stream = ""
-		if not stream or stream.startswith("ytsearch:") or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
+		if not stream or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
 			if not is_url(entry.url):
 				duration = entry.duration
 				if os.path.exists(entry.url):
@@ -2008,6 +2008,9 @@ def prepare(entry, force=False, download=False, delay=0):
 				data = ytdl.extract(entry.url)
 				entry.name = data[0].name
 				stream = entry.stream = data[0].setdefault("stream", data[0].url)
+				if expired(stream):
+					ytdl.get_stream(entry, force=True, download=False)
+					stream = entry.stream = data[0].setdefault("stream", data[0].url)
 			else:
 				stream = ytdl.get_stream(entry, force=True, download=False)
 			globals()["queue-length"] = -1

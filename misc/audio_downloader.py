@@ -453,7 +453,6 @@ def parse_fs(fs):
 	return float(fs.split(None, 1)[0]) * scale
 
 RE = cdict()
-
 def regexp(s, flags=0):
 	global RE
 	if issubclass(type(s), re.Pattern):
@@ -524,14 +523,23 @@ __strans = "".maketrans(__smap)
 verify_search = lambda f: strip_acc(single_space(f.strip().translate(__strans)))
 find_urls = lambda url: regexp("(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+").findall(url)
 is_url = lambda url: url and regexp("^(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+$").fullmatch(url)
-is_discord_url = lambda url: regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/").findall(url) + regexp("https:\\/\\/images-ext-[0-9]+\\.discordapp\\.net\\/external\\/").findall(url)
-is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/attachments\\/").search(url)
-is_tenor_url = lambda url: regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
-is_imgur_url = lambda url: regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
-is_giphy_url = lambda url: regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
-is_youtube_url = lambda url: regexp("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
-is_youtube_stream = lambda url: url and re.findall(r"^https?:\/\/r+[0-9]+---.{2}-[A-Za-z0-9\-_]{4,}\.googlevideo\.com", url)
-is_deviantart_url = lambda url: regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
+is_discord_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/").findall(url) + regexp("https:\\/\\/images-ext-[0-9]+\\.discordapp\\.net\\/external\\/").findall(url)
+is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/attachments\\/").search(str(url))
+is_tenor_url = lambda url: url and regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
+is_imgur_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
+is_giphy_url = lambda url: url and regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
+is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
+is_youtube_stream = lambda url: url and regexp("^https?:\\/\\/r+[0-9]+---.{2}-[A-Za-z0-9\\-_]{4,}\\.googlevideo\\.com").findall(url)
+is_deviantart_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
+is_reddit_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?reddit.com\\/r\\/[^/\\W]+\\/").findall(url)
+is_redgifs_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?redgifs.com\\/[A-Za-z]{2,6}\\/[^/\\W]+").findall(url)
+is_emoji_url = lambda url: url and url.startswith("https://raw.githubusercontent.com/twitter/twemoji/master/assets/svg/")
+unyt = lambda s: re.sub(r"https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub("?si=[A-Fa-f0-9]+", "", s))
+
+def maps(funcs, *args, **kwargs):
+	"A map-compatible function that takes and iterates through multiple functions in a list as the first argument."
+	for func in funcs:
+		yield func(*args, **kwargs)
 
 def discord_expired(url):
 	if is_discord_attachment(url):
@@ -545,12 +553,21 @@ def discord_expired(url):
 		return ts < utc() + 60
 
 def expired(stream):
+	if not stream:
+		return True
 	if discord_expired(stream):
 		return True
 	if is_youtube_url(stream):
 		return True
+	if stream.startswith("ytsearch:"):
+		return True
+	if stream.startswith("https://open.spotify.com/track/"):
+		return True
 	if stream.startswith("https://www.yt-download.org/download/"):
 		if int(stream.split("/download/", 1)[1].split("/", 4)[3]) < utc() + 60:
+			return True
+	elif re.match(r"https?:\/\/cdn[0-9]*\.tik\.live\/api\/stream", stream):
+		if float(stream.replace("/", "=").replace("&e=", "?e=").split("?e=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) / 1000 < utc() + 60:
 			return True
 	elif is_youtube_stream(stream):
 		if int(stream.replace("/", "=").split("expire=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) < utc() + 60:
@@ -859,7 +876,6 @@ class AudioDownloader:
 		self.downloading = cdict()
 		self.cache = cdict()
 		self.searched = cdict()
-		self.waiting = create_future_ex(self.update_dl)
 		self.youtube_base = "CONSENT=YES+cb.20210328-17-p0.en+FX"
 		self.cookie = create_future_ex(self.set_cookie)
 		self.downloader = youtube_dl.YoutubeDL(self.ydl_opts)
@@ -871,7 +887,8 @@ class AudioDownloader:
 			resp = resp[:resp.index('">')].rsplit("+", 1)[0]
 			self.youtube_base = f"CONSENT=YES+{resp}"
 			self.youtube_x += 1
-	
+
+	@property
 	def youtube_header(self):
 		return {
 			"Cookie": self.youtube_base + "%03d" % random.randint(0, 999) + ";",
@@ -880,16 +897,16 @@ class AudioDownloader:
 			"X-Forwarded-For": ".".join(str(random.randint(1, 254)) for _ in range(4)),
 		}
 
-	# Initializes youtube_dl object as well as spotify tokens, every 720 seconds.
-	def update_dl(self):
-		try:
-			self.youtube_dl_x += 1
-			self.spotify_x += 1
+	spot_head = dict(expire="0")
+	@property
+	def spotify_header(self):
+		self.spotify_x += 1
+		self.other_x += 1
+		if utc() - float(self.spot_head["expire"]) > 720:
+			self.spot_head["expire"] = str(utc() + 5)
 			token = reqs.get("https://open.spotify.com/get_access_token", timeout=5).content
-			self.spotify_header = {"authorization": f"Bearer {orjson.loads(token[:512])['accessToken']}"}
-			self.other_x += 1
-		except:
-			pass
+			self.spot_head = {"authorization": f"Bearer {orjson.loads(token[:512])['accessToken']}", "expire": str(utc() + 720)}
+		return self.spot_head
 
 	# Gets data from yt-download.org, and adjusts the format to ensure compatibility with results from youtube-dl. Used as backup.
 	def extract_backup(self, url):
@@ -975,7 +992,6 @@ class AudioDownloader:
 	def get_spotify_part(self, url):
 		out = deque()
 		self.spotify_x += 1
-		self.waiting.result()
 		resp = reqs.get(url, headers=self.spotify_header, timeout=5).content
 		d = orjson.loads(resp)
 		with suppress(KeyError):
@@ -1008,7 +1024,9 @@ class AudioDownloader:
 				dur /= 1000
 			temp = cdict(
 				name=name,
-				url="ytsearch:" + "".join(c if c.isascii() and c != ":" else "_" for c in f"{name} ~ {artists}"),
+				url=f"https://open.spotify.com/track/{track['id']}",
+				# url=f"https://api.spotifydown.com/download/{track['id']}",
+				# url="ytsearch:" + "".join(c if c.isascii() and c != ":" else "_" for c in f"{name} ~ {artists}"),
 				id=track["id"],
 				duration=dur,
 				research=True,
@@ -1057,7 +1075,7 @@ class AudioDownloader:
 			try:
 				resp = reqs.post(
 					"https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
-					headers=self.youtube_header(),
+					headers=self.youtube_header,
 					data=orjson.dumps(dict(
 						context=ctx,
 						continuation=token,
@@ -1111,7 +1129,7 @@ class AudioDownloader:
 	# Returns a full youtube playlist.
 	def get_youtube_playlist(self, p_id):
 		self.youtube_x += 1
-		resp = reqs.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header(), timeout=20).content
+		resp = reqs.get(f"https://www.youtube.com/playlist?list={p_id}", headers=self.youtube_header, timeout=20).content
 		client = {}
 		try:
 			ytcfg = resp[resp.index(b"ytcfg.set"):]
@@ -1175,7 +1193,7 @@ class AudioDownloader:
 			return self.get_soundcloud_likes(url)
 		api = "https://api-v2.soundcloud.com/"
 
-		resp = reqs.get(url, headers=self.youtube_header(), timeout=10)
+		resp = reqs.get(url, headers=self.youtube_header, timeout=10)
 		resp.raise_for_status()
 		s = resp.text
 		if s[0] == "{" and s[-1] == "}":
@@ -1214,7 +1232,7 @@ class AudioDownloader:
 		if emap:
 			ids = ",".join(map(str, emap))
 			url = f"{api}tracks?ids={ids}&client_id={self.soundcloud_token}"
-			resp = reqs.get(url, headers=self.youtube_header(), timeout=10)
+			resp = reqs.get(url, headers=self.youtube_header, timeout=10)
 			if not resp.content:
 				resp.raise_for_status()
 			for t, p in zip(resp.json(), emap.values()):
@@ -1235,7 +1253,7 @@ class AudioDownloader:
 		if url.startswith(uapi):
 			uid = url[len(uapi):].split("?", 1)[0]
 		else:
-			resp = reqs.get(url, headers=self.youtube_header(), timeout=20)
+			resp = reqs.get(url, headers=self.youtube_header, timeout=20)
 			resp.raise_for_status()
 			s = resp.text
 			search = 'content="soundcloud://users:'
@@ -1246,7 +1264,7 @@ class AudioDownloader:
 		entries = []
 		while True:
 			url = f"{api}users/{uid}/likes?client_id={self.soundcloud_token}&limit={lim}"
-			resp = reqs.get(url, headers=self.youtube_header(), timeout=20)
+			resp = reqs.get(url, headers=self.youtube_header, timeout=20)
 			if not resp.content:
 				resp.raise_for_status()
 			data = resp.json()
@@ -1291,7 +1309,7 @@ class AudioDownloader:
 	@functools.lru_cache(maxsize=64)
 	def extract_audio_video(self, url):
 		title = url.split("?", 1)[0].rsplit("/", 1)[-1].split("#", 1)[0]
-		with reqs.get(url, headers=self.youtube_header(), stream=True, timeout=20) as resp:
+		with reqs.get(url, headers=self.youtube_header, stream=True, timeout=20) as resp:
 			resp.raise_for_status()
 			ct = resp.headers.get("Content-Type")
 			if ct == "text/html":
@@ -1336,7 +1354,7 @@ class AudioDownloader:
 					return {"_type": "playlist", "entries": out}
 				elif out:
 					return out[0]
-			elif ct.split("/", 1)[0] in ("audio", "video", "image"):
+			elif ct and ct.split("/", 1)[0] in ("audio", "video", "image"):
 				return dict(url=url, webpage_url=url, title=title, direct=True)
 
 	# Repeatedly makes calls to youtube-dl until there is no more data to be collected.
@@ -1370,35 +1388,7 @@ class AudioDownloader:
 					url = resp["url"]
 				except KeyError:
 					url = resp["id"]
-		if is_discord_url(url):
-			title = url.split("?", 1)[0].rsplit("/", 1)[-1]
-			if "." in title:
-				title = title[:title.rindex(".")]
-			return dict(url=url, name=title, direct=True)
-		try:
-			if self.blocked_yt > utc():
-				raise PermissionError
-			self.youtube_dl_x += 1
-			entries = self.downloader.extract_info(url, download=False, process=True)
-		except Exception as ex:
-			s = str(ex).casefold()
-			if "unsupported url:" in s:
-				out = self.extract_audio_video(url)
-				if out:
-					return out
-				raise
-			elif not isinstance(ex, youtube_dl.DownloadError) or self.ydl_errors(s):
-				if "429" in s:
-					self.blocked_yt = utc() + 60
-				if has_ytd and "unsupported url" not in s:
-					try:
-						entries = self.extract_backup(url)
-					except (TypeError, youtube_dl.DownloadError):
-						raise FileNotFoundError(f"Unable to fetch audio data: {repr(ex)}")
-				else:
-					raise
-			else:
-				raise
+		entries = self.extract_from(url, process=True)
 		if "entries" in entries:
 			entries = entries["entries"]
 		else:
@@ -1407,12 +1397,17 @@ class AudioDownloader:
 		for entry in entries:
 			temp = cdict(
 				name=entry["title"],
-				url=entry["webpage_url"],
+				url=entry.get("webpage_url") or entry["url"],
 				duration=entry.get("duration"),
 				stream=get_best_audio(entry),
 				icon=get_best_icon(entry),
 				video=get_best_video(entry),
 			)
+			stream = temp.stream
+			if "googlevideo" in stream[:64]:
+				durstr = regexp("[&?]dur=([0-9\\.]+)").findall(stream)
+				if durstr:
+					temp.duration = round_min(durstr[0])
 			out.append(temp)
 		return out
 
@@ -1442,7 +1437,7 @@ class AudioDownloader:
 		if is_reddit_url(url):
 			url = url.replace("www.reddit.com", "vxreddit.com")
 		try:
-			resp = reqs.get(url, headers=self.youtube_header(), stream=True, timeout=20)
+			resp = reqs.get(url, headers=self.youtube_header, stream=True, timeout=20)
 			resp.raise_for_status()
 		except:
 			print_exc()
@@ -1495,12 +1490,24 @@ class AudioDownloader:
 				return res
 
 	# Extracts audio information from a single URL.
-	def extract_from(self, url):
+	def extract_from(self, url, process=False):
+		o_url = url
+		if url.startswith("https://open.spotify.com/track/"):
+			url = "https://api.spotifydown.com/download/" + url.removeprefix("https://open.spotify.com/track/").split("?", 1)[0].split("/", 1)[0]
+		if url.startswith("https://api.spotifydown.com/download/"):
+			headers = {
+				"Origin": "https://spotifydown.com/",
+				"Referer": "https://spotifydown.com/",
+			}
+			with reqs.get(url, headers=headers, timeout=60) as resp:
+				resp.raise_for_status()
+				data = resp.json()
+				return dict(url=o_url, formats=[dict(url=data["link"])], thumbnail=data["metadata"].get("cover"), title=data["metadata"]["title"], direct=True)
 		if is_discord_attachment(url):
 			title = url.split("?", 1)[0].rsplit("/", 1)[-1]
 			if title.rsplit(".", 1)[-1] in ("ogg", "ts", "webm", "mp4", "avi", "mov"):
 				url2 = url.replace("/cdn.discordapp.com/", "/media.discordapp.net/")
-				with reqs.get(url2, headers=self.youtube_header(), stream=True, timeout=20) as resp:
+				with reqs.get(url2, headers=self.youtube_header, stream=True, timeout=20) as resp:
 					if resp.status_code in range(200, 400):
 						url = url2
 			if "." in title:
@@ -1513,7 +1520,7 @@ class AudioDownloader:
 			if url.startswith("https://www.youtube.com/search") or url.startswith("https://www.youtube.com/results"):
 				url = url.split("=", 1)[1].split("&", 1)[0]
 			self.youtube_dl_x += 1
-			resp = self.downloader.extract_info(url, download=False, process=False)
+			resp = self.downloader.extract_info(url, download=False, process=process)
 		except Exception as exc:
 			ex = exc
 			resp = None
@@ -1547,6 +1554,8 @@ class AudioDownloader:
 
 	# Extracts info from a URL or search, adjusting accordingly.
 	def extract_info(self, item, count=1, search=False, mode=None):
+		if not item.strip():
+			return
 		if mode or search and item[:9] not in ("ytsearch:", "scsearch:", "scsearch:", "bcsearch:") and not is_url(item):
 			if count == 1:
 				c = ""
@@ -1580,7 +1589,9 @@ class AudioDownloader:
 				print(resp)
 				raise LookupError(f"No results found for {item[9:]}.")
 			else:
-				item = "ytsearch:" + "".join(c if c.isascii() and c != ":" else "_" for c in f"{name} ~ {artists}")
+				item = f"https://open.spotify.com/track/{track['id']}"
+				# item = f"https://api.spotifydown.com/download/{track['id']}"
+				# item = "ytsearch:" + "".join(c if c.isascii() and c != ":" else "_" for c in f"{name} ~ {artists}")
 				self.spotify_x += 1
 		elif item[:9] == "bcsearch:":
 			query = "https://bandcamp.com/search?q=" + url_parse(item[9:])
@@ -1948,7 +1959,7 @@ class AudioDownloader:
 		if not out:
 			url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
 			self.youtube_x += 1
-			resp = Request(url, headers=self.youtube_header(), timeout=12)
+			resp = Request(url, headers=self.youtube_header, timeout=12)
 			result = None
 			s = resp
 			with suppress(ValueError):
@@ -2021,7 +2032,7 @@ class AudioDownloader:
 		searched = False
 		name = entry.get("name")
 		# If "research" tag is set, entry does not contain full data and requires another search
-		if "research" in entry:
+		if "research" in entry or not is_url(stream) or not isfinite(float(entry.get("duration") or inf)) or stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream):
 			try:
 				self.extract_single(entry)
 				searched = True
@@ -2043,13 +2054,6 @@ class AudioDownloader:
 			icon = data[0].setdefault("icon", data[0]["url"])
 			video = data[0].setdefault("video", data[0]["url"])
 			entry["duration"] = data[0].get("duration")
-		if not searched and (not is_url(stream) or not isfinite(float(entry.get("duration") or inf)) or stream.startswith("ytsearch:") or stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream)):
-			data = self.extract(entry["url"])
-			name = data[0]["name"]
-			stream = data[0].get("stream") or data[0]["url"]
-			icon = data[0].setdefault("icon", data[0]["url"])
-			video = data[0].setdefault("video", data[0]["url"])
-			entry.update(data[0])
 		entry["name"] = name
 		entry["stream"] = stream
 		entry["icon"] = icon
@@ -2100,10 +2104,7 @@ class AudioDownloader:
 			icon=data.get("icon") or get_best_icon(data),
 			video=data.get("video") or get_best_video(data),
 		)]
-		try:
-			out[0].duration = data["duration"]
-		except KeyError:
-			out[0].research = True
+		out[0].duration = data.get("duration") or i.get("duration")
 		self.searched[item] = obj
 		it = out[0]
 		i.update(it)

@@ -1956,7 +1956,7 @@ class AudioDownloader:
 		if not out:
 			url = f"https://www.youtube.com/results?search_query={verify_url(query)}"
 			self.youtube_x += 1
-			resp = Request(url, headers=self.youtube_header, timeout=12)
+			resp = reqs.get(url, headers=self.youtube_header, timeout=12).content
 			result = None
 			s = resp
 			with suppress(ValueError):

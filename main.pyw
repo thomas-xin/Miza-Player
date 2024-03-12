@@ -2121,7 +2121,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	ytdl = downloader.result()
 	try:
 		results = ytdl.search(url)
-		entry.name = results[0].name
+		entry.name = results[0]["name"]
 	except:
 		print_exc()
 	else:

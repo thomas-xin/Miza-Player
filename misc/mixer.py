@@ -823,10 +823,12 @@ def download(url, fn):
 			fi = fn
 		else:
 			fi = "cache/" + str(time.time_ns() + random.randint(1, 1000))
+		copied = False
 		cmd += ("-nostdin", "-i", url)
 		if fn.endswith(".webm") and is_url(url) and url.rsplit(".", 1)[-1] not in ("mp4", "mov", "avi", "mkv"):
 			if url.rsplit(".", 1)[-1] in ("webm", "opus", "ts") or is_youtube_stream(url):
 				cmd += ("-f", "webm", "-c:a", "copy", fi)
+				copied = True
 			else:
 				cmd += ("-f", "webm", "-ar", "48k", "-ac", "2", "-b:a", "192k", fi)
 		else:
@@ -838,7 +840,12 @@ def download(url, fn):
 		print(cmd)
 		code = subprocess.Popen(cmd).wait()
 		if code:
-			raise RuntimeError(code)
+			if code == 4294967274 and copied:
+				cmd = cmd[:-5] + ("-f", "mpegts", "-c:a", "copy", fi)
+				print(cmd)
+				code = subprocess.Popen(cmd).wait()
+			if code:
+				raise RuntimeError(code)
 		if not is_url(url) and os.path.exists(url):
 			os.remove(url)
 		if fi != fn and os.path.exists(fi) and (os.path.getsize(fi) or not os.path.exists(fn)):

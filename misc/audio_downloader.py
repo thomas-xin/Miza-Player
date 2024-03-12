@@ -572,6 +572,8 @@ def expired(stream):
 	elif is_youtube_stream(stream):
 		if int(stream.replace("/", "=").split("expire=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) < utc() + 60:
 			return True
+	elif stream.startswith("https://i.ytimg.com"):
+		return True
 
 verify_url = lambda url: url if is_url(url) else url_parse(url)
 
@@ -725,7 +727,7 @@ def get_best_icon(entry):
 				vid = url.rsplit("/", 1)[-1].split("?", 1)[0]
 			entry["thumbnail"] = f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg"
 			return entry["thumbnail"]
-		if url.startswith("https://mizabot.xyz/"):
+		if "mizabot.xyz" in url:
 			return "https://mizabot.xyz/static/mizaleaf.png"
 		return url
 	return sorted(thumbnails, key=lambda x: float(x.get("width", x.get("preference", 0) * 4096)), reverse=True)[0]["url"]
@@ -1029,7 +1031,6 @@ class AudioDownloader:
 				# url="ytsearch:" + "".join(c if c.isascii() and c != ":" else "_" for c in f"{name} ~ {artists}"),
 				id=track["id"],
 				duration=dur,
-				research=True,
 			)
 			out.append(temp)
 		return out, total
@@ -2032,7 +2033,7 @@ class AudioDownloader:
 		searched = False
 		name = entry.get("name")
 		# If "research" tag is set, entry does not contain full data and requires another search
-		if "research" in entry or not is_url(stream) or not isfinite(float(entry.get("duration") or inf)) or stream.startswith("https://cf-hls-media.sndcdn.com/") or expired(stream):
+		if "research" in entry or not is_url(stream) or expired(stream) or not isfinite(float(entry.get("duration") or inf)) or stream.startswith("https://cf-hls-media.sndcdn.com/"):
 			try:
 				self.extract_single(entry)
 				searched = True

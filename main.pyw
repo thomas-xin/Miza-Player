@@ -2227,7 +2227,6 @@ def start_player(pos=None, force=False):
 			url = entry.url
 			url = unyt(url)
 			s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(url)}\n"
-			print("SUBMIT:", s)
 			mixer.submit(s, force=False)
 			player.pos = pos
 			player.offpos = pos - pc() * player.speed() if pos > 0 else -inf
@@ -2362,7 +2361,6 @@ def ecdc_compress(entry, stream, force=False):
 						b = f.read()
 					query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
 					api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url={urllib.parse.quote_plus(url)}"
-					# print(api)
 					with reqs.post(api, data=b, stream=True, timeout=720) as resp:
 						print(resp)
 						if resp.status_code not in range(200, 400):
@@ -2515,14 +2513,18 @@ def restart_mixer(devicename=None):
 	return seek_abs(player.extpos())
 
 reevaluating = False
-def reevaluate():
-	time.sleep(2)
-	while not player.pos and not pygame.closed:
-		print("Re-evaluating file stream...")
-		if not queue:
-			break
+
+def reevaluate_in(delay=0, mut=()):
+	try:
+		if delay:
+			time.sleep(delay)
+		if mut:
+			return
+		if not queue or player.paused or is_active() and (player.amp > 1 / 64 or player.pos > 0):
+			return
 		url = queue[0]["url"]
 		force = True
+		print("REEVALUATE:", queue[0])
 		if is_url(url) and utc() - queue[0].get("reev", 0) < 120:
 			prepare(queue[0], force=True)
 		elif is_url(url):
@@ -2550,48 +2552,9 @@ def reevaluate():
 						print_exc()
 						queue[0].url = ""
 						print("REDELETING:", entry, cfn)
-		start_player(0, force=force)
-		time.sleep(2)
-
-def reevaluate_in(delay=0, mut=()):
-	if delay:
-		time.sleep(delay)
-	if mut:
-		return
-	a = is_active()
-	print("WATCHDOG:", a)
-	if not queue or a or player.paused:
-		return
-	url = queue[0]["url"]
-	force = True
-	if is_url(url) and utc() - queue[0].get("reev", 0) < 120:
-		prepare(queue[0], force=True)
-	elif is_url(url):
-		queue[0]["reev"] = utc() + 120
-		if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
-			queue[0].pop("stream", None)
-			ytdl = downloader.result()
-			ytdl.cache.pop(url, None)
-		else:
-			queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={urllib.parse.quote_plus(url)}&fmt=webm&asap=1"
-			force = False
-			try:
-				url = f"https://api.mizabot.xyz/ytdl?q={urllib.parse.quote_plus(url)}&count=1"
-				with reqs.get(url, stream=True, timeout=20) as resp:
-					resp.raise_for_status()
-					queue[0].update(resp.json()[0])
-			except:
-				url = queue[0].url
-				url = unyt(url)
-				cfn = "persistent/~" + shash(url) + ".ecdc"
-				if os.path.exists(cfn) and os.path.getsize(cfn):
-					queue[0].stream = cfn
-					queue[0].url = cfn
-				else:
-					print_exc()
-					queue[0].url = ""
-					print("REDELETING:", entry, cfn)
-	return start_player(0, force=force)
+		return start_player(0, force=force)
+	except:
+		print_exc()
 
 def distribute_in(delay):
 	if delay:
@@ -2948,7 +2911,6 @@ def mixer_stdout():
 				# print(s)
 				s = s[1:]
 				if s == "s":
-					print("ENTERED ~S")
 					submit(skip)
 					player.last = 0
 					continue
@@ -2975,7 +2937,7 @@ def mixer_stdout():
 						reevaluating.mut.append(None)
 						reevaluating.cancel()
 					mut = []
-					globals()["reevaluating"] = submit(reevaluate, mut=mut)
+					globals()["reevaluating"] = submit(reevaluate_in, 0, mut=mut)
 					reevaluating.mut = mut
 					continue
 				if s[0] == "R":
@@ -5310,6 +5272,7 @@ try:
 		if delay >= 30 or delplay >= 3600 and common.OUTPUT_DEVICE:
 			restart_mixer()
 			last_tick = last_played = t = pc()
+			delplay = t - 3480
 		DISP.fps = 1 / max(d / 4, last_ratio)
 		d2 = max(0.004, d - delay)
 		last_ratio = (last_ratio * 7 + t - last_precise) / 8

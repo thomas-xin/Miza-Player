@@ -741,10 +741,12 @@ def start_mixer(devicename=None):
 	if restarting and getattr(pygame, "closed", None):
 		return
 	if not restarting:
+		port = pid & 32767 | 32768
+		print(f"Assigning socket ID {port}...")
 		pygame.display.init()
 		start_display()
 		mixer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		mixer_server.bind(("127.0.0.1", pid & 32767 | 32768))
+		mixer_server.bind(("127.0.0.1", port))
 		mixer_server.listen(0)
 	else:
 		print("Restarting mixer subprocess...")
@@ -4451,6 +4453,8 @@ def expired(stream):
 	elif is_youtube_stream(stream):
 		if int(stream.replace("/", "=").split("expire=", 1)[-1].split("=", 1)[0].split("&", 1)[0]) < utc() + 60:
 			return True
+	elif stream.startswith("https://i.ytimg.com"):
+		return True
 
 RE = cdict()
 def regexp(s, flags=0):

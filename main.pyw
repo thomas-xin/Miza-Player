@@ -2280,8 +2280,8 @@ def ecdc_compress(entry, stream, force=False):
 			if not stream or is_url(stream) and expired(stream):
 				ytdl = downloader.result()
 				data = ytdl.extract(entry.url)
-				entry.name = data[0].name
-				stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
+				entry.name = data[0]["name"]
+				stream = entry["stream"] = data[0].setdefault("stream", data[0]["url"])
 			try:
 				dur, bps, cdc = _get_duration_2(stream)
 			except:

@@ -1526,14 +1526,10 @@ class AudioDownloader:
 			ex = exc
 			resp = None
 			s = str(ex).casefold()
-			if isinstance(ex, PermissionError) or self.ydl_errors(s):
+			if isinstance(ex, PermissionError) or self.ydl_errors(s) or is_youtube_url(url):
 				if "429" in s:
 					self.blocked_yt = utc() + 60
-				if has_ytd:
-					try:
-						resp = self.extract_backup(url)
-					except (TypeError, youtube_dl.DownloadError):
-						raise FileNotFoundError(f"Unable to fetch audio data: {repr(ex)}")
+				raise FileNotFoundError(f"Unable to fetch audio data: {repr(ex)}")
 		if resp and not resp.get("direct", False):
 			return resp
 		title = url.split("?", 1)[0].rsplit("/", 1)[-1].split("#", 1)[0]

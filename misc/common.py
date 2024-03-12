@@ -729,8 +729,9 @@ reset_menu = lambda *args, **kwargs: None
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "TRUE"
 import pygame
 
+PORT = None
 def start_mixer(devicename=None):
-	global mixer, mixer_server
+	global mixer, mixer_server, PORT
 	pid = os.getpid()
 	if "mixer" in globals() and mixer and mixer.is_running():
 		try:
@@ -740,13 +741,19 @@ def start_mixer(devicename=None):
 	restarting = "DISP" in globals()
 	if restarting and getattr(pygame, "closed", None):
 		return
-	if not restarting:
-		port = pid & 32767 | 32768
-		print(f"Assigning socket ID {port}...")
+	if not PORT:
+		PORT = pid & 32767 | 32768
+		print(f"Assigning socket ID {PORT}...")
 		pygame.display.init()
 		start_display()
 		mixer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		mixer_server.bind(("127.0.0.1", port))
+		for i in range(65536):
+			try:
+				mixer_server.bind(("127.0.0.1", PORT))
+			except PermissionError:
+				PORT = PORT + 1 & 65535
+			else:
+				break
 		mixer_server.listen(0)
 	else:
 		print("Restarting mixer subprocess...")
@@ -789,7 +796,7 @@ def start_mixer(devicename=None):
 	mixer.submit = lambda s, force=True, debug=False: submit(mixer_submit, s, force, debug)
 	mixer.lock = None
 	try:
-		mixer.stdin.write(b"~init\n")
+		mixer.stdin.write(f"~init {PORT}\n".encode("ascii"))
 		mixer.stdin.flush()
 		while True:
 			fut = submit(mixer.stdout.readline)

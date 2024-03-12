@@ -1280,6 +1280,10 @@ def _enqueue_search(query, index=None, allowshuffle=True):
 			entries = ytdl.search(query)
 		except:
 			print_exc()
+			if is_url(query):
+				cfn = ecdc_exists(query)
+				if cfn:
+					return _enqueue_local(cfn, index=index, allowshuffle=allowshuffle)
 			sidebar.particles.append(cdict(eparticle))
 		else:
 			if entries:
@@ -1590,7 +1594,7 @@ def load_video(url, pos=0, bak=None, sig=None, iterations=0):
 				im = Image.open(resp.raw)
 				proc.im = pil2pgl(im, flip=False)
 				proc.im2 = None
-		if pos >= dur - 2 or not bcount:
+		if pos >= dur - 5 or not bcount:
 			while pos < player.pos + 1 and queue and proc.url == queue[0].url:
 				pos = player.pos
 				proc.pos = pos
@@ -1865,6 +1869,12 @@ def reset_entry(entry):
 	entry.pop("lyrics_loading", None)
 	return entry
 
+def ecdc_exists(url):
+	url = unyt(url)
+	cfn = "persistent/~" + shash(url) + ".ecdc"
+	if os.path.exists(cfn) and os.path.getsize(cfn):
+		return cfn
+
 has_api = 0
 api_wait = set()
 ecdc_wait = {}
@@ -2077,16 +2087,8 @@ def prepare(entry, force=False, download=False, delay=0):
 		url = entry.url
 		if not url:
 			return
-		url = unyt(url)
-		cfn = "persistent/~" + shash(url) + ".ecdc"
-		# out = "cache/~" + shash(url) + ".wav"
-		# if os.path.exists(out):
-			# return out
-		# while ecdc_wait.get(cfn):
-			# time.sleep(1)
-		# if os.path.exists(out):
-			# return out
-		if os.path.exists(cfn) and os.path.getsize(cfn):
+		cfn = ecdc_exists(url)
+		if cfn:
 			entry.stream = cfn
 			return cfn
 		entry.url = ""
@@ -2121,6 +2123,8 @@ def prepare(entry, force=False, download=False, delay=0):
 	return stream
 
 def start_player(pos=None, force=False):
+	if not queue or not queue[0].url:
+		return skip()
 	try:
 		print("start_player", queue[0], pos, force)
 		if options.get("spectrogram", 0) == 0 and not queue[0].get("video"):
@@ -2155,6 +2159,8 @@ def start_player(pos=None, force=False):
 				return skip()
 			pos = 0
 		with player.waiting:
+			if not queue or not queue[0].url:
+				return skip()
 			if pos is not None:
 				player.pos = pos
 				player.offpos = pos - pc() * player.speed() if pos > 0 else -inf
@@ -2417,34 +2423,35 @@ last_save = -inf
 last_sync = -inf
 def skip():
 	try:
-		import inspect
-		curframe = inspect.currentframe()
-		calframe = inspect.getouterframes(curframe, 2)
-		print('Skipped:', calframe)
+		# import inspect
+		# curframe = inspect.currentframe()
+		# calframe = inspect.getouterframes(curframe, 2)
+		# print('Skipped:', calframe)
 		if player.video:
 			player.video.url = None
 		if queue:
 			e = queue.popleft()
-			if control.shuffle > 1:
-				queue[1:].shuffle()
-			elif control.shuffle:
-				thresh = min(8, max(2, len(queue) // 8))
-				if player.shuffler >= thresh:
-					queue[thresh:].shuffle()
-					player.shuffler = 0
+			if e.get("url"):
+				if control.shuffle > 1:
+					queue[1:].shuffle()
+				elif control.shuffle:
+					thresh = min(8, max(2, len(queue) // 8))
+					if player.shuffler >= thresh:
+						queue[thresh:].shuffle()
+						player.shuffler = 0
+					else:
+						player.shuffler += 1
+				if control.loop == 2:
+					player.previous = None
+					queue.appendleft(e)
+				elif control.loop == 1:
+					player.previous = None
+					queue.append(e)
 				else:
-					player.shuffler += 1
-			if control.loop == 2:
-				player.previous = None
-				queue.appendleft(e)
-			elif control.loop == 1:
-				player.previous = None
-				queue.append(e)
-			else:
-				player.previous = e
-				if len(queue) > sidebar.maxitems - 1:
-					queue[sidebar.maxitems - 1].pos = sidebar.maxitems - 1
-				sidebar.particles.append(e)
+					player.previous = e
+					if len(queue) > sidebar.maxitems - 1:
+						queue[sidebar.maxitems - 1].pos = sidebar.maxitems - 1
+					sidebar.particles.append(e)
 			t = pc()
 			if t >= last_save + 10:
 				globals()["last_save_fut"] = submit(save_settings)
@@ -2526,7 +2533,21 @@ def reevaluate_in(delay=0, mut=()):
 		force = True
 		print("REEVALUATE:", queue[0])
 		if is_url(url) and utc() - queue[0].get("reev", 0) < 120:
-			prepare(queue[0], force=True)
+			try:
+				prepare(queue[0], force=True)
+				if expired(queue[0].get("stream", "")):
+					raise
+			except:
+				url = queue[0].url
+				cfn = ecdc_exists(url)
+				print("Searching:", cfn)
+				if cfn:
+					queue[0].stream = cfn
+					queue[0].url = cfn
+				else:
+					print_exc()
+					queue[0].url = ""
+					print("REDELETING:", entry, cfn)
 		elif is_url(url):
 			queue[0]["reev"] = utc() + 120
 			if (queue[0].get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
@@ -2545,6 +2566,7 @@ def reevaluate_in(delay=0, mut=()):
 					url = queue[0].url
 					url = unyt(url)
 					cfn = "persistent/~" + shash(url) + ".ecdc"
+					print("Searching:", cfn)
 					if os.path.exists(cfn) and os.path.getsize(cfn):
 						queue[0].stream = cfn
 						queue[0].url = cfn
@@ -3023,7 +3045,7 @@ def enqueue(entry, start=True):
 	try:
 		if not queue:
 			return None, inf
-		while queue[0] is None:
+		while queue and queue[0] is None:
 			time.sleep(0.5)
 		# submit(render_lyrics, queue[0])
 		stream, duration = start_player()

@@ -33,11 +33,13 @@ sys.setswitchinterval(0.005)
 is_minimised = lambda: globals()["stat-mem"].buf[0] & 1
 
 reqs = requests.Session()
-sys.stdin.readline()
+temp = sys.stdin.readline()
+assert temp.startswith("~init ")
+PORT = int(temp.split(None, 1)[-1].rstrip())
 sys.stdout.write("~I\n")
 sys.stdout.flush()
 mixer_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-mixer_server.connect(("127.0.0.1", pid & 32767 | 32768))
+mixer_server.connect(("127.0.0.1", PORT))
 
 pt = None
 pt2 = None

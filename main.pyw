@@ -1924,19 +1924,20 @@ def prepare(entry, force=False, download=False, delay=0):
 				if not os.path.exists(ofn) or not os.path.getsize(ofn):
 					ecdc_submit(entry, fn)
 			dur = entry.get("duration")
+			ytdl = downloader.result()
+			if entry.url in ytdl.searched:
+				resp = ytdl.searched[entry.url].data
+				if len(resp) == 1:
+					entry.name = resp[0].get("name")
+					entry.video = resp[0].get("video")
+					entry.icon = resp[0].get("icon")
+					reset_entry(entry)
 			if dur and not isinstance(dur, str) and isfinite(dur):
 				entry.stream = fn
-				ytdl = downloader.result()
-				if entry.url in ytdl.searched:
-					resp = ytdl.searched[entry.url].data
-					if len(resp) == 1:
-						entry.name = resp[0].get("name")
-						entry.video = resp[0].get("video")
-						entry.icon = resp[0].get("icon")
 				return fn
 			elif force:
-				ytdl = downloader.result()
 				stream = ytdl.get_stream(entry, force=True, download=False)
+				entry.stream = stream
 				return stream
 		stream = entry.get("stream", "")
 		# print("STREAM:", stream)
@@ -2117,6 +2118,14 @@ def prepare(entry, force=False, download=False, delay=0):
 		url = entry.url
 		url = unyt(url)
 		mixer.submit(f"~download {es} cache/~{shash(url)}.webm")
+	ytdl = downloader.result()
+	try:
+		results = ytdl.search(url)
+		entry.name = results[0].name
+	except:
+		print_exc()
+	else:
+		reset_entry(entry)
 	entry.duration = duration or entry.duration
 	if stream:
 		entry.stream = stream

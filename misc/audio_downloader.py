@@ -776,7 +776,7 @@ def get_best_audio(entry):
 		if "?dl=0" in url:
 			url = url.replace("?dl=0", "?dl=1")
 	if url.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
-		resp = Request(url)
+		resp = reqs.get(url).content
 		fmts = alist()
 		with suppress(ValueError, KeyError):
 			while True:
@@ -830,7 +830,7 @@ def get_best_video(entry, hq=False):
 		if "?dl=0" in url:
 			url = url.replace("?dl=0", "?dl=1")
 	if url.startswith("https://manifest.googlevideo.com/api/manifest/dash/"):
-		resp = Request(url)
+		resp = reqs.get(url).content
 		fmts = alist()
 		with suppress(ValueError, KeyError):
 			while True:

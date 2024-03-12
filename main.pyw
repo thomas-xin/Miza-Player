@@ -2552,7 +2552,6 @@ def reevaluate_in(delay=0, mut=()):
 				print("Searching:", cfn)
 				if cfn:
 					queue[0].stream = cfn
-					queue[0].url = cfn
 				else:
 					print_exc()
 					queue[0].url = ""
@@ -2578,7 +2577,6 @@ def reevaluate_in(delay=0, mut=()):
 					print("Searching:", cfn)
 					if os.path.exists(cfn) and os.path.getsize(cfn):
 						queue[0].stream = cfn
-						queue[0].url = cfn
 					else:
 						print_exc()
 						queue[0].url = ""

@@ -1159,7 +1159,7 @@ def load_ecdc(url):
 	if not fn:
 		return
 	try:
-		name, dur, url = cached_fns[fn]
+		name, dur, bps, url = cached_fns[fn]
 	except KeyError:
 		args = [sys.executable, "misc/ecdc_stream.py", "-i", url]
 		info = subprocess.check_output(args).decode("utf-8", "replace").splitlines()
@@ -1168,11 +1168,13 @@ def load_ecdc(url):
 		if info.get("Name"):
 			name = orjson.loads(info["Name"]) or name
 		if info.get("Duration"):
-			dur = orjson.loads(info["Duration"]) or dur
+			dur = float(info["Duration"]) or dur
+		if info.get("Bitrate"):
+			bps = int(info["Bitrate"]) or bps
 		if info.get("Source"):
 			url = orjson.loads(info["Source"]) or url
-		cached_fns[fn] = name, dur, url
-	return name, dur, url
+		cached_fns[fn] = name, dur, bps, url
+	return name, dur, bps, url
 
 def _enqueue_local(*files, probe=True, index=None, allowshuffle=True):
 	try:
@@ -1215,7 +1217,7 @@ def _enqueue_local(*files, probe=True, index=None, allowshuffle=True):
 				dur = None
 				url = fn
 				try:
-					name, dur, url = load_ecdc(fn)
+					name, dur, bps, url = load_ecdc(fn)
 				except:
 					print_exc()
 					dur = None
@@ -1906,7 +1908,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	if is_url(url):
 		cdc = ecdc_exists(url)
 		if cdc:
-			name, dur, url = load_ecdc(cdc)
+			name, dur, bps, url = load_ecdc(cdc)
 			entry.name, entry.dur = name, dur
 	try:
 		# raise
@@ -2140,7 +2142,7 @@ def prepare(entry, force=False, download=False, delay=0):
 	if entry.duration != odur:
 		cdc = ecdc_exists(entry.url)
 		if cdc:
-			name, dur, url = load_ecdc(cdc)
+			name, dur, bps, url = load_ecdc(cdc)
 			entry.name = name
 		else:
 			ytdl = downloader.result()
@@ -2337,6 +2339,10 @@ def ecdc_compress(entry, stream, force=False):
 		else:
 			br = 24
 			print("BPS:", bps)
+		if exists:
+			name, dur, bps, url = load_ecdc(url)
+			if br > bps:
+				exists = False
 		try:
 			import pynvml
 			pynvml.nvmlInit()

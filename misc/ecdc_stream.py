@@ -13,7 +13,7 @@ if __name__ == "__main__":
 			"Usage (arguments in parentheses are optional):\n"
 			+ f"Get ECDC info: {sys.argv[0]} -i <file-or-url>\n"
 			+ f"Decode ECDC->PCM: {sys.argv[0]} (-ss <seek-start> -to <seek-end> -g <cuda-device>) -d <file-or-url>\n"
-			+ f"Encode PCM->ECDC: {sys.argv[0]} (-b <bitrate> -n <song-name> -s <source-url> -g <cuda-device>) -e <file>\n"
+			+ f"Encode PCM->ECDC: {sys.argv[0]} (-b <bitrate> -n <song-name> -s <source-url> -g <cuda-device>) -e <file-or-url>\n"
 		)
 	if "-d" in sys.argv:
 		mode = "decode"
@@ -79,6 +79,8 @@ if __name__ == "__main__":
 			print("Name:", json.dumps(metadata.pop("n")))
 		if "al" in metadata:
 			print("Duration:", metadata["al"] / float(metadata.get("m", "_48").rsplit("_", 1)[-1].removesuffix("khz")) / 1000)
+		if "nc" in metadata:
+			print("Bitrate:", -(-metadata["nc"] * 3 // 2))
 		if "s" in metadata:
 			print("Source:", json.dumps(metadata.pop("s")))
 		for k, v in metadata.items():

@@ -528,13 +528,13 @@ is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,
 is_tenor_url = lambda url: url and regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
 is_imgur_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
 is_giphy_url = lambda url: url and regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
-is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
+is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.|music\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
 is_youtube_stream = lambda url: url and regexp("^https?:\\/\\/r+[0-9]+---.{2}-[A-Za-z0-9\\-_]{4,}\\.googlevideo\\.com").findall(url)
 is_deviantart_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
 is_reddit_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?reddit.com\\/r\\/[^/\\W]+\\/").findall(url)
 is_redgifs_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?redgifs.com\\/[A-Za-z]{2,6}\\/[^/\\W]+").findall(url)
 is_emoji_url = lambda url: url and url.startswith("https://raw.githubusercontent.com/twitter/twemoji/master/assets/svg/")
-unyt = lambda s: re.sub(r"https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub("?si=[A-Fa-f0-9]+", "", s))
+unyt = lambda s: re.sub(r"https?:\/\/(?:www\.|music\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
 
 def maps(funcs, *args, **kwargs):
 	"A map-compatible function that takes and iterates through multiple functions in a list as the first argument."

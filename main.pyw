@@ -1154,6 +1154,26 @@ def send_status():
 	pass
 
 cached_fns = {}
+def load_ecdc(url):
+	fn = ecdc_exists(url) if is_url(url) else url
+	if not fn:
+		return
+	try:
+		name, dur, url = cached_fns[fn]
+	except KeyError:
+		args = [sys.executable, "misc/ecdc_stream.py", "-i", url]
+		info = subprocess.check_output(args).decode("utf-8", "replace").splitlines()
+		assert info
+		info = cdict(line.split(": ", 1) for line in info if line)
+		if info.get("Name"):
+			name = orjson.loads(info["Name"]) or name
+		if info.get("Duration"):
+			dur = orjson.loads(info["Duration"]) or dur
+		if info.get("Source"):
+			url = orjson.loads(info["Source"]) or url
+		cached_fns[fn] = name, dur, url
+	return name, dur, url
+
 def _enqueue_local(*files, probe=True, index=None, allowshuffle=True):
 	try:
 		if not files:
@@ -1195,20 +1215,7 @@ def _enqueue_local(*files, probe=True, index=None, allowshuffle=True):
 				dur = None
 				url = fn
 				try:
-					try:
-						name, dur, url = cached_fns[fn]
-					except KeyError:
-						args = [sys.executable, "misc/ecdc_stream.py", "-i", url]
-						info = subprocess.check_output(args).decode("utf-8", "replace").splitlines()
-						assert info
-						info = cdict(line.split(": ", 1) for line in info if line)
-						if info.get("Name"):
-							name = orjson.loads(info["Name"]) or name
-						if info.get("Duration"):
-							dur = orjson.loads(info["Duration"]) or dur
-						if info.get("Source"):
-							url = orjson.loads(info["Source"]) or url
-						cached_fns[fn] = name, dur, url
+					name, dur, url = load_ecdc(fn)
 				except:
 					print_exc()
 					dur = None
@@ -1275,15 +1282,15 @@ def _enqueue_search(query, index=None, allowshuffle=True):
 			return
 		sidebar.loading = True
 		start = len(queue)
+		if is_url(query):
+			cfn = ecdc_exists(query)
+			if cfn:
+				return _enqueue_local(cfn, index=index, allowshuffle=allowshuffle)
 		ytdl = downloader.result()
 		try:
 			entries = ytdl.search(query)
 		except:
 			print_exc()
-			if is_url(query):
-				cfn = ecdc_exists(query)
-				if cfn:
-					return _enqueue_local(cfn, index=index, allowshuffle=allowshuffle)
 			sidebar.particles.append(cdict(eparticle))
 		else:
 			if entries:
@@ -1891,6 +1898,16 @@ def prepare(entry, force=False, download=False, delay=0):
 		time.sleep(delay)
 	if utc() - has_api < 60 and is_url(entry.url) and (entry.get("stream") or "").endswith(".ecdc"):
 		entry.pop("stream", None)
+	else:
+		stream = entry.get("stream")
+		if stream and not is_url(stream) and (not os.path.exists(stream) or not os.path.getsize(stream)):
+			entry.pop("stream", None)
+	odur = entry.get("duration")
+	if is_url(url):
+		cdc = ecdc_exists(url)
+		if cdc:
+			name, dur, url = load_ecdc(cdc)
+			entry.name, entry.dur = name, dur
 	try:
 		# raise
 		if (entry.get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
@@ -2090,6 +2107,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			return
 		cfn = ecdc_exists(url)
 		if cfn:
+			print("Keeping ECDC:", cfn)
 			entry.stream = cfn
 			return cfn
 		entry.url = ""
@@ -2118,15 +2136,21 @@ def prepare(entry, force=False, download=False, delay=0):
 		url = entry.url
 		url = unyt(url)
 		mixer.submit(f"~download {es} cache/~{shash(url)}.webm")
-	ytdl = downloader.result()
-	try:
-		results = ytdl.search(url)
-		entry.name = results[0]["name"]
-	except:
-		print_exc()
-	else:
-		reset_entry(entry)
 	entry.duration = duration or entry.duration
+	if entry.duration != odur:
+		cdc = ecdc_exists(entry.url)
+		if cdc:
+			name, dur, url = load_ecdc(cdc)
+			entry.name = name
+		else:
+			ytdl = downloader.result()
+			try:
+				results = ytdl.search(url)
+				entry.name = results[0]["name"]
+			except:
+				print_exc()
+			else:
+				reset_entry(entry)
 	if stream:
 		entry.stream = stream
 	return stream

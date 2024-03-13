@@ -1937,7 +1937,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			print(entry)
 		if os.path.exists(fn) and os.path.getsize(fn):
 			if time.time() - os.path.getmtime(fn) > 60 and is_url(entry.url) and not fn.endswith(".ecdc"):
-				if not ecdc_exists(entry.url)
+				if not ecdc_exists(entry.url):
 					ecdc_submit(entry, fn)
 			dur = entry.get("duration")
 			ytdl = downloader.result()

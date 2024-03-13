@@ -1910,6 +1910,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		if cdc:
 			name, dur, bps, url = load_ecdc(cdc)
 			entry.name, entry.dur = name, dur
+			reset_entry(entry)
 	try:
 		# raise
 		if (entry.get("stream") or "").startswith("https://api.mizabot.xyz/ytdl"):
@@ -1956,10 +1957,6 @@ def prepare(entry, force=False, download=False, delay=0):
 				entry.stream = stream
 				return stream
 		stream = entry.get("stream", "")
-		# print("STREAM:", stream)
-		if stream and not is_url(stream) and not os.path.exists(stream) and stream != entry.url:
-			entry.pop("stream", None)
-			stream = ""
 		if not stream or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
 			if not is_url(entry.url):
 				duration = entry.duration
@@ -2182,6 +2179,8 @@ def start_player(pos=None, force=False):
 		if pos is None:
 			if audio.speed >= 0:
 				pos = 0
+			else:
+				pos = duration
 		elif pos >= duration and not player.paused:
 			if audio.speed > 0:
 				return skip()
@@ -2214,7 +2213,6 @@ def start_player(pos=None, force=False):
 				player.fut = None
 				return None, inf
 			duration = entry.duration
-			print("ENTRY:", stream)
 			if not duration:
 				try:
 					info = get_duration_2(stream)
@@ -2264,7 +2262,12 @@ def start_player(pos=None, force=False):
 			es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
 			url = entry.url
 			url = unyt(url)
-			s = f"{es}\n{pos} {duration} {entry.get('cdc', 'auto')} {shash(url)}\n"
+			if os.path.exists(stream):
+				cdc = stream.rsplit("/", 1)[-1].rsplit(".", 1)[-1]
+			else:
+				cdc = entry.get('cdc', 'auto')
+			print("ENTRY:", stream, pos, duration, cdc)
+			s = f"{es}\n{pos} {duration} {cdc} {shash(url)}\n"
 			mixer.submit(s, force=False)
 			player.pos = pos
 			player.offpos = pos - pc() * player.speed() if pos > 0 else -inf
@@ -4630,7 +4633,11 @@ try:
 	if "-d" in sys.argv:
 		submit(distribute_in, 30)
 	if options.control.preserve and os.path.exists("dump.json"):
-		ytdl = downloader.result()
+		try:
+			ytdl = downloader.result()
+		except:
+			print_exc()
+			ytdl = None
 		with open("dump.json", "rb") as f:
 			data = json.load(f)
 		if queue:
@@ -4642,7 +4649,7 @@ try:
 				e.pop("video", None)
 			if e.get("url"):
 				url = e["url"]
-				if url not in ytdl.searched and e.get("duration"):
+				if ytdl and url not in ytdl.searched and e.get("duration"):
 					ytdl.searched[url] = cdict(t=time.time(), data=[astype(cdict, e)])
 		entries = [cdict(e, duration=e.get("duration")) for e in data.get("queue", ())]
 		queue.extend(entries)

@@ -2346,8 +2346,6 @@ while not sys.stdin.closed and failed < 8:
 					pcm = True
 				elif cdc == "mp3":
 					cmd.extend(("-c:a", "mp3"))
-				elif cdc in ("ts", "webm"):
-					cmd.extend(("-c:a", "copy"))
 			cmd.extend(("-nostdin", "-i", "-" if f else stream))
 			cmd.extend(ext)
 			if fn and stream.rsplit(".", 1)[-1] in ("mp4", "mov", "avi", "mkv"):
@@ -2381,7 +2379,7 @@ while not sys.stdin.closed and failed < 8:
 			elif cdc == "ecdc" or stream.endswith(".ecdc"):
 				pos = pos or 0
 				args1 = [sys.executable, "misc/ecdc_stream.py", "-ss", str(pos), "-d", stream]
-				if cmd[-1] == "-" and not fn:
+				if cmd[-1] == "-" and not fn and not ext:
 					print(args1)
 					proc = psutil.Popen(args1, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
 				else:

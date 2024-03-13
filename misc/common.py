@@ -4305,7 +4305,7 @@ def ecdc_decode(ecdc, out=None):
 		with open(fi, "wb") as f:
 			f.write(ecdc)
 		ecdc = fi
-	args1 = [sys.executable, "misc/ecdc_stream.py", "-d", ecdc]
+	args1 = [sys.executable, "misc/ecdc_stream.py", "-b", "0", "-d", ecdc]
 	args2 = [ffmpeg, "-vn", "-v", "error", "-hide_banner", "-f", "s16le", "-ac", "2", "-ar", "48k", "-i", "-", "-b:a", "96k", out]
 	print(args1)
 	print(args2)

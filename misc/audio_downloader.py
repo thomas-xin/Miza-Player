@@ -95,6 +95,7 @@ reqs = requests.Session()
 youtube_dl = yt_dlp.force()
 has_ytd = False
 as_str = str
+alist = list
 
 
 class cdict(dict):

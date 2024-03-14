@@ -2315,8 +2315,9 @@ def ecdc_compress(entry, stream, force=False):
 				return ofn
 			with open(ofn, "rb") as f:
 				b = f.read(5)
-			if len(b) < 5 or b[-1] < 192:
+			if len(b) < 5 or b[-1] < 193:
 				exists = False
+		bps = None
 		if force is not None or not stream:
 			if not stream or is_url(stream) and expired(stream):
 				ytdl = downloader.result()
@@ -2327,18 +2328,11 @@ def ecdc_compress(entry, stream, force=False):
 				dur, bps, cdc = _get_duration_2(stream)
 			except:
 				print_exc()
-				bps = 196608
-		else:
-			bps = 64000
-		if not bps:
-			br = 24
-		elif bps < 48000:
-			br = 6
-		elif bps < 96000:
-			br = 12
-		else:
-			br = 24
-			print("BPS:", bps)
+			else:
+				if cdc not in ("opus", "vorbis"):
+					bps //= 2
+		bps = bps or 192000
+		br = bps // 8000
 		if exists:
 			name, dur, bps, url = load_ecdc(url)
 			if br > bps:

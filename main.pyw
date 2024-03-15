@@ -1176,7 +1176,7 @@ def load_ecdc(url):
 		else:
 			dur = None
 		if info.get("Bitrate"):
-			bps = int(info["Bitrate"])
+			bps = float(info["Bitrate"])
 		else:
 			bps = 192000
 		if info.get("Source"):

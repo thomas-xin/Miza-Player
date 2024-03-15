@@ -1166,13 +1166,21 @@ def load_ecdc(url):
 		assert info
 		info = cdict(line.split(": ", 1) for line in info if line)
 		if info.get("Name"):
-			name = orjson.loads(info["Name"]) or name
+			name = orjson.loads(info["Name"])
+		else:
+			ytdl = downloader.result()
+			resp = ytdl.search(url)
+			name = resp[0]["name"] if resp else url.split("?", 1)[0].rsplit("/", 1)[-1].rsplit(".", 1)[0]
 		if info.get("Duration"):
-			dur = float(info["Duration"]) or dur
+			dur = float(info["Duration"])
+		else:
+			dur = None
 		if info.get("Bitrate"):
-			bps = int(info["Bitrate"]) or bps
+			bps = int(info["Bitrate"])
+		else:
+			bps = 192000
 		if info.get("Source"):
-			url = orjson.loads(info["Source"]) or url
+			url = orjson.loads(info["Source"])
 		cached_fns[fn] = name, dur, bps, url
 	return name, dur, bps, url
 
@@ -4678,7 +4686,6 @@ try:
 			player.editor.selection.cancel = cancel_selection
 		if data.get("pos") and not toolbar.editor:
 			player.fut = submit(start_player, data["pos"])
-			# submit(render_lyrics, queue[0])
 	else:
 		DISP.set_visible(True)
 	toolbar.editor = 0

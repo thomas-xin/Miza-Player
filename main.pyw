@@ -2334,7 +2334,7 @@ def ecdc_compress(entry, stream, force=False):
 				if cdc not in ("opus", "vorbis"):
 					bps //= 2
 		bps = bps or 192000
-		br = min(32, bps // 8000)
+		br = min(24, bps // 8000)
 		if exists:
 			name, dur, bps, url = load_ecdc(url)
 			if br > bps:

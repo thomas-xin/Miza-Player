@@ -910,7 +910,7 @@ class AudioDownloader:
 	def spotify_header(self):
 		self.spotify_x += 1
 		self.other_x += 1
-		if utc() - float(self.spot_head["expire"]) > 720:
+		if utc() + 60 > float(self.spot_head["expire"]):
 			self.spot_head["expire"] = str(utc() + 5)
 			token = reqs.get("https://open.spotify.com/get_access_token", timeout=5).content
 			self.spot_head = {"authorization": f"Bearer {orjson.loads(token[:512])['accessToken']}", "expire": str(utc() + 720)}

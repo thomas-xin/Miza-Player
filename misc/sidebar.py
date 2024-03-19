@@ -42,20 +42,21 @@ def render_dragging():
 			# background=sidebar.colour,
 			z=400,
 		)
-		if not entry.get("surf"):
-			entry.surf = message_display(
-				entry.name[:128],
-				EFS,
-				(0,) * 2,
-				align=0,
-				cache=True,
+		if entry.name:
+			if not entry.get("surf"):
+				entry.surf = message_display(
+					entry.name[:128],
+					EFS,
+					(0,) * 2,
+					align=0,
+					cache=True,
+				)
+			DISP.blit(
+				entry.surf,
+				(x + 5, y + 3),
+				(0, 0, sidebar_width - 48, 24),
+				z=401,
 			)
-		DISP.blit(
-			entry.surf,
-			(x + 5, y + 3),
-			(0, 0, sidebar_width - 48, 24),
-			z=401,
-		)
 		message_display(
 			time_disp(entry.duration) if entry.duration else "N/A",
 			DFS,
@@ -373,20 +374,21 @@ def render_sidebar(dur=0):
 					alpha=191,
 					z=129,
 				)
-			if not entry.get("surf"):
-				entry.surf = message_display(
-					entry.name[:128],
-					EFS,
-					(0,) * 2,
-					align=0,
-					cache=True,
+			if entry.name:
+				if not entry.get("surf"):
+					entry.surf = message_display(
+						entry.name[:128],
+						EFS,
+						(0,) * 2,
+						align=0,
+						cache=True,
+					)
+				DISP2.blit(
+					entry.surf,
+					(x + 5, y + 3),
+					(0, 0, sidebar_width - 48, 24),
+					z=130,
 				)
-			DISP2.blit(
-				entry.surf,
-				(x + 5, y + 3),
-				(0, 0, sidebar_width - 48, 24),
-				z=130,
-			)
 			message_display(
 				time_disp(entry.duration) if entry.duration else "N/A",
 				DFS,
@@ -444,20 +446,21 @@ def render_sidebar(dur=0):
 					# background=sc,
 					z=129
 				)
-				if not entry.get("surf"):
-					entry.surf = message_display(
-						entry.name[:128],
-						EFS,
-						(0,) * 2,
-						align=0,
-						cache=True,
+				if entry.name:
+					if not entry.get("surf"):
+						entry.surf = message_display(
+							entry.name[:128],
+							EFS,
+							(0,) * 2,
+							align=0,
+							cache=True,
+						)
+					DISP2.blit(
+						entry.surf,
+						(x + 5, y + 3),
+						(0, 0, sidebar_width - 48, 24),
+						z=130,
 					)
-				DISP2.blit(
-					entry.surf,
-					(x + 5, y + 3),
-					(0, 0, sidebar_width - 48, 24),
-					z=130,
-				)
 				message_display(
 					time_disp(entry.duration) if entry.duration else "N/A",
 					DFS,

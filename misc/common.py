@@ -236,6 +236,16 @@ pyglet.options["debug_graphics_batch"] = False
 import math
 from math import *
 
+import importlib.util
+def import_as(path):
+	name = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+	spec = importlib.util.spec_from_file_location(name, path)
+	foo = importlib.util.module_from_spec(spec)
+	sys.modules[name] = foo
+	spec.loader.exec_module(foo)
+	return foo
+ecdc_stream = import_as("misc/ecdc_stream.py")
+
 
 def astype(obj, types, *args, **kwargs):
 	if isinstance(types, tuple):
@@ -2003,6 +2013,13 @@ def start_display():
 		DISP.cLoSeD = True
 
 	DISP.clear()
+
+
+def secondary_menu(*args):
+	args = (sys.executable, "misc/menu.py", orjson.dumps(options)) + args
+	proc = psutil.Popen(args)
+	return proc.wait()
+
 
 if os.name == "nt":
 	psize = struct.calcsize("P")

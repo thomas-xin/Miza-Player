@@ -540,7 +540,7 @@ def setup_buttons():
 							if url not in ytdl.searched:
 								ytdl.searched[url] = cdict(t=time.time(), data=[astype(cdict, e)])
 					q = data.get("queue", ())
-					options.history.appendleft((choice, tuple(e["url"] for e in q)))
+					options.history.appendleft((choice, [fn]))
 					options.history = options.history.uniq(sort=False)[:64]
 					entries = [ensure_duration(cdict(**e, pos=start)) for e in q]
 					queue.extend(entries)
@@ -819,7 +819,7 @@ def setup_buttons():
 		def player_history():
 			f = f"%0{len(str(len(options.history)))}d"
 			choices = [f % i + ": " + e[0] for i, e in enumerate(options.history)]
-			if not choices:
+			if len(choices) < 2:
 				return easygui2.msgbox(
 					None,
 					"Play some music to fill up this menu!",
@@ -833,6 +833,30 @@ def setup_buttons():
 			easygui2.choicebox(
 				player_history_a,
 				"Player History",
+				title="Miza Player",
+				choices=choices,
+			)
+		def view_cache():
+			persistent = os.listdir("persistent")
+			pfuts = [exc.submit(ecdc_stream.get_info, "persistent/" + fn) for fn in persistent]
+			pentries = [fut.result() for fut in pfuts]
+			pnames = [e.get("Name") or e.get("Source") for e in pentries]
+			pdict = {k: v for k, v in zip(pnames, pentries) if k}
+			choices = sorted(pdict)
+			if len(choices) < 2:
+				return easygui2.msgbox(
+					None,
+					"Play some music to fill up this menu!",
+					title="Persistent cache is empty.",
+				)
+			# submit(secondary_menu, "playlist", "960 540")
+			def view_cache_a(selected):
+				if selected:
+					entry = pdict[selected]
+					enqueue_auto(entry["Source"])
+			easygui2.choicebox(
+				view_cache_a,
+				"Persistent Cache",
 				title="Miza Player",
 				choices=choices,
 			)
@@ -870,6 +894,7 @@ def setup_buttons():
 				buttons=(
 					("View history", player_history),
 					("Clear history", clear_history),
+					("View cache", view_cache),
 					("Clear cache", clear_cache),
 				),
 			)
@@ -1161,26 +1186,23 @@ def load_ecdc(url):
 	try:
 		name, dur, bps, url = cached_fns[fn]
 	except KeyError:
-		args = [sys.executable, "misc/ecdc_stream.py", "-i", url]
-		info = subprocess.check_output(args).decode("utf-8", "replace").splitlines()
-		assert info
-		info = cdict(line.split(": ", 1) for line in info if line)
+		info = cdict(ecdc_stream.get_info(fn))
 		if info.get("Name"):
-			name = orjson.loads(info["Name"])
+			name = info["Name"]
 		else:
 			ytdl = downloader.result()
 			resp = ytdl.search(url)
 			name = resp[0]["name"] if resp else url.split("?", 1)[0].rsplit("/", 1)[-1].rsplit(".", 1)[0]
 		if info.get("Duration"):
-			dur = float(info["Duration"])
+			dur = info["Duration"]
 		else:
 			dur = None
 		if info.get("Bitrate"):
-			bps = float(info["Bitrate"])
+			bps = info["Bitrate"]
 		else:
 			bps = 192000
 		if info.get("Source"):
-			url = orjson.loads(info["Source"])
+			url = info["Source"]
 		cached_fns[fn] = name, dur, bps, url
 	return name, dur, bps, url
 
@@ -2135,7 +2157,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			duration = get_duration_2(fn)[0]
 			stream = entry.stream = fn
 		globals()["queue-length"] = -1
-	elif stream and is_url(stream) and download:
+	elif stream and is_url(stream) and not expired(stream) and download:
 		es = base64.b85encode(stream.encode("utf-8")).decode("ascii")
 		url = entry.url
 		url = unyt(url)

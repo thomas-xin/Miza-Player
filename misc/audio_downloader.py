@@ -2053,6 +2053,8 @@ class AudioDownloader:
 		if stream in (None, "none"):
 			data = self.search(entry["url"])
 			name = data[0]["name"]
+			if not data[0].get("stream") or expired(data[0].get("stream")):
+				self.extract_single(data[0])
 			stream = data[0].get("stream") or data[0]["url"]
 			icon = data[0].setdefault("icon", data[0]["url"])
 			video = data[0].setdefault("video", data[0]["url"])

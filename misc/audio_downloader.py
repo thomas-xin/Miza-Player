@@ -529,7 +529,7 @@ is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,
 is_tenor_url = lambda url: url and regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
 is_imgur_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
 is_giphy_url = lambda url: url and regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
-is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.|music\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
+is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:\w{1,5}\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
 is_youtube_stream = lambda url: url and regexp("^https?:\\/\\/r+[0-9]+---.{2}-[A-Za-z0-9\\-_]{4,}\\.googlevideo\\.com").findall(url)
 is_deviantart_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
 is_reddit_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?reddit.com\\/r\\/[^/\\W]+\\/").findall(url)
@@ -539,8 +539,8 @@ def unyt(s):
 	if not is_url(s):
 		return s
 	if s.startswith("https://mizabot.xyz/ytdl") or s.startswith("https://api.mizabot.xyz/ytdl"):
-		s = re.sub(r"https?:\/\/(?:www\.|music\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s)).split("&", 1)[0]
-	return re.sub(r"https?:\/\/(?:www\.|music\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
+		s = re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s)).split("&", 1)[0]
+	return re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
 
 def maps(funcs, *args, **kwargs):
 	"A map-compatible function that takes and iterates through multiple functions in a list as the first argument."
@@ -912,8 +912,10 @@ class AudioDownloader:
 		self.other_x += 1
 		if utc() + 60 > float(self.spot_head["expire"]):
 			self.spot_head["expire"] = str(utc() + 5)
-			token = reqs.get("https://open.spotify.com/get_access_token", timeout=5).content
-			self.spot_head = {"authorization": f"Bearer {orjson.loads(token[:512])['accessToken']}", "expire": str(utc() + 720)}
+			resp = reqs.get("https://open.spotify.com/get_access_token", timeout=5)
+			resp.raise_for_status()
+			data = resp.json()
+			self.spot_head = {"authorization": f"Bearer {data['accessToken']}", "expire": str(data['accessTokenExpirationTimestampMs'] / 1000)}
 		return self.spot_head
 
 	# Gets data from yt-download.org, and adjusts the format to ensure compatibility with results from youtube-dl. Used as backup.
@@ -996,11 +998,70 @@ class AudioDownloader:
 			print(excs)
 			raise
 
+	def get_spotify_playlist(self, url):
+		item = url.split("?", 1)[0]
+		# Spotify playlist searches contain up to 100 items each
+		if "playlist" in item:
+			url = item[item.index("playlist"):]
+			url = url[url.index("/") + 1:]
+			key = url.split("/", 1)[0]
+			url = f"https://api.spotify.com/v1/playlists/{key}/tracks?type=track,episode"
+			page = 100
+		# Spotify album searches contain up to 50 items each
+		elif "album" in item:
+			url = item[item.index("album"):]
+			url = url[url.index("/") + 1:]
+			key = url.split("/", 1)[0]
+			url = f"https://api.spotify.com/v1/albums/{key}/tracks?type=track,episode"
+			page = 50
+		# Single track links also supported
+		elif "track" in item:
+			url = item[item.index("track"):]
+			url = url[url.index("/") + 1:]
+			key = url.split("/", 1)[0]
+			url = f"https://api.spotify.com/v1/tracks/{key}"
+			page = 1
+		# Single episode links also supported
+		elif "episode" in item:
+			url = item[item.index("episode"):]
+			url = url[url.index("/") + 1:]
+			key = url.split("/", 1)[0]
+			url = f"https://api.spotify.com/v1/episodes/{key}"
+			page = 1
+		else:
+			raise TypeError("Unsupported Spotify URL.")
+		if page == 1:
+			return self.get_spotify_part(url)[0]
+		search = f"{url}&offset=0&limit={page}"
+		entries, count = self.get_spotify_part(search)
+		if count > page:
+			futs = deque()
+			for curr in range(page, count, page):
+				search = f"{url}&offset={curr}&limit={page}"
+				fut = create_future_ex(self.get_spotify_part, search)
+				futs.append(fut)
+				time.sleep(0.0625)
+			while futs:
+				entries.extend(futs.popleft().result()[0])
+		v_id = None
+		for x in ("?highlight=spotify:track:", "&highlight=spotify:track:"):
+			if x in url:
+				v_id = url[url.index(x) + len(x):]
+				v_id = v_id.split("&", 1)[0]
+				break
+		if v_id:
+			entries = deque(entries)
+			for i, e in enumerate(entries):
+				if v_id == e.get("id"):
+					entries.rotate(-i)
+					break
+		return entries
+
 	# Returns part of a spotify playlist.
 	def get_spotify_part(self, url):
 		out = deque()
 		self.spotify_x += 1
-		resp = reqs.get(url, headers=self.spotify_header, timeout=5).content
+		resp = reqs.get(url, headers=self.spotify_header, timeout=10).content
 		d = orjson.loads(resp)
 		with suppress(KeyError):
 			d = d["tracks"]
@@ -1033,8 +1094,7 @@ class AudioDownloader:
 			temp = cdict(
 				name=name,
 				url=f"https://open.spotify.com/track/{track['id']}",
-				# url=f"https://api.spotifydown.com/download/{track['id']}",
-				# url="ytsearch:" + "".join(c if c.isascii() and c != ":" else "_" for c in f"{name} ~ {artists}"),
+				icon=sorted(track["album"]["images"], key=lambda di: di.get("height", 0), reverse=True)[0]["url"] if "album" in track and track["album"].get("images") else None,
 				id=track["id"],
 				duration=dur,
 			)
@@ -1635,7 +1695,7 @@ class AudioDownloader:
 		output = deque()
 		if discord_expired(item):
 			title = item.rsplit("/", 1)[-1].split("?", 1)[0]
-			return [dict(url=f"https://api.mizabot.xyz/u?url={url_parse(item)}", name=title, research=True, duration=None)]
+			return [dict(url=f"https://mizabot.xyz/u?url={url_parse(item)}", name=title, research=True, duration=None)]
 		if "youtube.com" in item or "youtu.be/" in item:
 			p_id = None
 			for x in ("?list=", "&list="):
@@ -1671,80 +1731,15 @@ class AudioDownloader:
 				else:
 					return entries
 		elif regexp("^https:\\/\\/soundcloud\\.com\\/[A-Za-z0-9]+\\/sets\\/").search(item) or regexp("^https:\\/\\/soundcloud\\.com\\/[A-Za-z0-9]+\\/likes").search(item) or regexp("^https:\\/\\/api-v2\\.soundcloud\\.com\\/users\\/[0-9]+\\/likes").search(item):
-				try:
-					return self.get_soundcloud_playlist(item)
-				except:
-					print_exc()
+			try:
+				return self.get_soundcloud_playlist(item)
+			except:
+				print_exc()
 		elif regexp("(play|open|api)\\.spotify\\.com").search(item):
-			# Spotify playlist searches contain up to 100 items each
-			if "playlist" in item:
-				url = item[item.index("playlist"):]
-				url = url[url.index("/") + 1:]
-				key = url.split("/", 1)[0]
-				url = f"https://api.spotify.com/v1/playlists/{key}/tracks?type=track,episode"
-				page = 100
-			# Spotify album searches contain up to 50 items each
-			elif "album" in item:
-				url = item[item.index("album"):]
-				url = url[url.index("/") + 1:]
-				key = url.split("/", 1)[0]
-				url = f"https://api.spotify.com/v1/albums/{key}/tracks?type=track,episode"
-				page = 50
-			# Single track links also supported
-			elif "track" in item:
-				url = item[item.index("track"):]
-				url = url[url.index("/") + 1:]
-				key = url.split("/", 1)[0]
-				url = f"https://api.spotify.com/v1/tracks/{key}"
-				page = 1
-			# Single episode links also supported
-			elif "episode" in item:
-				url = item[item.index("episode"):]
-				url = url[url.index("/") + 1:]
-				key = url.split("/", 1)[0]
-				url = f"https://api.spotify.com/v1/episodes/{key}"
-				page = 1
-			else:
-				raise TypeError("Unsupported Spotify URL.")
-			if page == 1:
-				output.extend(self.get_spotify_part(url)[0])
-			else:
-				futs = deque()
-				maxitems = 10000
-				# Optimized searching with lookaheads
-				for i, curr in enumerate(range(0, maxitems, page)):
-					with delay(0.03125):
-						if curr >= maxitems:
-							break
-						search = f"{url}&offset={curr}&limit={page}"
-						fut = create_future_ex(self.get_spotify_part, search)
-						print("Sent 1 spotify search.")
-						futs.append(fut)
-						if not (i < 1 or math.log2(i + 1) % 1) or not i & 7:
-							while futs:
-								fut = futs.popleft()
-								res = fut.result()
-								if not i:
-									maxitems = res[1] + page
-								if not res[0]:
-									maxitems = 0
-									futs.clear()
-									break
-								output += res[0]
-				while futs:
-					output.extend(futs.popleft().result()[0])
-				# Scroll to highlighted entry if possible
-				v_id = None
-				for x in ("?highlight=spotify:track:", "&highlight=spotify:track:"):
-					if x in item:
-						v_id = item[item.index(x) + len(x):]
-						v_id = v_id.split("&", 1)[0]
-						break
-				if v_id:
-					for i, e in enumerate(output):
-						if v_id == e.get("id"):
-							output.rotate(-i)
-							break
+			try:
+				return self.get_spotify_playlist(item)
+			except:
+				print_exc()
 		# Only proceed if no items have already been found (from playlists in this case)
 		if not len(output):
 			# Allow loading of files output by ~dump

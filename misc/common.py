@@ -4500,7 +4500,7 @@ is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,
 is_tenor_url = lambda url: url and regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
 is_imgur_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
 is_giphy_url = lambda url: url and regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
-is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.|music\\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
+is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:\w{1,5}\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
 is_youtube_stream = lambda url: url and regexp("^https?:\\/\\/r+[0-9]+---.{2}-[A-Za-z0-9\\-_]{4,}\\.googlevideo\\.com").findall(url)
 is_deviantart_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
 is_reddit_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?reddit.com\\/r\\/[^/\\W]+\\/").findall(url)
@@ -4510,6 +4510,6 @@ def unyt(s):
 	if not is_url(s):
 		return s
 	if s.startswith("https://mizabot.xyz/ytdl") or s.startswith("https://api.mizabot.xyz/ytdl"):
-		s = re.sub(r"https?:\/\/(?:www\.|music\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s)).split("&", 1)[0]
-	return re.sub(r"https?:\/\/(?:www\.|music\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
+		s = re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s)).split("&", 1)[0]
+	return re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
 # Regex moment - Lou

@@ -4509,7 +4509,19 @@ is_emoji_url = lambda url: url and url.startswith("https://raw.githubusercontent
 def unyt(s):
 	if not is_url(s):
 		return s
+	if (s.startswith("https://mizabot.xyz/u") or s.startswith("https://api.mizabot.xyz/u")) and ("?url=" in s or "&url=" in s):
+		s = urllib.parse.unquote_plus(s.replace("&url=", "?url=", 1).split("?url=", 1)[-1])
 	if s.startswith("https://mizabot.xyz/ytdl") or s.startswith("https://api.mizabot.xyz/ytdl"):
-		s = re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s)).split("&", 1)[0]
+		if "?d=" in s or "?v=" in s:
+			s = urllib.parse.unquote_plus(s.replace("?v=", "?d=", 1).split("?d=", 1)[-1])
+		else:
+			s = re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
+		# if not is_discord_attachment(s):
+			# s = s.split("&", 1)[0]
+		# else:
+			# s = s.split("&fmt=", 1)[0].split("&url=", 1)[0]
+		s = s.split("&", 1)[0]
+	if is_discord_attachment(s):
+		s = s.split("?", 1)[0]
 	return re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
 # Regex moment - Lou

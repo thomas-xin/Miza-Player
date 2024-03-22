@@ -538,8 +538,20 @@ is_emoji_url = lambda url: url and url.startswith("https://raw.githubusercontent
 def unyt(s):
 	if not is_url(s):
 		return s
+	if (s.startswith("https://mizabot.xyz/u") or s.startswith("https://api.mizabot.xyz/u")) and ("?url=" in s or "&url=" in s):
+		s = urllib.parse.unquote_plus(s.replace("&url=", "?url=", 1).split("?url=", 1)[-1])
 	if s.startswith("https://mizabot.xyz/ytdl") or s.startswith("https://api.mizabot.xyz/ytdl"):
-		s = re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s)).split("&", 1)[0]
+		if "?d=" in s or "?v=" in s:
+			s = urllib.parse.unquote_plus(s.replace("?v=", "?d=", 1).split("?d=", 1)[-1])
+		else:
+			s = re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
+		# if not is_discord_attachment(s):
+			# s = s.split("&", 1)[0]
+		# else:
+			# s = s.split("&fmt=", 1)[0].split("&url=", 1)[0]
+		s = s.split("&", 1)[0]
+	if is_discord_attachment(s):
+		s = s.split("?", 1)[0]
 	return re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
 
 def maps(funcs, *args, **kwargs):
@@ -1694,7 +1706,7 @@ class AudioDownloader:
 		page = None
 		output = deque()
 		if discord_expired(item):
-			title = item.rsplit("/", 1)[-1].split("?", 1)[0]
+			title = unyt(item.rsplit("/", 1)[-1].split("?", 1)[0])
 			return [dict(url=f"https://mizabot.xyz/u?url={url_parse(item)}", name=title, research=True, duration=None)]
 		if "youtube.com" in item or "youtu.be/" in item:
 			p_id = None
@@ -1723,7 +1735,7 @@ class AudioDownloader:
 					output.clear()
 					print_exc()
 				try:
-					entries = list(map(cdict, reqs.get("https://api.mizabot.xyz/ytdl?q=" + url_parse(item), timeout=10).json()))
+					entries = list(map(cdict, reqs.get("https://api.mizabot.xyz/ytdl?q=" + url_parse(unyt(item)), timeout=10).json()))
 					if not entries:
 						raise IndexError
 				except:
@@ -1770,9 +1782,9 @@ class AudioDownloader:
 					raise LookupError(f"No results for {item}")
 			except:
 				print_exc()
-				out = reqs.get(f"https://api.mizabot.xyz/ytdl?q={url_parse(item)}&count=1", timeout=12).json()
+				out = reqs.get(f"https://api.mizabot.xyz/ytdl?q={url_parse(unyt(item))}&count=1", timeout=12).json()
 				for e in out:
-					e.setdefault("stream", f"https://api.mizabot.xyz/ytdl?d={url_parse(e.get('url'))}")
+					e.setdefault("stream", f"https://api.mizabot.xyz/ytdl?d={url_parse(unyt(e.get('url')))}")
 					output.append(cdict(e))
 				resp = {}
 			# Check if result is a playlist

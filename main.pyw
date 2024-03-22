@@ -1202,7 +1202,7 @@ def load_ecdc(url):
 		else:
 			bps = 192000
 		if info.get("Source"):
-			url = info["Source"]
+			url = unyt(info["Source"])
 		cached_fns[fn] = name, dur, bps, url
 	return name, dur, bps, url
 
@@ -1918,7 +1918,7 @@ has_api = 0
 api_wait = set()
 ecdc_wait = {}
 def prepare(entry, force=False, download=False, delay=0):
-	# print("PREPARE", entry, force, delay)
+	print("PREPARE:", entry.url, force, delay)
 	reset_entry(entry)
 	if not entry.url:
 		return
@@ -1949,10 +1949,10 @@ def prepare(entry, force=False, download=False, delay=0):
 			raise StopIteration("Downloads blocked, attempting backup...")
 		if force > 1 and not entry.get("icon"):
 			entry.novid = False
-			if is_url(entry.url):
+			if is_url(url):
 				ytdl = downloader.result()
 				try:
-					e = ytdl.extract(entry.url)[0]
+					e = ytdl.extract(url)[0]
 				except:
 					print_exc()
 					entry.novid = True
@@ -1967,13 +1967,13 @@ def prepare(entry, force=False, download=False, delay=0):
 				entry.icon = entry.video = entry.url
 			print(entry)
 		if os.path.exists(fn) and os.path.getsize(fn):
-			if time.time() - os.path.getmtime(fn) > 60 and is_url(entry.url) and not fn.endswith(".ecdc"):
-				if not ecdc_exists(entry.url):
+			if time.time() - os.path.getmtime(fn) > 60 and is_url(url) and not fn.endswith(".ecdc"):
+				if not ecdc_exists(url):
 					ecdc_submit(entry, fn)
 			dur = entry.get("duration")
 			ytdl = downloader.result()
-			if entry.url in ytdl.searched:
-				resp = ytdl.searched[entry.url].data
+			if url in ytdl.searched:
+				resp = ytdl.searched[url].data
 				if len(resp) == 1:
 					entry.name = resp[0].get("name")
 					entry.video = resp[0].get("video")
@@ -1988,10 +1988,10 @@ def prepare(entry, force=False, download=False, delay=0):
 				return stream
 		stream = entry.get("stream", "")
 		if not stream or force and (stream.startswith("https://cf-hls-media.sndcdn.com/") or is_youtube_url(stream) or expired(stream)):
-			if not is_url(entry.url):
+			if not is_url(url):
 				duration = entry.duration
-				if os.path.exists(entry.url):
-					stream = entry.stream = entry.url
+				if os.path.exists(url):
+					stream = entry.stream = url
 					if not duration:
 						info = get_duration_2(stream)
 						duration = info[0]
@@ -2069,7 +2069,7 @@ def prepare(entry, force=False, download=False, delay=0):
 				stream = ytdl.get_stream(entry, force=True, download=False)
 			globals()["queue-length"] = -1
 		elif not is_url(stream) and not os.path.exists(stream):
-			entry.stream = entry.url
+			entry.stream = url
 			duration = entry.duration
 			if not duration:
 				info = get_duration_2(stream)
@@ -2084,15 +2084,15 @@ def prepare(entry, force=False, download=False, delay=0):
 			entry.duration = duration or entry.duration
 			return entry.stream
 	except:
-		if force and is_url(entry.url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
+		if force and is_url(url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
 			try:
 				resp = reqs.head("https://api.mizabot.xyz/ip", timeout=5)
 				resp.raise_for_status()
 			except:
 				# print_exc()
 				globals()["has_api"] = 0
-		if is_url(entry.url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
-			in_url = urllib.parse.quote_plus(entry.url)
+		if is_url(url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
+			in_url = urllib.parse.quote_plus(url)
 			stream = f"https://api.mizabot.xyz/ytdl?d={in_url}&fmt=webm"
 			if not download and not force:
 				return stream
@@ -2101,7 +2101,7 @@ def prepare(entry, force=False, download=False, delay=0):
 				return ofn
 			if stream in api_wait:
 				return stream
-			if force:
+			if force and download:
 				stream += "&asap=1"
 			if stream in api_wait:
 				return stream
@@ -2131,6 +2131,8 @@ def prepare(entry, force=False, download=False, delay=0):
 				print_exc()
 			finally:
 				api_wait.discard(stream)
+		elif not download:
+			return stream
 		url = entry.url
 		if not url:
 			return
@@ -2141,7 +2143,7 @@ def prepare(entry, force=False, download=False, delay=0):
 			return cfn
 		entry.url = ""
 		print_exc()
-		print("DELETING:", entry, cfn)
+		print("DELETING:", entry, cfn, force, download)
 		return
 	stream = stream.strip()
 	duration = entry.duration
@@ -2167,7 +2169,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		mixer.submit(f"~download {es} cache/~{shash(url)}.webm")
 	entry.duration = duration or entry.duration
 	if entry.duration != odur:
-		cdc = ecdc_exists(entry.url)
+		cdc = ecdc_exists(url)
 		if cdc:
 			name, dur, bps, url = load_ecdc(cdc)
 			entry.name = name
@@ -2188,7 +2190,7 @@ def start_player(pos=None, force=False):
 	if not queue or not queue[0].url:
 		return skip()
 	try:
-		print("start_player", queue[0], pos, force)
+		print("START_PLAYER:", queue[0].url, pos, force)
 		if options.get("spectrogram", 0) == 0 and not queue[0].get("video"):
 			submit(prepare, queue[0], force=force + 1)
 		try:
@@ -2367,6 +2369,7 @@ def ecdc_compress(entry, stream, force=False):
 						bps //= 4
 					if cdc not in ("opus", "vorbis"):
 						bps //= 2
+		stream = unyt(stream)
 		bps = bps or 192000
 		br = min(24, bps // 8000)
 		if exists:
@@ -2492,6 +2495,7 @@ last_save = -inf
 last_sync = -inf
 def skip():
 	try:
+		# print("SKIPPED")
 		# import inspect
 		# curframe = inspect.currentframe()
 		# calframe = inspect.getouterframes(curframe, 2)
@@ -2537,6 +2541,7 @@ def skip():
 		print_exc()
 
 def seek_abs(pos, force=False):
+	# print("SEEK_ABS", pos, force)
 	if not force:
 		if pos <= 0 and player.pos <= 0 and audio.speed > 0 and not player.paused:
 			return (player.get("stream"), player.end)
@@ -2545,6 +2550,7 @@ def seek_abs(pos, force=False):
 	return start_player(pos) if queue else (None, inf)
 
 def seek_rel(pos):
+	# print("SEEK_REL", pos)
 	if not pos:
 		return
 	player.last = 0
@@ -2607,7 +2613,7 @@ def reevaluate_in(delay=0, mut=()):
 				if expired(queue[0].get("stream", "")):
 					raise
 			except:
-				url = queue[0].url
+				url = unyt(queue[0].url)
 				cfn = ecdc_exists(url)
 				print("Searching:", cfn)
 				if cfn:
@@ -2623,6 +2629,7 @@ def reevaluate_in(delay=0, mut=()):
 				ytdl = downloader.result()
 				ytdl.cache.pop(url, None)
 			else:
+				url = unyt(url)
 				queue[0]["stream"] = f"https://api.mizabot.xyz/ytdl?d={urllib.parse.quote_plus(url)}&fmt=webm&asap=1"
 				force = False
 				try:
@@ -3105,6 +3112,7 @@ def ensure_next(e, delay=0):
 		# submit(render_lyrics, e)
 
 def enqueue(entry, start=True):
+	print("ENQUEUE:", entry.url)
 	# import inspect
 	# curframe = inspect.currentframe()
 	# calframe = inspect.getouterframes(curframe, 2)
@@ -4802,9 +4810,11 @@ try:
 			elif toolbar.editor:
 				player.fut = submit(editor_update)
 		if not queue and not toolbar.editor or player.paused and toolbar.editor:
-			fut = player.pop("fut", None)
-			if fut and not queue:
-				fut.result()
+			if player.get("fut"):
+				try:
+					player.pop("fut").result(timeout=1)
+				except:
+					print_exc()
 		condition = not minimised or any(DISP.krelease) or any(DISP.mrelease)
 		if toolbar.ripples or sidebar.ripples:
 			condition = True
@@ -4982,7 +4992,7 @@ try:
 							if (not player.video or not player.video.is_running() and not abs(player.video.pos - player.pos) < 1) and not player.get("video_loading"):
 								url = queue[0].get("video") or queue[0].get("icon")
 								if url:
-									print("Loading", url)
+									print("Video loading:", url)
 									player.video_loading = submit(load_video, url, pos=player.pos, bak=queue[0].get("icon"), sig=queue[0].url)
 								elif "novid" not in queue[0]:
 									print(queue[0])

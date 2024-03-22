@@ -2235,7 +2235,7 @@ def start_player(pos=None, force=False):
 				downloader.result().cache.pop(queue[0].url, None)
 			player.last = 0
 			player.amp = 0
-			stream = prepare(queue[0], force=force + 1)
+			stream = prepare(queue[0], force=True)
 			if not queue or not queue[0].url:
 				return skip()
 			stream = prepare(queue[0], force=force + 1)

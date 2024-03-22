@@ -2094,7 +2094,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		if is_url(entry.url) and utc() - has_api < 60 and utc() - entry.get("tried_api", 0) > 120:
 			in_url = urllib.parse.quote_plus(entry.url)
 			stream = f"https://api.mizabot.xyz/ytdl?d={in_url}&fmt=webm"
-			if not download:
+			if not download and not force:
 				return stream
 			if os.path.exists(ofn) and os.path.getsize(ofn):
 				entry.stream = ofn
@@ -2112,15 +2112,18 @@ def prepare(entry, force=False, download=False, delay=0):
 				with reqs.get(stream, stream=True, timeout=20) as resp:
 					resp.raise_for_status()
 					it = resp.iter_content(65536)
-					with open(ofn, "wb") as f:
-						try:
-							while True:
-								b = next(it)
-								if not b:
-									break
-								f.write(b)
-						except StopIteration:
-							pass
+					if download:
+						with open(ofn, "wb") as f:
+							try:
+								while True:
+									b = next(it)
+									if not b:
+										break
+									f.write(b)
+							except StopIteration:
+								pass
+					else:
+						assert next(it)
 				print(stream, ofn)
 				entry.stream = ofn
 				return ofn
@@ -2235,7 +2238,7 @@ def start_player(pos=None, force=False):
 			stream = prepare(queue[0], force=force + 1)
 			if not queue or not queue[0].url:
 				return skip()
-			stream = prepare(queue[0], force=force + 1, download=True)
+			stream = prepare(queue[0], force=force + 1)
 			entry = queue[0]
 			if not entry.url:
 				return skip()

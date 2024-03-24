@@ -2131,7 +2131,7 @@ def prepare(entry, force=False, download=False, delay=0):
 				print_exc()
 			finally:
 				api_wait.discard(stream)
-		elif not download:
+		elif stream and not download:
 			return stream
 		url = entry.url
 		if not url:
@@ -2168,10 +2168,12 @@ def prepare(entry, force=False, download=False, delay=0):
 		url = unyt(url)
 		mixer.submit(f"~download {es} cache/~{shash(url)}.webm")
 	entry.duration = duration or entry.duration
+	cfn = ecdc_exists(url)
+	if cfn and not stream:
+		stream = cfn
 	if entry.duration != odur:
-		cdc = ecdc_exists(url)
-		if cdc:
-			name, dur, bps, url = load_ecdc(cdc)
+		if cfn:
+			name, dur, bps, url = load_ecdc(cfn)
 			entry.name = name
 		else:
 			ytdl = downloader.result()

@@ -1945,7 +1945,7 @@ def prepare(entry, force=False, download=False, delay=0):
 		if cdc:
 			name, dur, bps, url, icon = load_ecdc(cdc)
 			entry.name, entry.dur = name, dur
-			entry.icon = icon
+			entry.icon = icon or entry.get("icon")
 			reset_entry(entry)
 	try:
 		# raise

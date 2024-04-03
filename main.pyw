@@ -1184,7 +1184,7 @@ def load_ecdc(url):
 	if not fn:
 		return
 	try:
-		name, dur, bps, url = cached_fns[fn]
+		name, dur, bps, url, icon = cached_fns[fn]
 	except KeyError:
 		info = cdict(ecdc_stream.get_info(fn))
 		if info.get("Name"):
@@ -1201,10 +1201,14 @@ def load_ecdc(url):
 			bps = info["Bitrate"]
 		else:
 			bps = 192000
+		if info.get("Thumbnail"):
+			icon = info["Thumbnail"]
+		else:
+			icon = None
 		if info.get("Source"):
 			url = unyt(info["Source"])
-		cached_fns[fn] = name, dur, bps, url
-	return name, dur, bps, url
+		cached_fns[fn] = name, dur, bps, url, icon
+	return name, dur, bps, url, icon
 
 def _enqueue_local(*files, probe=True, index=None, allowshuffle=True):
 	try:
@@ -1247,13 +1251,14 @@ def _enqueue_local(*files, probe=True, index=None, allowshuffle=True):
 				dur = None
 				url = fn
 				try:
-					name, dur, bps, url = load_ecdc(fn)
+					name, dur, bps, url, icon = load_ecdc(fn)
 				except:
 					print_exc()
 					dur = None
 				entry = cdict(
 					url=url,
 					stream=fn,
+					icon=icon,
 					name=name,
 					duration=dur,
 					cdc="ecdc",
@@ -1938,8 +1943,9 @@ def prepare(entry, force=False, download=False, delay=0):
 	if is_url(url):
 		cdc = ecdc_exists(url)
 		if cdc:
-			name, dur, bps, url = load_ecdc(cdc)
+			name, dur, bps, url, icon = load_ecdc(cdc)
 			entry.name, entry.dur = name, dur
+			entry.icon = icon
 			reset_entry(entry)
 	try:
 		# raise
@@ -2173,8 +2179,9 @@ def prepare(entry, force=False, download=False, delay=0):
 		stream = cfn
 	if entry.duration != odur:
 		if cfn:
-			name, dur, bps, url = load_ecdc(cfn)
+			name, dur, bps, url, icon = load_ecdc(cfn)
 			entry.name = name
+			entry.icon = icon
 		else:
 			ytdl = downloader.result()
 			try:
@@ -2373,10 +2380,17 @@ def ecdc_compress(entry, stream, force=False):
 						bps //= 2
 		stream = unyt(stream)
 		bps = bps or 192000
-		br = min(24, bps // 8000)
+		br = min(32, round(bps / 6000))
+		if 18 < br < 24:
+			br = 24
+		elif 9 < br < 12:
+			br = 12
+		elif 4.5 < br < 6:
+			br = 6
+		icon = None
 		if exists:
-			name, dur, bps, url = load_ecdc(url)
-			if br > bps:
+			name, dur, bps, url, icon = load_ecdc(url)
+			if br > bps or not icon and entry.get("icon"):
 				exists = False
 		try:
 			import pynvml
@@ -2392,7 +2406,8 @@ def ecdc_compress(entry, stream, force=False):
 		try:
 			name = entry.get("name") or ""
 			b = "auto" if i is None else br
-			query = f"bitrate={b}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
+			icon = entry.get("icon") or icon or ""
+			query = f"bitrate={b}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}&thumbnail={urllib.parse.quote_plus(icon)}"
 			api = f"https://api.mizabot.xyz/encodec?{query}&inference={i}&url={urllib.parse.quote_plus(url)}"
 			if i is not None:
 				print(api)
@@ -2439,7 +2454,7 @@ def ecdc_compress(entry, stream, force=False):
 				if os.path.exists(ofn) and os.path.getsize(ofn) and utc() - has_api < 60:
 					with open(ofn, "rb") as f:
 						b = f.read()
-					query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}"
+					query = f"bitrate={br}&name={urllib.parse.quote_plus(name)}&source={urllib.parse.quote_plus(url)}&thumbnail={urllib.parse.quote_plus(icon)}"
 					api = f"https://api.mizabot.xyz/encodec?{query}&inference=None&url={urllib.parse.quote_plus(url)}"
 					with reqs.post(api, data=b, stream=True, timeout=720) as resp:
 						print(resp)

@@ -2469,7 +2469,6 @@ def bytes2zip(data, name="D"):
 	return b.getbuffer()
 
 shash = lambda s: base64.urlsafe_b64encode(hashlib.sha256(s if type(s) is bytes else as_str(s).encode("utf-8")).digest()).rstrip(b"=").decode("ascii")
-unyt = lambda s: re.sub(r"https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", s)
 
 def quote(s):
 	if s.isascii():
@@ -4515,9 +4514,9 @@ def unyt(s):
 		if "?d=" in s or "?v=" in s:
 			s = urllib.parse.unquote_plus(s.replace("?v=", "?d=", 1).split("?d=", 1)[-1])
 		else:
-			s = re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
+			s = re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)|https?:\/\/(?:api\.)?mizabot\.xyz\/ytdl\?[vd]=(?:https:\/\/youtu\.be\/|https%3A%2F%2Fyoutu\.be%2F)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
 		s = s.split("&", 1)[0]
 	if is_discord_attachment(s):
 		s = s.split("?", 1)[0]
-	return re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
+	return re.sub(r"https?:\/\/(?:\w{1,5}\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)", "https://youtu.be/", re.sub(r"[\?&]si=[\w\-]+", "", s))
 # Regex moment - Lou

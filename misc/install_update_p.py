@@ -51,18 +51,17 @@ with open("requirements.txt", "rb") as f:
 	modlist = f.read().decode("utf-8", "replace").replace("\r", "\n").split("\n")
 
 
+python = sys.executable
+
 if os.name == "nt":
 	modlist.append("pipwin>=0.5.1")
 
 try:
 	import pip
 except ModuleNotFoundError:
-	subprocess.run([sys.executable, "-m", "ensurepip"])
-try:
-	import pkg_resources, struct
-except ModuleNotFoundError:
-	subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "setuptools"])
-	import pkg_resources, struct
+	subprocess.run([python, "-m", "ensurepip"])
+
+import importlib.metadata
 
 if sys.version_info.major == 3 and sys.version_info.minor >= 10:
 	import collections
@@ -77,7 +76,7 @@ psize = None
 
 modified = False
 installing = []
-install = lambda m: installing.append(subprocess.Popen([sys.executable, "-m", "pip", "install", "--upgrade", "--user", m]))
+install = lambda m: installing.append(subprocess.Popen([python, "-m", "pip", "install", "--upgrade", "--user", m]))
 
 def try_int(i):
     if type(i) is str and not i.isnumeric():
@@ -97,7 +96,7 @@ for mod in modlist:
 				if op in mod:
 					name, version = mod.split(op)
 					break
-			v = pkg_resources.get_distribution(name).version
+			v = importlib.metadata.version(name)
 			if version is not None:
 				try:
 					s = repr([try_int(i) for i in v.split(".")]) + op + repr([try_int(i) for i in version.split(".")])
@@ -117,7 +116,7 @@ for mod in modlist:
 if installing:
 	modified = True
 	print("Installing missing or outdated modules, please wait...")
-	subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--user", "pip"])
+	subprocess.run([python, "-m", "pip", "install", "--upgrade", "--user", "pip"])
 	while installing:
 		proc = installing.pop(0)
 		if proc.wait():
@@ -128,12 +127,20 @@ if installing:
 			installing.append(proc)
 
 try:
-	assert pkg_resources.get_distribution("encodec").version >= "0.1.2a3"
-except (pkg_resources.DistributionNotFound, AssertionError):
-	subprocess.run([sys.executable, "-m", "pip", "install", "git+https://github.com/facebookresearch/encodec", "--user"])
+	assert importlib.metadata.version("encodec") >= "0.1.2a3"
+except (importlib.metadata.PackageNotFoundError, AssertionError):
+	subprocess.run([python, "-m", "pip", "install", "git+https://github.com/facebookresearch/encodec", "--user"])
 if not os.path.exists("cache/~sample.wav"):
-	subprocess.Popen([sys.executable, "-m", "encodec", "-r", "misc/sample.ecdc", "cache/~sample.wav"])
+	subprocess.Popen([python, "-m", "encodec", "-r", "misc/sample.ecdc", "cache/~sample.wav"])
+
+try:
+	assert importlib.metadata.version("yt-dlp") >= "2024.4.4"
+except (importlib.metadata.PackageNotFoundError, AssertionError):
+	subprocess.run([python, "-m", "pip", "install", "--upgrade", "--pre", "yt-dlp[default]"])
+
+if installing:
+	subprocess.run([python, "-m", "pip", "install", "-r", "requirements.txt"])
 
 if modified:
-	subprocess.Popen([sys.executable] + sys.argv)
+	subprocess.Popen([python] + sys.argv)
 	raise SystemExit

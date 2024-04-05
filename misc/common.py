@@ -199,9 +199,6 @@ hasmisc = os.path.exists("misc")
 pyv = sys.version_info[1]
 print_exc = traceback.print_exc
 
-
-is_url = lambda url: "://" in url and url.split("://", 1)[0].rstrip("s") in ("http", "hxxp", "ftp", "fxp")
-
 downloader = concurrent.futures.Future()
 lyrics_scraper = concurrent.futures.Future()
 def import_audio_downloader():
@@ -3817,7 +3814,9 @@ def text_size(text, size, font="OpenSansEmoji"):
 
 m_split = re.compile(r"[\s.\-/\\|:'%]")
 md_font = {}
+hardware_font_disabled = False
 def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, surface=None, font="OpenSansEmoji", alpha=255, align=1, cache=False, z=0, clip=False):
+	global hardware_font_disabled
 	# text = "".join(c if ord(c) < 65536 else "\x7f" for c in text)
 	text = str(text if type(text) is not float else round_min(text)).replace("\u200b", "").strip()
 	if not text:
@@ -3827,7 +3826,11 @@ def message_display(text, size, pos=(0, 0), colour=(255,) * 3, background=None, 
 			pos = astype(pos, list)
 			for i in range(2):
 				pos[i] += surface.rect[i]
-		return DISP.hardware_font(text, size, pos, colour, background, font, alpha, align, z)
+		if not hardware_font_disabled:
+			try:
+				return DISP.hardware_font(text, size, pos, colour, background, font, alpha, align, z)
+			except ctypes.ArgumentError:
+				hardware_font_disabled = True
 	sep = cache < 0 and len(text) > 1 and re.search(m_split, text)
 	if surface and sep and align == 0:
 		pos = astype(pos, tuple)
@@ -4493,17 +4496,18 @@ def regexp(s, flags=0):
 		RE[t] = re.compile(s, flags)
 		return RE[t]
 
-is_url = lambda url: url and regexp("^(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+$").fullmatch(url)
-is_discord_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/").findall(url) + regexp("https:\\/\\/images-ext-[0-9]+\\.discordapp\\.net\\/external\\/").findall(url)
-is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/attachments\\/").search(str(url))
+find_urls = lambda url: url and regexp("(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+").findall(url)
+is_url = lambda url: url and isinstance(url, (str, bytes)) and regexp("^(?:http|hxxp|ftp|fxp)s?:\\/\\/[^\\s`|\"'\\])>]+$").fullmatch(url)
+is_discord_url = lambda url: url and regexp("^https?:\\/\\/(?:\w{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/").findall(url) + regexp("https:\\/\\/images-ext-[0-9]+\\.discordapp\\.net\\/external\\/").findall(url)
+is_discord_attachment = lambda url: url and regexp("^https?:\\/\\/(?:\w{3,8}\\.)?discord(?:app)?\\.(?:com|net)\\/attachments\\/").search(str(url))
 is_tenor_url = lambda url: url and regexp("^https?:\\/\\/tenor.com(?:\\/view)?/[a-zA-Z0-9\\-_]+-[0-9]+").findall(url)
-is_imgur_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
+is_imgur_url = lambda url: url and regexp("^https?:\\/\\/(?:\w\\.)?imgur.com/[a-zA-Z0-9\\-_]+").findall(url)
 is_giphy_url = lambda url: url and regexp("^https?:\\/\\/giphy.com/gifs/[a-zA-Z0-9\\-_]+").findall(url)
 is_youtube_url = lambda url: url and regexp("^https?:\\/\\/(?:\w{1,5}\.)?youtu(?:\\.be|be\\.com)\\/[^\\s<>`|\"']+").findall(url)
 is_youtube_stream = lambda url: url and regexp("^https?:\\/\\/r+[0-9]+---.{2}-[A-Za-z0-9\\-_]{4,}\\.googlevideo\\.com").findall(url)
 is_deviantart_url = lambda url: url and regexp("^https?:\\/\\/(?:www\\.)?deviantart\\.com\\/[^\\s<>`|\"']+").findall(url)
-is_reddit_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?reddit.com\\/r\\/[^/\\W]+\\/").findall(url)
-is_redgifs_url = lambda url: url and regexp("^https?:\\/\\/(?:[A-Za-z]{2,3}\\.)?redgifs.com\\/[A-Za-z]{2,6}\\/[^/\\W]+").findall(url)
+is_reddit_url = lambda url: url and regexp("^https?:\\/\\/(?:\w{2,3}\\.)?reddit.com\\/r\\/[^/\\W]+\\/").findall(url)
+is_redgifs_url = lambda url: url and regexp("^https?:\\/\\/(?:\w{2,3}\\.)?redgifs.com\\/\w{2,6}\\/[^/\\W]+").findall(url)
 is_emoji_url = lambda url: url and url.startswith("https://raw.githubusercontent.com/twitter/twemoji/master/assets/svg/")
 def unyt(s):
 	if not is_url(s):

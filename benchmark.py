@@ -1,4 +1,5 @@
 import os, sys
+python = sys.executable
 
 os.system("color")
 srgb = lambda r, g, b, s: f"\033[38;2;{r};{g};{b}m{s}\033[0m"
@@ -45,8 +46,8 @@ if len(sys.argv) > 1:
 				it = 1
 			c = 2 ** n
 			# print(c)
-			a = torch.randn(c, c, dtype=torch.float32, device="cuda" if is_cuda else "cpu").to(dtype)
-			b = torch.randn(c, c, dtype=torch.float32, device="cuda" if is_cuda else "cpu").to(dtype)
+			a = torch.randn(c, c, dtype=dtype, device="cuda" if is_cuda else "cpu")
+			b = torch.randn(c, c, dtype=dtype, device="cuda" if is_cuda else "cpu")
 			# print("DEVICE:", device, count, len(a), c, it)
 			for i in range(it):
 				if is_cuda:
@@ -66,6 +67,9 @@ if len(sys.argv) > 1:
 				if not is_cuda:
 					t *= core
 				taken += t
+				t1 = a * b
+				t2 = a * b
+				assert torch.all(t1 == t2)
 			del a, b
 			if taken < 5 and count < 65536:
 				count = min(65536, max(count * 2, round(math.sqrt(5 / taken) * count)))
@@ -102,24 +106,37 @@ if len(sys.argv) > 1:
 
 DC = 0
 if not is_sub:
+	import subprocess
 	print(srgb(0, 0, 255, "Scanning hardware..."))
 
-	import subprocess
 	try:
 		import pynvml
 	except ImportError:
-		subprocess.run([sys.executable, "-m", "pip", "install", "pynvml", "--upgrade", "--user"])
+		subprocess.run([python, "-m", "pip", "install", "pynvml", "--upgrade"])
 
 	print(srgb(0, 255, 255, "Loading..."))
 	import pynvml
 	try:
-		# raise
 		pynvml.nvmlInit()
 		DC = pynvml.nvmlDeviceGetCount()
 	except:
 		DC = 0
-	# if not DC:
-		# print(srgb(255, 0, 0, "WARNING: No NVIDIA GPUs detected. Please install one for AI compute acceleration."))
+	if not DC:
+		print(srgb(255, 0, 0, "WARNING: No NVIDIA GPUs detected. Please install one for AI compute acceleration."))
+
+	try:
+		import cpuinfo, psutil
+		if DC:
+			import torch, torchvision
+			if not torch.cuda.is_available() or not torchvision._HAS_OPS:
+				raise ImportError
+	except ImportError:
+		subprocess.run([python, "-m", "pip", "install", "py-cpuinfo", "--upgrade"])
+		subprocess.run([python, "-m", "pip", "install", "psutil", "--upgrade"])
+		if DC:
+			subprocess.run([python, "-m", "pip", "install", "torch", "torchvision", "torchaudio", "--upgrade", "--index-url", "https://download.pytorch.org/whl/cu121"])
+			import torch
+		import cpuinfo, psutil
 
 	compute_load = []
 	compute_order = []
@@ -127,51 +144,16 @@ if not is_sub:
 	import json
 	keep = True
 	if __name__ != "__main__" and os.path.exists("auth.json"):
-		try:
-			import cpuinfo, psutil
-			if DC:
-				import torch, torchvision
-				if not torch.cuda.is_available() or not torchvision._HAS_OPS:
-					raise ImportError
-		except ImportError:
-			subprocess.run([sys.executable, "-m", "pip", "install", "py-cpuinfo", "--upgrade", "--user"])
-			subprocess.run([sys.executable, "-m", "pip", "install", "psutil", "--upgrade", "--user"])
-			if DC:
-				subprocess.run([sys.executable, "-m", "pip", "install", "torch==2.0.1+cu118", "torchvision==0.15.2+cu118", "torchaudio==2.0.2", "--index-url", "https://download.pytorch.org/whl/cu118", "--upgrade", "--user"])
-				import torch
-			import cpuinfo, psutil
+		import importlib.metadata
 
-		try:
-			import pkg_resources
-		except:
-			import traceback
-			print(srgb(255, 0, 0, traceback.format_exc()), end="")
-			subprocess.run(["pip", "install", "setuptools", "--upgrade", "--user"])
-			import pkg_resources
-		req = ["diffusers"]
+		req = []
 		if DC:
 			req.append("accelerate")
-		# if os.name == "nt":
-		# 	req.append("bitsandbytes-windows")
-		# else:
-		# 	req.append("bitsandbytes")
 		for mn in req:
 			try:
-				pkg_resources.get_distribution(mn)
+				importlib.metadata.version(mn)
 			except:
-				subprocess.run([sys.executable, "-m", "pip", "install", mn, "--upgrade", "--user"])
-		# if os.name == "nt":
-		# 	try:
-		# 		pkg_resources.get_distribution("bitsandbytes")
-		# 	except:
-		# 		try:
-		# 			dist = pkg_resources.get_distribution("bitsandbytes-windows")
-		# 			fold = dist.module_path + "/bitsandbytes_windows-" + dist.version + ".dist-info"
-		# 			if os.path.exists(fold):
-		# 				os.rename(fold, fold.replace("_windows", ""))
-		# 		except:
-		# 			import traceback
-		# 			print(srgb(255, 0, 0, traceback.format_exc()), end="")
+				subprocess.run([python, "-m", "pip", "install", mn, "--upgrade"])
 
 		with open("auth.json", "rb") as f:
 			try:
@@ -189,13 +171,19 @@ if not is_sub:
 		compute_order = []
 
 		import time
-		if DC > 2:
+		handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(DC)]
+		bwidths = [1073741824 / 8 / 8 * 2 ** pynvml.nvmlDeviceGetCurrPcieLinkGeneration(d) * pynvml.nvmlDeviceGetCurrPcieLinkWidth(d) for d in handles]
+		if DC > 1:
 			import torch, time
 			devices = list(range(DC - 1, -1, -1))
 
 			for i in devices:
 				print(f"Initialising device {i}...")
-				a = torch.zeros(1, dtype=torch.uint8, device=i)
+				try:
+					a = torch.ones(1, dtype=torch.uint8, device=i)
+				except RuntimeError as ex:
+					print(f"Device {i}:", repr(ex))
+					a = torch.ones(1, dtype=torch.float32, device=i)
 				del a
 
 			i = sorted(devices, key=lambda i: (d := torch.cuda.get_device_properties(i)) and (d.major * d.multi_processor_count * d.total_memory), reverse=True)[0]
@@ -208,12 +196,13 @@ if not is_sub:
 				shortest = torch.inf
 				j = i
 				for i in devices:
-					a = torch.randint(0, 255, (1073741824,), dtype=torch.uint8, device=j)
-					t = time.time()
-					b = a.to(i)
-					t = time.time() - t
-					del a
-					print(i, t)
+					t = 1 / bwidths[i] / torch.cuda.get_device_properties(i).total_memory
+					# a = torch.randint(0, 255, (1073741824,), dtype=torch.uint8, device=j)
+					# t = time.time()
+					# b = a.to(i)
+					# t = time.time() - t
+					# del a
+					# print(i, t)
 					if t < shortest:
 						shortest = t
 						best = i
@@ -235,7 +224,7 @@ if not is_sub:
 		mem = psutil.virtual_memory().total
 			# mems.append(mem)
 		if __name__ == "__main__":
-			args = [sys.executable, __file__, "cpu", info["brand_raw"], str(info["count"]), str(mem)]
+			args = [python, __file__, "cpu", info["brand_raw"], str(info["count"]), str(mem)]
 			if INT:
 				args.append("-i")
 			print(args)
@@ -249,7 +238,7 @@ if not is_sub:
 				info = pynvml.nvmlDeviceGetHandleByIndex(i)
 				mem = torch.cuda.get_device_properties(i).total_memory
 				# mems.append(mem)
-				args = [sys.executable, __file__, f"cuda:{i}", pynvml.nvmlDeviceGetName(info), str(pynvml.nvmlDeviceGetNumGpuCores(info)), str(mem)]
+				args = [python, __file__, f"cuda:{i}", pynvml.nvmlDeviceGetName(info), str(pynvml.nvmlDeviceGetNumGpuCores(info)), str(mem)]
 				if INT:
 					args.append("-i")
 				print(args)

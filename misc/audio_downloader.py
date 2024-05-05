@@ -1487,6 +1487,19 @@ class AudioDownloader:
 			out.append(temp)
 		return out
 
+	def extract_redgifs(self, url):
+		vid = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+		if vid.isnumeric():
+			url = f"https://www.redgifs.com/ifr/{vid}"
+			with requests.get(url, headers=self.youtube_header) as resp:
+				resp.raise_for_status()
+				s = resp.text
+			search = '<link rel="canonical" href="'
+			i = s.index(search)
+			url = s[i + len(search):].split('"', 1)[0]
+			vid = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
+		return f"https://api.redgifs.com/v2/gifs/{vid}/hd.m3u8"
+
 	def extract_alt(self, url):
 		if "dropbox.com" in url and "?dl=0" in url:
 			return url.replace("?dl=0", "?dl=1")
@@ -1506,8 +1519,7 @@ class AudioDownloader:
 				vid = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
 			return f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg"
 		if is_redgifs_url(url):
-			vid = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
-			return f"https://api.redgifs.com/v2/gifs/{vid}/sd.m3u8"
+			return self.extract_redgifs(url)
 		if any(maps((is_discord_url, is_emoji_url, is_youtube_url, is_youtube_stream), url)):
 			return url
 		if is_reddit_url(url):
@@ -1522,8 +1534,7 @@ class AudioDownloader:
 		head = fcdict(resp.headers)
 		ctype = [t.strip() for t in head.get("Content-Type", "").split(";")]
 		if is_redgifs_url(url):
-			vid = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1]
-			return f"https://api.redgifs.com/v2/gifs/{vid}/sd.m3u8"
+			return self.extract_redgifs(url)
 		elif "text/html" in ctype:
 			rit = resp.iter_content(65536)
 			data = next(rit)

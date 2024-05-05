@@ -291,6 +291,8 @@ def stream_to_file(fo, use_lm: bool = False, hq: bool = True, bitrate: float = 2
 	"""
 	hq = hq and bitrate >= 3
 	sr = 48000 if hq else 24000
+	if bitrate <= 0:
+		raise ValueError("Negative or zero bitrate specified.")
 	r = math.log2(bitrate / 3)
 	target_br = 3 * 2 ** (r // 1)
 	sr_scale = 2 ** (r % 1)
@@ -323,10 +325,14 @@ def stream_to_file(fo, use_lm: bool = False, hq: bool = True, bitrate: float = 2
 
 	dtype = torch.float32# if device in (-1, "cpu") else torch.float16
 	data = inputs.read()
-	if hq:
-		wav = torch.frombuffer(data, dtype=torch.int16).reshape((len(data) // 4, 2)).T.to(device=device)
-	else:
-		wav = torch.frombuffer(data, dtype=torch.int16).reshape((len(data) // 2, 1)).T.to(device=device)
+	import warnings
+	with warnings.catch_warnings():
+		warnings.simplefilter("ignore", UserWarning)
+		if hq:
+			wav = torch.frombuffer(data, dtype=torch.int16).reshape((len(data) // 4, 2))
+		else:
+			wav = torch.frombuffer(data, dtype=torch.int16).reshape((len(data) // 2, 1))
+	wav = wav.T.to(device=device)
 	high = 32767 + (-32768 in wav)
 	wav = wav.to(dtype)
 	wav *= 1 / high
@@ -388,6 +394,17 @@ def stream_to_file(fo, use_lm: bool = False, hq: bool = True, bitrate: float = 2
 
 
 if __name__ == "__main__":
+	if os.path.exists("auth.json"):
+		with open("auth.json", "rb") as f:
+			AUTH = json.load(f)
+		cachedir = AUTH.get("cache_path") or None
+		if cachedir:
+			os.environ["HF_HOME"] = f"{cachedir}/huggingface"
+			os.environ["TORCH_HOME"] = f"{cachedir}/torch"
+			os.environ["HUGGINGFACE_HUB_CACHE"] = f"{cachedir}/huggingface/hub"
+			os.environ["TRANSFORMERS_CACHE"] = f"{cachedir}/huggingface/transformers"
+			os.environ["HF_DATASETS_CACHE"] = f"{cachedir}/huggingface/datasets"
+
 	import io
 	import math
 	import struct
@@ -406,17 +423,6 @@ if __name__ == "__main__":
 		'encodec_48khz': EncodecModel.encodec_model_48khz,
 	}
 
-	if os.path.exists("auth.json"):
-		with open("auth.json", "rb") as f:
-			AUTH = json.load(f)
-		cachedir = AUTH.get("cache_path") or None
-		if cachedir:
-			os.environ["HF_HOME"] = f"{cachedir}/huggingface"
-			os.environ["TORCH_HOME"] = f"{cachedir}/torch"
-			os.environ["HUGGINGFACE_HUB_CACHE"] = f"{cachedir}/huggingface/hub"
-			os.environ["TRANSFORMERS_CACHE"] = f"{cachedir}/huggingface/transformers"
-			os.environ["HF_DATASETS_CACHE"] = f"{cachedir}/huggingface/datasets"
-
 	if not torch.cuda.is_available():
 		device = "cpu"
 	elif device is None or device < 0:
@@ -425,6 +431,7 @@ if __name__ == "__main__":
 			device = "cuda"
 		else:
 			device = f"cuda:{random.randint(0, torch.cuda.device_count() - 1)}"
+		print(f"No device selected, but hardware acceleration is available. Auto-selecting device {device}...")
 	device = torch.device(device)
 	if mode == "decode":
 		# Read using a parallel thread; this avoids delays from blocking

@@ -1,6 +1,5 @@
 import sys
-sys.path.append("misc")
-import common
+from misc import common
 globals().update(common.__dict__)
 
 
@@ -12,8 +11,6 @@ itypes = "png bmp jpg jpeg webp gif apng afif".split()
 iftypes = [[f"*.{f}" for f in itypes + "mp4 mov qt mkv avi f4v flv wmv raw".split()]]
 iftypes[0].append("All supported image files")
 
-with open("assoc.bat", "w", encoding="utf-8") as f:
-	f.write(f"cd {os.path.abspath('')}\nstart /MIN py -3.{pyv} {sys.argv[0]} %*")
 if not os.path.exists("cache"):
 	os.mkdir("cache")
 if not os.path.exists("persistent"):
@@ -2294,10 +2291,23 @@ def start_player(pos=None, force=False):
 			else:
 				player.needs_shuffle = not is_url(stream)
 			if is_url(stream) and expired(stream):
-				ytdl = downloader.result()
-				data = ytdl.extract(entry.url)
-				entry.name = data[0].name
-				stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
+				try:
+					ytdl = downloader.result()
+					data = ytdl.extract(entry.url)
+					data[0].stream = ytdl.get_stream(entry, force=True, download=False)
+				except:
+					if ecdc_exists(entry.url):
+						name, dur, bps, url, icon = load_ecdc(entry.url)
+						entry.name = name
+						entry.duration = dur
+						entry.icon = icon
+						stream = entry.stream = url
+					else:
+						print_exc()
+						return skip()
+				else:
+					entry.name = data[0].name
+					stream = entry["stream"] = data[0].setdefault("stream", data[0].url)
 			if is_url(entry.url):
 				if not is_url(stream) and os.path.exists(stream) and not stream.endswith(".ecdc") and time.time() - os.path.getmtime(stream) > 30:
 					ecdc_submit(entry, stream)

@@ -1,6 +1,6 @@
 import os, sys, subprocess, time, concurrent.futures
 
-from install_update_p import *
+from misc.install_update_p import *
 
 print = lambda *args, sep=" ", end="\n": sys.stdout.write(str(sep).join(map(str, args)) + end)
 from concurrent.futures import thread, _base
@@ -107,7 +107,7 @@ def _settimeout(*args, timeout=0, **kwargs):
 	args[0](*args[1:], **kwargs)
 settimeout = lambda *args, **kwargs: submit(_settimeout, *args, **kwargs)
 
-from rainbow_print import *
+from misc.rainbow_print import *
 
 class MultiAutoImporter:
 
@@ -203,7 +203,7 @@ downloader = concurrent.futures.Future()
 lyrics_scraper = concurrent.futures.Future()
 def import_audio_downloader():
 	try:
-		audio_downloader = __import__("audio_downloader")
+		from misc import audio_downloader
 		globals()["ytdl"] = ytdl = audio_downloader.ytdl = audio_downloader.AudioDownloader()
 		downloader.set_result(ytdl)
 		lyrics_scraper.set_result(audio_downloader.get_lyrics)

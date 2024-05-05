@@ -1,1 +1,1 @@
-start /MIN cmd /k py main.pyw %*
+start /MIN cmd /k "cd %~dp0 && py main.pyw %*"
